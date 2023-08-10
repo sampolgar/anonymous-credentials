@@ -26,6 +26,8 @@ fn is_secp256k1_point(x: BigUint, y: BigUint) -> bool {
     return lhs == rhs;
 }
 
+// TODO create test cases for random points
+// TODO change power functions to bit shift functions
 // More concise than 2_i32.pow(256)
 //y² mod p = (x³ + ax + b) mod p     let a = 0; let b = 7;
 // BigUint::one() takes the value 1 and converts it to a BigUint.
