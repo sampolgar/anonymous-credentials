@@ -2,3 +2,4 @@
 **/target/
 /target/
 Cargo.lock
+plotters-doc-data/
