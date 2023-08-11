@@ -1,0 +1,6 @@
+{
+  "rust-analyzer.linkedProjects": [
+    "./zkp-bn254/Cargo.toml",
+    "./zkp-bn254/Cargo.toml"
+  ]
+}
