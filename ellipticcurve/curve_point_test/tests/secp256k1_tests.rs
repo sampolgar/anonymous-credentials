@@ -1,4 +1,4 @@
-use elliptic_curve::{is_secp256k1_point, is_secp256k1_point_bit_shift};
+use curve_point_test::{is_secp256k1_point, is_secp256k1_point_bitshift};
 mod tests {
     use super::*;
     use crate::points::{invalid_point, invalid_point_2, valid_point, zero_point};
