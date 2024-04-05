@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "adder",
+    "cl_signatures",
+    "curve_point_test",
+    "euclidean-algorithm"
+]
