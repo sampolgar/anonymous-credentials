@@ -19,9 +19,13 @@
 // use crate::pairing::*;
 // use crate::sig_a::*;
 use crate::ark_fq::*;
+use crate::ark_g::*;
+use crate::ark_p::*;
 
 use crate::person::Person;
 mod ark_fq;
+mod ark_g;
+mod ark_p;
 mod pairing;
 mod person;
 mod sig_a;
