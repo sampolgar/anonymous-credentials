@@ -1,33 +1,43 @@
-// use ark_bls12_381::{
-//     Bls12_381, Fr as ScalarField, G1Affine, G1Projective as G1, G2Affine, G2Projective as G2,
-// };
-// use ark_ff::{BigInteger, Field, PrimeField};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
+use ark_ff::Field;
+use ark_std::{One, UniformRand, Zero};
 
-// use ark_ec::pairing::{Pairing, PairingOutput};
-// use ark_ec::{AffineRepr, Group, ScalarMul, VariableBaseMSM};
+use ark_bls12_381::{
+    fq::Fq, fq2::Fq2, Bls12_381, Fq12, Fr as ScalarField, G1Affine as G1a, G1Projective as G1p,
+    G2Affine as G2a, G2Projective as G2p,
+};
 
-// use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-// use ark_std::UniformRand;
+pub fn key_gen() -> (G1p, G2p, G1p, G2p) {
+    let mut rng = ark_std::test_rng();
+    let x = ScalarField::rand(&mut rng);
+    let y = ScalarField::rand(&mut rng);
+
+    let g1a = G1a::generator();
+    let g2a = G2a::generator();
+
+    // affine scalar mul is more efficient https://github.com/arkworks-rs/algebra/tree/master/ec
+    let x1 = g1a * x;
+    let x2 = g2a * x;
+    let y1 = g1a * y;
+    let y2 = g2a * y;
+
+    (x1, x2, y1, y2)
+}
+
+pub fn sign() {
+    
+}
 
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-
-
-// // key gen
-// // q = field modulus
-// // G1 G2 generator_g1 generator_g2, e,
-// // scalar x, y
-// // Group elem X, Y
-// pub fn key_gen() {
-//     // return
-//     let mut rng = ark_std::rand::thread_rng();
-//     let x = Fq::rand(&mut rng);
-//     let y = Fq::rand(&mut rng);
-//     let g1 = G1Projective::rand(&mut rng);
-//     let g2 = G2Affine::rand(&mut rng);
-//     let X1 = g1.mul(&x);
-//     let Y1 = y.mul(&g2);
-// }
+    #[test]
+    fn test_key_gen() {
+        key_gen();
+    }
+}
 
 // // sign
 // // input m, sk, pk
