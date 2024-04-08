@@ -14,8 +14,17 @@
 //     println!("Hashes: {:?}", hashes);
 // }
 
+//
+
+// use crate::pairing::*;
+// use crate::sig_a::*;
+use crate::ark_fq::*;
+
 use crate::person::Person;
+mod ark_fq;
+mod pairing;
 mod person;
+mod sig_a;
 
 fn main() {
     let me = Person {

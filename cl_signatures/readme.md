@@ -1,0 +1,1 @@
+<!-- https://github.com/ahasikos/CL_Signatures/blob/main/signatures/schemeA/schemeA.c -->
