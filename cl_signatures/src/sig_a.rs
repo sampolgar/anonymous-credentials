@@ -1,3 +1,5 @@
+use crate::utils::string_to_scalar;
+
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
 use ark_ff::Field;
 use ark_std::{One, UniformRand, Zero};
@@ -17,6 +19,12 @@ pub struct Pk {
     y1: G1p,
 }
 
+pub struct Sig {
+    a: ScalarField,
+    b: G2p,
+    c: G2p,
+}
+
 pub fn key_gen() -> (Sk, Pk) {
     let mut rng = ark_std::test_rng();
     let x = ScalarField::rand(&mut rng);
@@ -32,17 +40,41 @@ pub fn key_gen() -> (Sk, Pk) {
     (sk, pk)
 }
 
-pub fn sign() {}
+pub fn sign(sk: Sk, m: ScalarField, a: ScalarField) -> Sig {
+    // sigma (a,b,c) = (a, a^y, a^{x+mxy})
+    let g2a = G2a::generator();
+
+    let b = g2a * (a * sk.y);
+
+    let c = g2a * (sk.x + (m * sk.x * sk.y));
+    Sig { a, b, c }
+}
 
 #[cfg(test)]
 mod tests {
+    use crate::utils;
+
     use super::*;
 
     #[test]
     fn test_key_gen() {
         key_gen();
-        // gen random a
-        // gen message m
+    }
+
+    fn test_sign() {
+        // gen keys
+        let (sk, pk) = key_gen();
+
+        // get a
+        let mut rng = ark_std::test_rng();
+        let a = ScalarField::rand(&mut rng);
+
+        // encode m
+        let m_str = "hello world!";
+        let m: ScalarField = utils::string_to_scalar(m_str);
+
+        // sign
+        let sig: Sig = sign(sk, m, a);
     }
 }
 
