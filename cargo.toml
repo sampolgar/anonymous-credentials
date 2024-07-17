@@ -1,7 +1,9 @@
 [workspace]
+resolver = "2"
 members = [
     "adder",
     "cl_signatures",
     "curve_point_test",
-    "euclidean-algorithm"
+    "euclidean-algorithm",
+    "ps"
 ]
