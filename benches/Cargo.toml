@@ -1,0 +1,25 @@
+[package]
+name = "benches"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ps = { path = "../ps"}
+ark-ff = { workspace = true }
+ark-ec = { workspace = true }
+ark-std = { workspace = true }
+ark-bls12-381 = { workspace = true }
+serde = { workspace = true }
+serde_with = { workspace = true }
+itertools = { workspace = true }
+zeroize = { workspace = true }
+blake2 = { version = "0.10", default-features = false }
+
+[dev-dependencies]
+criterion = "0.5"
+ark-serialize = { version = "^0.4.1", default-features = false, features = [ "derive" ] }
+
+[[bench]]
+name = "ps_signature"
+path = "benches/ps_signature.rs"
+harness = false

@@ -9,19 +9,19 @@ type G1A = G1Affine;
 type G2A = G2Affine;
 
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-struct SecretKey {
+pub struct SecretKey {
     x: Fr,
     y: Vec<Fr>,
 }
 
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-struct PublicKey {
+pub struct PublicKey {
     x_tilde: G2A,
     y_tilde: Vec<G2A>,
 }
 
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-struct Signature {
+pub struct Signature {
     sigma_1: G1A,
     sigma_2: G1A,
 }
@@ -29,7 +29,6 @@ struct Signature {
 pub fn compare_pairings(g1_1: &G1A, g2_1: &G2A, g1_2: &G1A, g2_2: &G2A) -> bool {
     let pairing1 = Bls12_381::pairing(g1_1, g2_1);
     let pairing2 = Bls12_381::pairing(g1_2, g2_2);
-
     pairing1 == pairing2
 }
 
@@ -43,7 +42,10 @@ pub fn g2_generator() -> G2A {
     G2A::generator()
 }
 
-fn keygen<R: ark_std::rand::Rng>(rng: &mut R, attribute_count: usize) -> (SecretKey, PublicKey) {
+pub fn keygen<R: ark_std::rand::Rng>(
+    rng: &mut R,
+    attribute_count: usize,
+) -> (SecretKey, PublicKey) {
     let g2 = g2_generator();
 
     let x = Fr::rand(rng);
@@ -58,7 +60,7 @@ fn keygen<R: ark_std::rand::Rng>(rng: &mut R, attribute_count: usize) -> (Secret
     (sk, pk)
 }
 
-fn sign<R: ark_std::rand::Rng>(sk: &SecretKey, messages: &[Fr], rng: &mut R) -> Signature {
+pub fn sign<R: ark_std::rand::Rng>(sk: &SecretKey, messages: &[Fr], rng: &mut R) -> Signature {
     assert_eq!(messages.len(), sk.y.len(), "invalid number of messages");
 
     let h = G1A::rand(rng);
@@ -75,7 +77,7 @@ fn sign<R: ark_std::rand::Rng>(sk: &SecretKey, messages: &[Fr], rng: &mut R) -> 
     }
 }
 
-fn verify(pk: &PublicKey, messages: &[Fr], signature: &Signature) -> bool {
+pub fn verify(pk: &PublicKey, messages: &[Fr], signature: &Signature) -> bool {
     assert_eq!(
         messages.len(),
         pk.y_tilde.len(),
@@ -84,11 +86,11 @@ fn verify(pk: &PublicKey, messages: &[Fr], signature: &Signature) -> bool {
 
     let g2 = g2_generator();
 
-    let mut lhs_2 = pk.x_tilde;
+    let mut x_plus_ym = pk.x_tilde;
     for (y_tilde_i, m_i) in pk.y_tilde.iter().zip(messages.iter()) {
-        lhs_2 = lhs_2.add(y_tilde_i.mul(*m_i)).into_affine();
+        x_plus_ym = x_plus_ym.add(y_tilde_i.mul(*m_i)).into_affine();
     }
-    compare_pairings(&signature.sigma_1, &lhs_2, &signature.sigma_2, &g2)
+    compare_pairings(&signature.sigma_1, &x_plus_ym, &signature.sigma_2, &g2)
 }
 
 #[cfg(test)]
