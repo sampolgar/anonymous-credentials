@@ -1,6 +1,6 @@
 use ark_bls12_381::Fr;
 use ark_ff::UniformRand;
-use ark_std::{rand::Rng, test_rng};
+use ark_std::test_rng;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ps::{keygen, sign, verify, PublicKey, SecretKey, Signature};
 
@@ -21,7 +21,7 @@ fn benchmark_sign(c: &mut Criterion) {
     let mut group = c.benchmark_group("PS Signature");
     for attribute_count in [5, 10, 20] {
         group.bench_function(format!("sign_{}", attribute_count), |b| {
-            let mut rng = test_rng(); // Change this line
+            let mut rng = test_rng();
             let (sk, _) = keygen(&mut rng, attribute_count);
             let messages: Vec<Fr> = (0..attribute_count).map(|_| Fr::rand(&mut rng)).collect();
             b.iter(|| sign(black_box(&sk), black_box(&messages), black_box(&mut rng)))
@@ -34,7 +34,7 @@ fn benchmark_verify(c: &mut Criterion) {
     let mut group = c.benchmark_group("PS Signature");
     for attribute_count in [5, 10, 20] {
         group.bench_function(format!("verify_{}", attribute_count), |b| {
-            let mut rng = test_rng(); // Change this line
+            let mut rng = test_rng(); //
             let (sk, pk) = keygen(&mut rng, attribute_count);
             let messages: Vec<Fr> = (0..attribute_count).map(|_| Fr::rand(&mut rng)).collect();
             let signature = sign(&sk, &messages, &mut rng);
