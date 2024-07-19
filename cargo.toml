@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "ps",
     "benches"
-]
+, "utils", "sigma_protocols"]
 
 [workspace.dependencies]
 ark-ff = { version = "^0.4.1", default-features = false }
@@ -22,3 +22,4 @@ zeroize = { version = "1.7.0", features = ["derive"] }
 blake2 = { version = "0.10", default-features = false }
 ark-bls12-381 = { version = "^0.4.0", default-features = false, features = [ "curve" ] }
 itertools = "0.12.1"
+lazy_static = "1.4.0"

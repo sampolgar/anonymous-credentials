@@ -1,13 +1,17 @@
 use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
-use ark_std::test_rng;
-use ark_std::UniformRand;
+use ark_std::{test_rng, UniformRand};
+use lazy_static::lazy_static;
 use std::ops::{Add, Mul};
+use utils::hash::HashUtil;
 
 type G1A = G1Affine;
 type G2A = G2Affine;
-type g1 = G1A::generator();
-type g2 = G2A::generator();
+
+lazy_static! {
+    static ref G1: G1A = G1A::generator();
+    static ref G2: G2A = G2A::generator();
+}
 
 #[derive(Clone)]
 pub struct SecretKey {
@@ -29,8 +33,8 @@ pub struct Signature {
 
 pub struct PedersenCommitment {
     pub c: G1Affine,
-    t: Fr, // Keep this private
-    m: Fr, // Keep this private
+    t: Fr,
+    m: Fr,
 }
 
 pub struct ProofOfKnowledge {
@@ -45,52 +49,50 @@ pub fn pedersen_commitment_1(g: &G1A, m: &Fr, h: &G1A, r: &Fr) -> G1A {
     (g.mul(m) + h.mul(r)).into_affine()
 }
 
-// // (g, h)
-// pub fn generate_commitment_key<R: test_rng()>(rng: &mut R) -> (G1A, G1A) {
-//     let g = g1;
-//     let y = G1A::rand(&mut rng);
-//     (g, y)
-// }
+pub fn generate_keys<R: UniformRand>(rng: &mut R) -> (SecretKey, PublicKey) {
+    let x = Fr::rand(&mut test_rng());
+    let y = Fr::rand(&mut test_rng());
 
-pub fn generate_keys<R: Rng>(rng: &mut R) -> (SecretKey, PublicKey) {
-    let x = Fr::rand(&mut rng);
-    let y = Fr::rand(&mut rng);
-
-    SecretKey {
-        x1: g1.mul(x).into_affine(),
+    let sk = SecretKey {
+        x1: G1.mul(x).into_affine(),
     };
 
-    PublicKey {
-        y1: g1.mul(y).into_affine(),
-        x2: g2.mul(x).into_affine(),
-        y2: g2.mul(y).into_affine(),
+    let pk = PublicKey {
+        y1: G1.mul(y).into_affine(),
+        x2: G2.mul(x).into_affine(),
+        y2: G2.mul(y).into_affine(),
     };
 
-    (SecretKey, PublicKey)
+    (sk, pk)
 }
 
 // pub fn generate_commitment_PoK
 // generate NIZK proofs of knowledge for signature request
 
-// C \gets g^mh^r, C \to Issuer
-pub fn request_signature<R: Rng>(rng: &mut R, pk: &PublicKey) {
-    let m = Fr::rand(&mut rng);
-    let t = Fr::rand(&mut rng);
-    let commitment = pedersen_commitment_1(g1, t, pk.y1, m);
+// c \gets g^tY^m, C \to Issuer
+pub fn request_signature<R: UniformRand>(rng: &mut R, pk: &PublicKey) {
+    let m = Fr::rand(&mut test_rng());
+    let t = Fr::rand(&mut test_rng());
+    let c = pedersen_commitment_1(&G1, &t, &pk.y1, &m);
+
+    // generate c_prime components. g^t_prime, Y^m_prime
+    let m_prime = Fr::rand(&mut test_rng());
+    let t_prime = Fr::rand(&mut test_rng());
+    
+    
+    // let multiple_fields = vec![Fr::from(1u64), Fr::from(2u64), Fr::from(3u64)];
+    // let hashed_fields = HashUtil::hash_fields(&multiple_fields);
+    
+    let c_prime = pedersen_commitment_1(&G1, &t_prime, &pk.y1, &m_prime);
+
+    let pok = ProofOfKnowledge {
+        c_prime: c_prime,
+        e: Fr::rand(&mut &mut test_rng()),
+        z1: Fr::rand(&mut &mut test_rng()),
+        z2: Fr::rand(&mut &mut test_rng()),
+    };
     // pok commitment
 }
-
-// pub fn verify_commitment_proofs(){}
-
-// pub fn sign(proofs, commitment){
-// verify proofs
-// return signed commitment
-// }
-
-// pub fn unblind
-
-// pub fn prove knowledge of signature
-// pub fn verify signature proofs
 
 #[cfg(test)]
 mod tests {
@@ -107,5 +109,19 @@ mod tests {
         // gives to signer with PoK
         // signer verifiers PoK
         // signer signs
+    }
+
+    #[test]
+    fn test_hasher() {
+        let message = b"Hello";
+        let field_element_hash = HashUtil::hash_to_curve(message);
+        let curve_point_hash = HashUtil::hash_to_curve(message);
+
+        println!("Field element: {:?}", field_element_hash);
+        println!("Curve point: {:?}", curve_point_hash);
+
+        let multiple_fields = vec![Fr::from(1u64), Fr::from(2u64), Fr::from(3u64)];
+        let hashed_fields = HashUtil::hash_fields(&multiple_fields);
+        println!("Hashed fields: {:?}", hashed_fields);
     }
 }
