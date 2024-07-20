@@ -1,11 +1,9 @@
-[workspace]
-resolver = "2"
-members = [
-    "ps",
-    "benches"
-, "utils", "sigma_protocols"]
+[package]
+name = "anonymous-credentials"
+version = "0.1.0"
+edition = "2021"
 
-[workspace.dependencies]
+[dependencies]
 ark-ff = { version = "^0.4.1", default-features = false }
 ark-ec = { version = "^0.4.1", default-features = false }
 ark-std = { version = "^0.4.0", default-features = false}
@@ -14,12 +12,26 @@ ark-serialize = { version = "^0.4.1", default-features = false, features = [ "de
 ark-relations = { version = "^0.4.0", default-features = false }
 ark-r1cs-std = { version = "^0.4.0", default-features = false }
 ark-groth16 = { version = "^0.4.0", default-features = false }
-rayon = { version = "1" }
+rayon = { version = "1", optional = true }
 digest = { version = "0.10", default-features = false, features = ["alloc"] }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_with = { version = "1.10.0", default-features = false, features = ["macros"] }
 zeroize = { version = "1.7.0", features = ["derive"] }
 blake2 = { version = "0.10", default-features = false }
 ark-bls12-381 = { version = "^0.4.0", default-features = false, features = [ "curve" ] }
+ark-crypto-primitives = { version = "^0.4.0", default-features = false }
 itertools = "0.12.1"
 lazy_static = "1.4.0"
+
+[dev-dependencies]
+ark-bls12-381 = { version = "^0.4.0", default-features = false, features = ["curve"] }
+rand_chacha = "0.3"
+criterion = "0.5.1"
+
+[features]
+default = ["parallel"]
+std = ["ark-ff/std", "ark-ec/std", "ark-poly/std", "ark-groth16/std", "ark-relations/std", "ark-crypto-primitives/std", "ark-std/std" ]
+parallel = ["std", "ark-ff/parallel", "ark-poly/parallel", "ark-groth16/parallel", "ark-ec/parallel", "ark-crypto-primitives/parallel", "ark-std/parallel", "rayon"]
+
+[lib]
+bench = false

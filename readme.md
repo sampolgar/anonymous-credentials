@@ -10,4 +10,16 @@ https://github.com/docknetwork/crypto/tree/main/schnorr_pok
 https://crypto.stanford.edu/cs355/19sp/lec5.pdf
 
 coconut
-https://github.com/docknetwork/crypto/tree/main/coconut/src/setup 
+https://github.com/docknetwork/crypto/tree/main/coconut/src/setup
+
+Randomness
+use ark_std::{rand::Rng, One, UniformRand};
+
+pub fn setup_fake_srs<E: Pairing, R: Rng>(rng: &mut R, size: usize) -> GenericSRS<E> {
+    let alpha = E::ScalarField::rand(rng);
+}
+
+
+Testing
+use rand_core::SeedableRng;
+let srs = setup_fake_srs::<Bls12, _>(&mut rng, size);
