@@ -215,5 +215,95 @@ fn verify_test<E: Pairing>(
     lhs == rhs
 }
 
-// fn prove_signature_knowledge<>
-// ark_ec::pairing::PairingOutput<E>
+// fn prove_signature_knowledge<E: Pairing, R: Rng>(
+//     params: &PublicParams<E>,
+//     pk: &PublicKey<E>,
+//     signature: &Signature<E>,
+//     messages: &[E::ScalarField],
+//     rng: &mut R,
+// ) -> SignatureProof<E> {
+//     let r = E::ScalarField::rand(rng);
+//     let t = E::ScalarField::rand(rng);
+//     let A = signature.sigma1.mul(r).into_affine();
+//     let A_prime = (signature.sigma2.mul(r) - params.g.mul(r * t)).into_affine();
+
+//     let r_prime = E::ScalarField::rand(rng);
+//     let m_prime: Vec<E::ScalarField> = (0..messages.len())
+//         .map(|_| E::ScalarField::rand(rng))
+//         .collect();
+
+//     let R1 = signature.sigma1.mul(r_prime).into_affine();
+//     let R2 = pk.X_tilde.mul(r_prime)
+//         + pk.Y_tilde
+//             .iter()
+//             .zip(&m_prime)
+//             .map(|(Yi, mi)| Yi.mul(*mi))
+//             .sum::<E::G2>();
+
+//     // In practice, this challenge would be generated using a hash function (Fiat-Shamir)
+//     let c = E::ScalarField::rand(rng);
+
+//     let d = r_prime - c * r;
+//     let r: Vec<E::ScalarField> = m_prime
+//         .iter()
+//         .zip(messages)
+//         .map(|(m_prime_i, m_i)| *m_prime_i - c * m_i)
+//         .collect();
+
+//     SignatureProof { A, A_prime, d, r }
+// }
+
+// fn verify_anonymous<E: Pairing>(
+//     params: &PublicParams<E>,
+//     pk: &PublicKey<E>,
+//     proof: &SignatureProof<E>,
+// ) -> bool {
+//     // In practice, this challenge would be recomputed using a hash function
+//     let c = E::ScalarField::rand(&mut ark_std::rand::thread_rng());
+
+//     let R1 = proof.A.mul(c) + params.g.mul(proof.d);
+//     let R2 = E::pairing(proof.A_prime, params.g_tilde)
+//         * E::pairing(proof.A, pk.X_tilde).inverse()
+//         * pk.Y_tilde
+//             .iter()
+//             .zip(&proof.r)
+//             .map(|(Yi, ri)| E::pairing(proof.A, Yi.mul(*ri)))
+//             .product::<E::TargetField>();
+
+//     R1.is_zero() && R2.is_one()
+// }
+
+// // Example usage
+// fn example<E: Pairing, R: RngCore>(rng: &mut R) {
+//     let params = setup::<E, _>(rng);
+//     let attribute_count = 3;
+//     let (sk, pk) = keygen(&params, rng, attribute_count);
+
+//     // User's actions
+//     let messages: Vec<E::ScalarField> = (0..attribute_count)
+//         .map(|_| E::ScalarField::rand(rng))
+//         .collect();
+//     let commitment = commit(&params, &pk, &messages, rng);
+//     let commitment_proof = prove_knowledge(&params, &pk, &commitment, &messages, rng);
+
+//     // Signer's actions
+//     let c = E::ScalarField::rand(rng); // In practice, this would be derived from the proof
+//     let is_valid_commitment_proof =
+//         verify_proof(&params, &pk, &commitment.C, &commitment_proof, &c);
+//     println!("Commitment proof is valid: {}", is_valid_commitment_proof);
+
+//     if is_valid_commitment_proof {
+//         let blinded_signature = sign(&params, &sk, &commitment.C, rng);
+
+//         // User unblinds the signature
+//         let unblinded_signature = unblind(&blinded_signature, &commitment.t);
+
+//         // User proves knowledge of the signature and messages
+//         let signature_proof =
+//             prove_signature_knowledge(&params, &pk, &unblinded_signature, &messages, rng);
+
+//         // Verifier checks the proof anonymously
+//         let is_valid_signature = verify_anonymous(&params, &pk, &signature_proof);
+//         println!("Anonymous signature proof is valid: {}", is_valid_signature);
+//     }
+// }
