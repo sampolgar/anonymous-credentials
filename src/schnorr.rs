@@ -48,7 +48,7 @@ use digest::Digest;
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SchnorrCommitment<G: AffineRepr> {
     pub blindings: Vec<G::ScalarField>,
-    pub t: G,
+    pub ti: G,
 }
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
@@ -63,11 +63,11 @@ impl SchnorrProtocol {
         let blindings: Vec<G::ScalarField> = (0..bases.len())
             .map(|_| G::ScalarField::rand(rng))
             .collect();
-        
+
         // Compute t = bases[0] * blindings[0] + ... + bases[i] * blindings[i]
         // multi-scalar multiplication - efficient
-        let t = G::Group::msm_unchecked(bases, &blindings).into_affine();
-        SchnorrCommitment { blindings, t }
+        let ti: G = G::Group::msm_unchecked(bases, &blindings).into_affine();
+        SchnorrCommitment { blindings, ti }
     }
 
     pub fn prove<G: AffineRepr>(
@@ -75,7 +75,7 @@ impl SchnorrProtocol {
         witnesses: &[G::ScalarField],
         challenge: &G::ScalarField,
     ) -> SchnorrResponse<G> {
-        // z_i = t_i + e * m_i 
+        // z_i = t_i + e * m_i
         let responses: Vec<G::ScalarField> = commitment
             .blindings
             .iter()
@@ -96,7 +96,7 @@ impl SchnorrProtocol {
         //e.g.  LHS = g1^(t1 + e*m1) * g2^(t2 + e*m2) * h^(t3 + e*r)
         let lhs = G::Group::msm_unchecked(bases, &response.0).into_affine();
         // com^e + com
-        let rhs = (commitment.t + y.mul(*challenge)).into_affine();
+        let rhs = (commitment.ti + y.mul(*challenge)).into_affine();
         lhs == rhs
     }
 
@@ -152,7 +152,7 @@ mod tests {
             base.serialize_compressed(&mut chal_contrib).unwrap();
             y.serialize_compressed(&mut chal_contrib).unwrap();
             commitment
-                .t
+                .ti
                 .serialize_compressed(&mut chal_contrib)
                 .unwrap();
 
@@ -160,6 +160,7 @@ mod tests {
                 G::ScalarField,
                 Blake2b512,
             >(&chal_contrib);
+            
             let response = SchnorrProtocol::prove(&commitment, &[witness], &challenge);
 
             assert!(SchnorrProtocol::verify(
@@ -191,9 +192,9 @@ mod tests {
             base1.serialize_compressed(&mut chal_contrib).unwrap();
             base2.serialize_compressed(&mut chal_contrib).unwrap();
             y.serialize_compressed(&mut chal_contrib).unwrap();
-            
+
             commitment
-                .t
+                .ti
                 .serialize_compressed(&mut chal_contrib)
                 .unwrap();
 
