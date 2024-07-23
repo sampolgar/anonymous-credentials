@@ -1,97 +1,93 @@
 use super::hash::HashUtil;
 use super::pedersen::PedersenCommitment;
+use super::schnorr::SchnorrProtocol;
 
-use ark_ec::{AffineRepr, CurveGroup};
-use ark_std::{rand::Rng, One, UniformRand};
-use std::ops::{Add, Mul};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group};
+use ark_ff::UniformRand;
+use ark_std::{rand::Rng, One}; //or here? UniformRand
+use std::ops::{Add, Mul}; //do I use this
+                          // pub struct Setup
+                          // struct should take in a number - # of messages. Output Vector of scalars length of r + 1: x,y1_bases,..yr \gets Zp^{r+1}
 
-pub struct SecretKey<G: AffineRepr> {
-    x1: G,
+pub struct SecretKey<E: Pairing> {
+    x1: E::G1Affine,
 }
 
-pub struct PublicKey<G: AffineRepr> {
-    y1: G,
-    x2: G,
-    y2: G,
+pub struct PublicKey<E: Pairing> {
+    g1: E::G1Affine,
+    g2: E::G2Affine,
+    y1_bases: Vec<E::G1Affine>,
+    x2: E::G2Affine,
+    y2_bases: Vec<E::G2Affine>,
 }
 
-pub struct Signature<G: AffineRepr> {
-    sigma_1: G,
-    sigma_2: G,
+pub struct KeyGen<E: Pairing> {
+    pub x: E::ScalarField,
+    pub y: Vec<E::ScalarField>,
+    pub pk: PublicKey<E>,
+    pub sk: SecretKey<E>,
 }
 
-pub fn generate_keys<G: AffineRepr, R: Rng>(rng: &mut R) -> (SecretKey<G>, PublicKey<G>) {
-    let x = G::ScalarField::rand(rng);
-    let y = G::ScalarField::rand(rng);
+impl<E: Pairing> KeyGen<E> {
+    pub fn new<R: Rng>(rng: &mut R, num_messages: usize) -> Self {
+        let g1 = E::G1::generator();
+        let g2 = E::G2::generator();
 
-    let sk = SecretKey {
-        x1: G::generator().mul(x).into_affine(),
-    };
+        let x = E::ScalarField::rand(rng);
+        let y: Vec<E::ScalarField> = (0..num_messages)
+            .map(|_| E::ScalarField::rand(rng))
+            .collect();
 
-    let pk = PublicKey {
-        y1: G::generator().mul(y).into_affine(),
-        x2: G::generator().mul(x).into_affine(),
-        y2: G::generator().mul(y).into_affine(),
-    };
+        let sk = SecretKey {
+            x1: g1.mul(&x).into_affine(),
+        };
 
-    (sk, pk)
+        let pk = PublicKey {
+            g1: g1.into_affine(),
+            g2: g2.into_affine(),
+            x2: g2.mul(x).into_affine(),
+            y1_bases: y.iter().map(|yi| g1.mul(yi).into_affine()).collect(),
+            y2_bases: y.iter().map(|yi| g2.mul(yi).into_affine()).collect(),
+        };
+        KeyGen { x, y, pk, sk }
+    }
+}
+
+pub struct Signature<E: Pairing> {
+    sigma_1: E::G1Affine,
+    sigma_2: E::G1Affine,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::{Fr, G1Affine, G2Affine};
+    use ark_bls12_381::{Bls12_381, Fr, G1Affine, G1Projective, G2Affine};
+    use ark_ec::VariableBaseMSM;
     use ark_std::rand::RngCore;
+    use ark_std::test_rng;
 
     #[test]
-    fn test_generate_keys() {
-        let mut rng = ark_std::test_rng();
-        let (sk, pk) = generate_keys::<G1Affine, _>(&mut rng);
-        assert_ne!(sk.x1, G1Affine::identity());
-        assert_ne!(pk.y1, G1Affine::identity());
-        assert_ne!(pk.x2, G1Affine::identity());
-        assert_ne!(pk.y2, G1Affine::identity());
-    }
+    fn test_current() {
+        let mut rng = test_rng();
+        let num_messages = 3;
+        let witnesses: Vec<Fr> = (0..num_messages).map(|_| Fr::rand(&mut rng)).collect();
 
-    #[test]
-    fn test_ps() {
-        let g1 = G1Affine::generator();
-        let mut rng = ark_std::test_rng();
-        let (sk, pk) = generate_keys::<G1Affine, _>(&mut rng);
+        let keygen = KeyGen::<Bls12_381>::new(&mut rng, num_messages);
+        let bases = keygen.pk.y1_bases.clone();
+        let public_commitment = G1Projective::msm_unchecked(&bases, &witnesses).into_affine();
 
-        // C = g^r y1^m
-        let m_string = b"secret message";
-        // let message_as_fp = HashUtil::hash_to_field(message.as_bytes());
-        let m = HashUtil::<Fr, G1Affine>::hash_to_field(m_string);
-        let t = Fr::rand(&mut rng);
+        // prover generates things for protocol
+        let commitment_prime = SchnorrProtocol::commit(&bases, &mut rng);
+        let challenge = Fr::rand(&mut rng);
+        let proofs = SchnorrProtocol::prove(&commitment_prime, &witnesses, &challenge);
 
-        let commitment = PedersenCommitment::<G1Affine>::new(G1Affine::generator(), pk.y1);
-        let c = commitment.commit(&t, &m);
-
-        // prove knowledge of the opening of c
-        let m_prime = Fr::rand(&mut rng);
-        let t_prime = Fr::rand(&mut rng);
-        let commitment_prime = PedersenCommitment::<G1Affine>::new(G1Affine::generator(), pk.y1);
-        let c_prime = commitment_prime.commit(&t_prime, &m_prime);
-
-        let e = HashUtil::hash_groups_to_field(&[c, c_prime]);
-
-        // c = g^t y1^m
-        let z1 = t_prime + e * t;
-        let z2 = m_prime + e * m;
-
-        // verifier verifies
-        let bool = g1.mul(z1) + pk.y1.mul(z2) == c_prime + c.mul(e);
-        print!("{:?}", bool);
-        assert!(bool);
-
-        // if true, signer signs
-        let u = Fr::rand(&mut rng);
-        let sigma_1 = g1.mul(u).into_affine();
-        let sigma_2 = pk.y1.mul(u).into_affine();
-        let signature = Signature {
-            sigma_1: sigma_1,
-            sigma_2: sigma_2,
-        };
+        let is_valid = SchnorrProtocol::verify(
+            &bases,
+            &public_commitment,
+            &commitment_prime,
+            &proofs,
+            &challenge,
+        );
+        assert!(is_valid)
     }
 }

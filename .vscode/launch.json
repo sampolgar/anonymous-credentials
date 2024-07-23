@@ -7,10 +7,24 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug",
-      "program": "${workspaceFolder}/<executable file>",
+      "name": "Debug lib",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib"]
+      },
       "args": [],
       "cwd": "${workspaceFolder}"
     }
+    // {
+    //   "type": "lldb",
+    //   "request": "launch",
+    //   "name": "Debug Rust",
+    //   "cargo": {
+    //     "args": [
+    //       "build",
+    //       "--manifest-path",
+    //       "${ANONYMOUS-CREDENTIALS}/../Cargo.toml"
+    //     ]
+    //   }
+    // }
   ]
 }
