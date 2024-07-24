@@ -23,3 +23,5 @@ pub fn setup_fake_srs<E: Pairing, R: Rng>(rng: &mut R, size: usize) -> GenericSR
 Testing
 use rand_core::SeedableRng;
 let srs = setup_fake_srs::<Bls12, _>(&mut rng, size);
+
+lhs.0 extracts the TargetField from the PairingOutput<E>,
