@@ -23,6 +23,7 @@ struct SecretKey<F: PrimeField> {
     y: Vec<F>,
 }
 
+// TODO - change this to commitment key in g1 and g2, more simple
 struct PublicKey<E: Pairing> {
     x_g1: E::G1Affine,
     y_g1: Vec<E::G1Affine>,
@@ -117,7 +118,7 @@ fn unblind<E: Pairing>(signature: &Signature<E>, t: &E::ScalarField) -> Signatur
     }
 }
 
-fn prove_signature_knowledge<E: Pairing, R: Rng>(
+fn generate_signature_of_knowledge<E: Pairing, R: Rng>(
     params: &PublicParams<E>,
     pk: &PublicKey<E>,
     signature: &Signature<E>,
@@ -125,106 +126,28 @@ fn prove_signature_knowledge<E: Pairing, R: Rng>(
     challenge: &E::ScalarField,
     rng: &mut R,
 ) -> SignatureProof<E> {
-    let r = E::ScalarField::rand(rng);
-    let t = E::ScalarField::rand(rng);
-    let sigma1_prime = signature.sigma1.mul(r).into_affine();
-    let sigma2_prime = (signature.sigma2.mul(r) - params.generator_g1.mul(r * t)).into_affine();
+    // e(sigma_1', x_g2) * ∑ e(sigma_1', y_i) * e(sigma1', g2)^t = e(sigma_2', g2)
 
-    let beta = E::ScalarField::rand(rng);
-    let alpha_i: Vec<E::ScalarField> = (0..messages.len())
-        .map(|_| E::ScalarField::rand(rng))
-        .collect();
+    // ∑ e(sigma_1', y_i)^m_i * e(sigma1', g2)^t  = e(sigma_2', g2) - e(sigma_1', x_g2)
 
-    let mut com_t = E::pairing(sigma1_prime.mul(beta).into_affine(), params.generator_g2);
-    for (alpha_i, y_i) in alpha_i.iter().zip(pk.y_g2.iter()) {
-        com_t += E::pairing(sigma1_prime.mul(*alpha_i).into_affine(), *y_i);
-    }
+    // commit to m_i and t as G1 elements.
+    // e(sigma_1', g2)^beta => sigma1'*beta
+    // e(sigma1', y_i)^m_i => sigma1' * Y_i
+    // commit to m_i and t as GT elements. similar to schnorr prior protocol, the bases are 
+    // 1 e(sigma_1', g2) for beta 
+    // 2i e(sigma_1', y_i) for each alpha_i
+    // commitment_prime is T = one GT point composed of 1, 2i = e(sigma_1', g2)^beta * e(sigma_1', y_i)^mi
 
-    // let challenge = E::ScalarField::rand(rng);
-    let z_t = beta + challenge.mul(t);
-    let z_i: Vec<E::ScalarField> = alpha_i
-        .iter()
-        .zip(messages)
-        .map(|(alpha_i, mi)| *alpha_i + challenge.mul(mi))
-        .collect();
 
-    println!("Proof generation:");
-    println!("  r: {:?}", r);
-    println!("  t: {:?}", t);
-    println!("  beta: {:?}", beta);
-    println!("  alpha_i: {:?}", alpha_i);
-    println!("  challenge: {:?}", challenge);
-    println!("  z_t: {:?}", z_t);
-    println!("  z_i: {:?}", z_i);
-
-    SignatureProof {
-        sigma1_prime,
-        sigma2_prime,
-        com_t: com_t.0,
-        z_t,
-        z_i,
-    }
+    
+    // responses
+    // z_t = beta + challenge * t
+    // z_i = alpha_i + challenge * m_i
+    
+    // proofs sent are z_t, z_i, sigma', com_prime
+    // verifier does base_1^z_t * base_i^z_i = sigma'^challenge * T
 }
 
-pub fn verify_signature_proof<E: Pairing>(
-    params: &PublicParams<E>,
-    pk: &PublicKey<E>,
-    proof: &SignatureProof<E>,
-    challenge: &E::ScalarField,
-) -> bool {
-    let mut pairing_check = PairingCheck::<E>::new();
-
-    // Check 1: e(sigma2_prime, g2) * e(sigma1_prime, X)^(-challenge) = com_t * e(sigma1_prime, g2)^z_t * prod(e(sigma1_prime, Y_i)^z_i)
-    let lhs = E::multi_pairing(
-        [
-            proof.sigma2_prime,
-            proof.sigma1_prime.mul(*challenge).neg().into_affine(),
-        ],
-        [params.generator_g2, pk.x_g2],
-    );
-
-    let mut rhs = proof.com_t;
-    // rhs += E::pairing(
-    //     proof.sigma1_prime.mul(proof.z_t).into_affine(),
-    //     params.generator_g2,
-    // );
-
-    // Compute LHS
-    let lhs_1 = E::pairing(proof.sigma2_prime, params.generator_g2);
-    let lhs_2 = E::pairing(proof.sigma1_prime, pk.x_g2);
-    let lhs_3 = (lhs_1 - lhs_2).mul(*challenge);
-    let lhs = proof.com_t + lhs_3.0;
-
-    // Compute RHS
-    let mut rhs_1 = E::pairing(
-        proof.sigma1_prime.mul(proof.z_t).into_affine(),
-        params.generator_g2,
-    );
-    // let mut rhs_e = E::pairing::PairingOutput::zero();
-    let mut rhs_2 = PairingOutput::zero();
-
-    for (i, (z_i, y_i)) in proof.z_i.iter().zip(pk.y_g2.iter()).enumerate() {
-        let term = E::pairing(proof.sigma1_prime.mul(*z_i).into_affine(), *y_i);
-        rhs_2 += term;
-        println!("  Term {}: {:?}", i, term);
-    }
-
-    let rhs = rhs_1 + rhs_2;
-
-    println!("Verification:");
-    println!("LHS components:");
-    println!("  lhs_1: {:?}", lhs_1);
-    println!("  lhs_2: {:?}", lhs_2);
-    println!("  lhs_3: {:?}", lhs_3);
-    println!("  proof.com_t: {:?}", proof.com_t);
-    println!("  Final LHS: {:?}", lhs);
-    println!("RHS components:");
-    println!("  rhs_1: {:?}", rhs_1);
-    println!("  rhs_2: {:?}", rhs_2);
-    println!("  Final RHS: {:?}", rhs.0);
-
-    lhs == rhs.0
-}
 
 #[cfg(test)]
 use super::*;
@@ -256,9 +179,12 @@ fn test_commit_and_prove_knowledge() {
     let mut bases = pk.y_g1.clone();
     bases.insert(0, params.generator_g1);
 
+    // generate commitment to messages
     let com = G1Projective::msm_unchecked(&bases, &messages).into_affine();
-
+    
     let challenge = Fr::rand(&mut rng); // In practice, this should be derived from a hash
+    
+    // generate commitment for proving
     let com_prime = SchnorrProtocol::commit(&bases, &mut rng);
     let response = SchnorrProtocol::prove(&com_prime, &messages, &challenge);
     let is_valid = SchnorrProtocol::verify(&bases, &com, &com_prime, &response, &challenge);
@@ -266,6 +192,4 @@ fn test_commit_and_prove_knowledge() {
     assert!(is_valid, "Schnorr proof verification failed");
 }
 
-fn test_pairing_verification(){
-    
-}
+fn test_pairing_verification() {}

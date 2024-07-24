@@ -37,11 +37,16 @@
 //! Above can be generalized to more than 2 `x`s
 
 use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
-use ark_ec::pairing::Pairing;
+use ark_ec::pairing::{MillerLoopOutput, Pairing, PairingOutput};
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{rand::Rng, vec::Vec, UniformRand};
+use ark_std::{
+    ops::{Add, Mul, MulAssign, Neg, Sub},
+    rand::Rng,
+    vec::Vec,
+    UniformRand,
+};
 use blake2::Blake2b512;
 use digest::Digest;
 
@@ -104,6 +109,96 @@ impl SchnorrProtocol {
         let mut hash_output = D::digest(challenge_bytes);
         F::from_be_bytes_mod_order(&hash_output)
     }
+}
+
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+pub struct SchnorrCommitmentPairing<E: Pairing> {
+    pub blindings: Vec<E::ScalarField>,
+    pub t_com: PairingOutput<E>,
+}
+#[derive(Clone, Debug)]
+pub struct SchnorrResponsePairing<E: Pairing>(pub Vec<E::ScalarField>);
+
+pub struct SchnorrProtocolPairing;
+
+impl SchnorrProtocolPairing {
+    pub fn prepare<E: Pairing>(
+        bases_g1: &[E::G1Affine],
+        bases_g2: &[E::G2Affine],
+        messages: &[E::ScalarField],
+    ) -> E::PairingOutput {
+        let messages_g1: Vec<E::G1> = bases_g1
+            .iter()
+            .zip(messages)
+            .map(|(base, message)| base.mul(*message))
+            .collect();
+
+        let message_g1_affine: Vec<E::G1Affine> = E::G1::normalize_batch(&messages_g1);
+    }
+    pub fn commit<E: Pairing, R: Rng>(
+        bases_g1: &[E::G1Affine],
+        bases_g2: &[E::G2Affine],
+        rng: &mut R,
+    ) -> SchnorrCommitmentPairing<E> {
+        assert_eq!(bases_g1.len(), bases_g2.len(), "Bases lengths must match");
+        // blindings [beta, alpha1, alpha2]
+        // bases_g1 = sigma1, sigma1, sigma1
+        // bases g2 = g, y1, y2
+        let blindings: Vec<E::ScalarField> = (0..bases_g1.len())
+            .map(|_| E::ScalarField::rand(rng))
+            .collect();
+
+        let blinded_g1: Vec<E::G1> = bases_g1
+            .iter()
+            .zip(&blindings)
+            .map(|(base, blinding)| base.mul(*blinding))
+            .collect();
+
+        // Convert blinded G1 elements to affine representation
+        let blinded_g1_affine: Vec<E::G1Affine> = E::G1::normalize_batch(&blinded_g1);
+
+        // Prepare inputs for multi_miller_loop
+        let g1_prepared: Vec<E::G1Prepared> = blinded_g1_affine
+            .into_iter()
+            .map(E::G1Prepared::from)
+            .collect();
+        let g2_prepared: Vec<E::G2Prepared> =
+            bases_g2.iter().cloned().map(E::G2Prepared::from).collect();
+
+        // Compute the multi-Miller loop
+        let miller_loop = E::multi_miller_loop(g1_prepared, g2_prepared);
+
+        // Perform final exponentiation
+        let t_com = E::final_exponentiation(miller_loop).unwrap();
+
+        SchnorrCommitmentPairing { blindings, t_com }
+    }
+
+    pub fn prove<E: Pairing>(
+        t_com: &SchnorrCommitmentPairing<E>,
+        witnesses: &[E::ScalarField],
+        challenge: &E::ScalarField,
+    ) -> SchnorrResponsePairing<E> {
+        let responses: Vec<E::ScalarField> = t_com
+            .blindings
+            .iter()
+            .zip(witnesses.iter())
+            .map(|(b, w)| *b + (*w * challenge))
+            .collect();
+        SchnorrResponsePairing(responses)
+    }
+}
+
+pub fn verify<E: Pairing>(
+    bases_g1: &[E::G1Affine],
+    bases_g2: &[E::G2Affine],
+    y: &E::TargetField,
+    commitment: &SchnorrCommitmentPairing<E>,
+    response: &SchnorrResponsePairing<E>,
+    challenge: &E::ScalarField,
+) -> bool {
+    // lhs = e(base1)^response1 * e(base2)^response2 * ...
+    // rhs = y somehow mul by challenge? - commitment.com_prime
 }
 
 #[cfg(test)]
@@ -216,49 +311,4 @@ mod tests {
 
         assert!(is_valid, "Schnorr proof verification failed");
     }
-
-    // #[test]
-    // fn test_discrete_log_proof_in_pairing_group() {
-    //     let mut rng = test_rng();
-
-    //     fn check<G1: AffineRepr, G2: AffineRepr>(rng: &mut impl Rng)
-    //     where
-    //         Bls12_381: Pairing<G1 = G1::Group, G2 = G2::Group>,
-    //     {
-    //         let base = G2::Group::rand(rng).into_affine();
-    //         let witness = G1::Group::rand(rng).into_affine();
-    //         let y = Bls12_381::pairing(witness, base);
-
-    //         let blinding = G1::Group::rand(rng).into_affine();
-    //         let t = Bls12_381::pairing(
-    //             Bls12_381::prepare_g1(&blinding),
-    //             Bls12_381::prepare_g2(&base),
-    //         );
-
-    //         let commitment = SchnorrCommitment {
-    //             blindings: vec![blinding.into()],
-    //             t,
-    //         };
-
-    //         let mut chal_contrib = Vec::new();
-    //         base.serialize_compressed(&mut chal_contrib).unwrap();
-    //         y.serialize_compressed(&mut chal_contrib).unwrap();
-    //         t.serialize_compressed(&mut chal_contrib).unwrap();
-
-    //         let challenge = compute_random_oracle_challenge::<Fr, Blake2b512>(&chal_contrib);
-    //         let response = SchnorrProtocol::prove(&commitment, &[witness.into()], &challenge);
-
-    //         let response_group = G1::Group::from(response.0[0]).into_affine();
-    //         let lhs = Bls12_381::pairing(
-    //             Bls12_381::prepare_g1(&response_group),
-    //             Bls12_381::prepare_g2(&base),
-    //         );
-    //         let rhs = t + y * challenge;
-
-    //         assert_eq!(lhs, rhs);
-    //     }
-
-    //     check::<G1Affine, G2Affine>(&mut rng);
-    //     check::<G2Affine, G1Affine>(&mut rng);
-    // }
 }
