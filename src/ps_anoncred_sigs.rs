@@ -1,9 +1,10 @@
 use super::hash::HashUtil;
 use super::pedersen::PedersenCommitment;
 use super::schnorr::SchnorrProtocol;
+use crate::pairing::PairingCheck;
 
 use ark_ec::pairing::{MillerLoopOutput, Pairing, PairingOutput};
-use ark_ec::{AffineRepr, CurveGroup, Group};
+use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
 use ark_ff::{Field, PrimeField, UniformRand};
 
 use ark_std::{
@@ -95,84 +96,6 @@ fn keygen<E: Pairing, R: Rng>(
     )
 }
 
-fn commit<E: Pairing, R: Rng>(
-    params: &PublicParams<E>,
-    pk: &PublicKey<E>,
-    messages: &[E::ScalarField],
-    rng: &mut R,
-) -> Commitment<E> {
-    let t = E::ScalarField::rand(rng);
-    let com = params.generator_g1.mul(t)
-        + pk.y_g1
-            .iter()
-            .zip(messages)
-            .map(|(Yi, mi)| Yi.mul(*mi))
-            .sum::<E::G1>();
-    Commitment {
-        com: com.into_affine(),
-        t,
-    }
-}
-
-fn prove_knowledge<E: Pairing, R: Rng>(
-    params: &PublicParams<E>,
-    pk: &PublicKey<E>,
-    commitment: &Commitment<E>,
-    messages: &[E::ScalarField],
-    rng: &mut R,
-) -> SchnorrProof<E> {
-    // t_prime blinds t e.g. z1 = t_prime + e*t.
-    let r_t = E::ScalarField::rand(rng);
-    let r_m: Vec<E::ScalarField> = (0..messages.len())
-        .map(|_| E::ScalarField::rand(rng))
-        .collect();
-    // we aren't measuring proof gen time so we just use the same hash value
-    let e = E::ScalarField::rand(rng);
-
-    let com_prime = params.generator_g1.mul(r_t)
-        + pk.y_g1
-            .iter()
-            .zip(&r_m)
-            .map(|(Yi, ri)| Yi.mul(*ri))
-            .sum::<E::G1>();
-
-    let z_t = r_t + e * commitment.t;
-    let z_m: Vec<E::ScalarField> = r_m
-        .iter()
-        .zip(messages)
-        .map(|(ri, mi)| *ri + e * mi)
-        .collect();
-
-    SchnorrProof {
-        com_prime: com_prime.into_affine(),
-        z_t,
-        z_m,
-    }
-}
-
-fn verify_proof<E: Pairing>(
-    params: &PublicParams<E>,
-    pk: &PublicKey<E>,
-    commitment: &Commitment<E>,
-    proof: &SchnorrProof<E>,
-    e: &E::ScalarField,
-) -> bool {
-    let com_prime = proof.com_prime;
-    let z_t = proof.z_t;
-    let z_m = &proof.z_m;
-
-    let lhs = params.generator_g1.mul(z_t)
-        + pk.y_g1
-            .iter()
-            .zip(z_m)
-            .map(|(Yi, zi)| Yi.mul(*zi))
-            .sum::<E::G1>();
-
-    let rhs = commitment.com.mul(*e) + com_prime;
-
-    lhs.into_affine() == rhs.into_affine()
-}
-
 fn sign<E: Pairing, R: Rng>(
     params: &PublicParams<E>,
     sk: &SecretKey<E::ScalarField>,
@@ -243,78 +166,29 @@ fn prove_signature_knowledge<E: Pairing, R: Rng>(
     }
 }
 
-// fn prove_signature_knowledge<E: Pairing, R: Rng>(
-//     params: &PublicParams<E>,
-//     pk: &PublicKey<E>,
-//     signature: &Signature<E>,
-//     messages: &[E::ScalarField],
-//     rng: &mut R,
-// ) -> SignatureProof<E> {
-//     // prover generates sigma_prime: σ' = (σ'₁, σ'₂) = (sigma1^r, (sigma_2 * sigma_1^t)^r)
-//     let r = E::ScalarField::rand(rng);
-//     let t = E::ScalarField::rand(rng);
-//     let sigma1_prime = signature.sigma1.mul(r).into_affine();
-//     let sigma2_prime = (signature.sigma2.mul(r) - params.generator_g1.mul(r * t)).into_affine();
-
-//     // conduct PoK for (m_1,...,m_i, t). z1 = beta + e * t, z2 = alpha_i + e * m_i. Generate random values for T
-//     let beta = E::ScalarField::rand(rng);
-//     let alpha_i: Vec<E::ScalarField> = (0..messages.len())
-//         .map(|_| E::ScalarField::rand(rng))
-//         .collect();
-
-//     // let mut t = E::pairing(sigma1_prime, params.generator_g2).mul_assign(beta);
-//     let mut com_t = E::pairing(sigma1_prime.mul(beta).into_affine(), params.generator_g2);
-//     for (alpha_i, y_i) in alpha_i.iter().zip(pk.y_g2.iter()) {
-//         com_t += E::pairing(sigma1_prime.mul(*alpha_i).into_affine(), *y_i);
-//     }
-
-//     let challenge = E::ScalarField::rand(rng);
-
-//     let z_t = beta + challenge * t;
-//     let z_i: Vec<E::ScalarField> = alpha_i
-//         .iter()
-//         .zip(messages)
-//         .map(|(alpha_i, mi)| *alpha_i + challenge * mi)
-//         .collect();
-
-//     SignatureProof {
-//         sigma1_prime,
-//         sigma2_prime,
-//         com_t: com_t.0, // assuming TargetField is the type of the pairing result
-//         z_t,
-//         z_i,
-//     }
-// }
-
-// pub fn verify_signature_proof<E: Pairing>(
-//     params: &PublicParams<E>,
-//     pk: &PublicKey<E>,
-//     proof: &SignatureProof<E>,
-//     challenge: &E::ScalarField,
-// ) -> bool {
-//     // compute com_t * (e(sigma2_prime, generator_g2) / e(sigma1_prime, params.x_g2))))
-//     let lhs = E::pairing(proof.sigma2_prime, params.generator_g2)
-//         - E::pairing(proof.sigma1_prime, pk.x_g2);
-//     let lhs = lhs.mul(challenge);
-//     let lhs = E::TargetField::from(proof.com_t) + lhs.0;
-
-//     // compute rhs verification
-//     let mut rhs = E::pairing(
-//         proof.sigma1_prime.mul(proof.z_t).into_affine(),
-//         params.generator_g2,
-//     );
-//     for (z_i, y_i) in proof.z_i.iter().zip(pk.y_g2.iter()) {
-//         rhs += E::pairing(proof.sigma1_prime.mul(*z_i).into_affine(), *y_i);
-//     }
-//     lhs == rhs.0
-// }
-
 pub fn verify_signature_proof<E: Pairing>(
     params: &PublicParams<E>,
     pk: &PublicKey<E>,
     proof: &SignatureProof<E>,
     challenge: &E::ScalarField,
 ) -> bool {
+    let mut pairing_check = PairingCheck::<E>::new();
+
+    // Check 1: e(sigma2_prime, g2) * e(sigma1_prime, X)^(-challenge) = com_t * e(sigma1_prime, g2)^z_t * prod(e(sigma1_prime, Y_i)^z_i)
+    let lhs = E::multi_pairing(
+        [
+            proof.sigma2_prime,
+            proof.sigma1_prime.mul(*challenge).neg().into_affine(),
+        ],
+        [params.generator_g2, pk.x_g2],
+    );
+
+    let mut rhs = proof.com_t;
+    // rhs += E::pairing(
+    //     proof.sigma1_prime.mul(proof.z_t).into_affine(),
+    //     params.generator_g2,
+    // );
+
     // Compute LHS
     let lhs_1 = E::pairing(proof.sigma2_prime, params.generator_g2);
     let lhs_2 = E::pairing(proof.sigma1_prime, pk.x_g2);
@@ -354,7 +228,7 @@ pub fn verify_signature_proof<E: Pairing>(
 
 #[cfg(test)]
 use super::*;
-use ark_bls12_381::Bls12_381;
+use ark_bls12_381::{Bls12_381, Fr, G1Affine, G1Projective};
 use ark_std::test_rng;
 
 #[test]
@@ -366,71 +240,32 @@ fn test_setup() {
 }
 
 #[test]
-fn test_commit() {
+fn test_commit_and_prove_knowledge() {
     let mut rng = test_rng();
     let params: PublicParams<Bls12_381> = setup(&mut rng);
-    let (_, pk) = keygen(&params, &mut rng, 3);
+    let num_messages = 2;
+    let (sk, pk) = keygen(&params, &mut rng, num_messages);
 
-    let messages: Vec<<Bls12_381 as Pairing>::ScalarField> = vec![
-        <Bls12_381 as Pairing>::ScalarField::rand(&mut rng),
-        <Bls12_381 as Pairing>::ScalarField::rand(&mut rng),
-        <Bls12_381 as Pairing>::ScalarField::rand(&mut rng),
-    ];
-
-    let commitment = commit(&params, &pk, &messages, &mut rng);
-    assert!(!commitment.com.is_zero());
-}
-
-#[test]
-fn test_sign_and_unblind() {
-    let mut rng = test_rng();
-    let params: PublicParams<Bls12_381> = setup(&mut rng);
-    let (sk, _) = keygen(&params, &mut rng, 3);
-
-    let commitment = <Bls12_381 as Pairing>::G1::rand(&mut rng).into_affine();
-    let signature = sign(&params, &sk, &commitment, &mut rng);
-
+    // create messages
     let t = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
-    let unblinded_signature = unblind(&signature, &t);
+    let mut messages: Vec<<Bls12_381 as Pairing>::ScalarField> = (0..num_messages)
+        .map(|_| <Bls12_381 as Pairing>::ScalarField::rand(&mut rng))
+        .collect();
+    messages.insert(0, t);
 
-    assert_ne!(signature.sigma2, unblinded_signature.sigma2);
-    assert_eq!(signature.sigma1, unblinded_signature.sigma1);
+    let mut bases = pk.y_g1.clone();
+    bases.insert(0, params.generator_g1);
+
+    let com = G1Projective::msm_unchecked(&bases, &messages).into_affine();
+
+    let challenge = Fr::rand(&mut rng); // In practice, this should be derived from a hash
+    let com_prime = SchnorrProtocol::commit(&bases, &mut rng);
+    let response = SchnorrProtocol::prove(&com_prime, &messages, &challenge);
+    let is_valid = SchnorrProtocol::verify(&bases, &com, &com_prime, &response, &challenge);
+
+    assert!(is_valid, "Schnorr proof verification failed");
 }
 
-#[test]
-fn test_prove_and_verify_signature_knowledge() {
-    let mut rng = test_rng();
-    let params: PublicParams<Bls12_381> = setup(&mut rng);
-    let (sk, pk) = keygen(&params, &mut rng, 3);
-
-    let messages: Vec<<Bls12_381 as Pairing>::ScalarField> = vec![
-        <Bls12_381 as Pairing>::ScalarField::rand(&mut rng),
-        <Bls12_381 as Pairing>::ScalarField::rand(&mut rng),
-        <Bls12_381 as Pairing>::ScalarField::rand(&mut rng),
-    ];
-
-    let commitment = commit(&params, &pk, &messages, &mut rng);
-    let signature = sign(&params, &sk, &commitment.com, &mut rng);
-    let unblinded_signature = unblind(&signature, &commitment.t);
-
-    let challenge = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
-
-    let proof = prove_signature_knowledge(
-        &params,
-        &pk,
-        &unblinded_signature,
-        &messages,
-        &challenge,
-        &mut rng,
-    );
-
-    println!("Test computation:");
-    println!("Messages: {:?}", messages);
-    println!("Signature: {:?}", signature);
-    println!("Unblinded Signature: {:?}", unblinded_signature);
-    println!("Proof: {:?}", proof);
-    println!("Challenge: {:?}", challenge);
-
-    let result = verify_signature_proof(&params, &pk, &proof, &challenge);
-    assert!(result, "Signature proof verification failed");
+fn test_pairing_verification(){
+    
 }

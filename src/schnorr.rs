@@ -113,31 +113,6 @@ mod tests {
     use ark_std::test_rng;
 
     #[test]
-    fn test_schnorr_protocol() {
-        let mut rng = test_rng();
-
-        // Generate bases and witnesses
-        let num_witnesses = 3;
-        let bases: Vec<G1Affine> = (0..num_witnesses)
-            .map(|_| G1Affine::rand(&mut rng))
-            .collect();
-        let witnesses: Vec<Fr> = (0..num_witnesses).map(|_| Fr::rand(&mut rng)).collect();
-
-        // Compute Commitment
-        let y = G1Projective::msm_unchecked(&bases, &witnesses).into_affine();
-
-        // Prover's side
-        let commitment = SchnorrProtocol::commit(&bases, &mut rng);
-        let challenge = Fr::rand(&mut rng); // In practice, this should be derived from a hash
-        let response = SchnorrProtocol::prove(&commitment, &witnesses, &challenge);
-
-        // Verifier's side
-        let is_valid = SchnorrProtocol::verify(&bases, &y, &commitment, &response, &challenge);
-
-        assert!(is_valid, "Schnorr proof verification failed");
-    }
-
-    #[test]
     fn test_schnorr_single() {
         let mut rng = test_rng();
 
@@ -160,7 +135,7 @@ mod tests {
                 G::ScalarField,
                 Blake2b512,
             >(&chal_contrib);
-            
+
             let response = SchnorrProtocol::prove(&commitment, &[witness], &challenge);
 
             assert!(SchnorrProtocol::verify(
@@ -215,6 +190,31 @@ mod tests {
 
         check::<G1Affine>(&mut rng);
         check::<G2Affine>(&mut rng);
+    }
+
+    #[test]
+    fn test_schnorr_tripple() {
+        let mut rng = test_rng();
+
+        // Generate bases and witnesses
+        let num_witnesses = 3;
+        let bases: Vec<G1Affine> = (0..num_witnesses)
+            .map(|_| G1Affine::rand(&mut rng))
+            .collect();
+        let witnesses: Vec<Fr> = (0..num_witnesses).map(|_| Fr::rand(&mut rng)).collect();
+
+        // Compute Commitment
+        let y = G1Projective::msm_unchecked(&bases, &witnesses).into_affine();
+
+        // Prover's side
+        let commitment = SchnorrProtocol::commit(&bases, &mut rng);
+        let challenge = Fr::rand(&mut rng); // In practice, this should be derived from a hash
+        let response = SchnorrProtocol::prove(&commitment, &witnesses, &challenge);
+
+        // Verifier's side
+        let is_valid = SchnorrProtocol::verify(&bases, &y, &commitment, &response, &challenge);
+
+        assert!(is_valid, "Schnorr proof verification failed");
     }
 
     // #[test]
