@@ -197,6 +197,8 @@ mod test {
         let g1r = G1Projective::rand(r);
         let g2r = G2Projective::rand(r);
         let exp = Bls12::pairing(g1r.clone(), g2r.clone());
+
+        // Wrap the random number generator in a Mutex for safe data parallelism
         let mr = Mutex::new(r);
         let tuple =
             PairingCheck::<Bls12>::rand(&mr, &[(&g1r.into_affine(), &g2r.into_affine())], &exp.0);
