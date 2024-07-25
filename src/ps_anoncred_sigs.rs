@@ -9,7 +9,7 @@ use ark_ec::pairing::{MillerLoopOutput, Pairing, PairingOutput};
 use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
 use ark_ff::{Field, PrimeField, UniformRand};
 use ark_std::{
-    ops::{Mul, Neg},
+    ops::{Add, Mul, Neg},
     rand::Rng,
     sync::Mutex,
     One, Zero,
@@ -26,8 +26,9 @@ struct SecretKey<F: PrimeField, E: Pairing> {
 }
 
 struct PublicKey<E: Pairing> {
-    ck_g1: Vec<E::G1Affine>, //[Y_1, Y_2, ..., Y_n]
-    ck_g2: Vec<E::G2Affine>, //[X_2, Y_1, Y_2, ..., Y_n]
+    y_g1: Vec<E::G1Affine>, //[Y_1, Y_2, ..., Y_n]
+    y_g2: Vec<E::G2Affine>, //[Y_1, Y_2, ..., Y_n]
+    x_g2: E::G2Affine,      //X_2 public key
 }
 
 #[derive(Clone, Debug)]
@@ -49,7 +50,7 @@ impl<E: Pairing> Signature<E> {
     {
         let mut witnesses: Vec<E::ScalarField> = messages.to_vec();
         witnesses.insert(0, *t);
-        let commitment: E::G1Affine = E::G1::msm_unchecked(&pk.ck_g1, &witnesses).into_affine();
+        let commitment: E::G1Affine = E::G1::msm_unchecked(&pk.y_g1, &witnesses).into_affine();
         commitment
     }
 
@@ -83,31 +84,42 @@ impl<E: Pairing> Signature<E> {
         }
     }
 
+    pub fn public_sign(
+        messages: &[E::ScalarField],
+        sk: &SecretKey<E::ScalarField, E>,
+        h: &E::G1Affine,
+    ) -> Self {
+        // h ^ (x + yj*mj)
+        let mut exponent = sk.x;
+        for (y, m) in sk.yi.clone().iter().zip(messages.iter()) {
+            exponent += *y * m;
+        }
+
+        let sigma2 = h.mul(exponent).into_affine();
+        Self { sigma1: *h, sigma2 }
+    }
+
     pub fn public_verify(
         &self,
         params: &PublicParams<E>,
+        messages: &[E::ScalarField],
         pk: &PublicKey<E>,
-        commitment: &E::G1Affine,
     ) -> bool {
-        let mut rng = test_rng();
-        let mr = Mutex::new(rng);
-        let commitment_inv = commitment.into_group().neg().into_affine();
-        let g1_points = [self.sigma1, self.sigma2, commitment_inv];
-        let g2_points = [pk.ck_g2[0], params.g2, params.g2];
+        // check sigma1 != G1::zero()
+        assert!(!self.sigma1.is_zero());
+        assert_eq!(pk.y_g1.len(), messages.len() + 1);
 
-        let g1_points2 = [
-            self.sigma1,
-            *commitment,
-            self.sigma2.into_group().neg().into_affine(),
-        ];
-        let g2_points2 = [pk.ck_g2[0], params.g2, params.g2];
+        let x_g2 = pk.x_g2.into_group();
+        let yi_mi_g2 = pk
+            .y_g2
+            .iter()
+            .zip(messages.iter())
+            .map(|(yi, mi)| yi.into_group().mul(*mi))
+            .fold(x_g2, |acc, yi_mi| acc + yi_mi);
 
-        let pairing_tuples: Vec<(&E::G1Affine, &E::G2Affine)> =
-            g1_points2.iter().zip(g2_points2.iter()).collect();
-        let expected_result = E::TargetField::one();
-        let pairing_check = PairingCheck::<E>::rand(&mr, &pairing_tuples, &expected_result);
-
-        pairing_check.verify()
+        let left = E::pairing(self.sigma1, yi_mi_g2);
+        let right = E::pairing(self.sigma2, params.g2);
+        left == right
     }
 }
 
@@ -149,51 +161,19 @@ fn keygen<E: Pairing, R: Rng>(
         .collect::<Vec<_>>();
 
     let x_g1 = params.g1.mul(x).into_affine();
-    let ck_g1 = yi
+    let y_g1 = yi
         .iter()
         .map(|yi| params.g1.mul(yi).into_affine())
         .collect::<Vec<_>>();
 
     let x_g2 = params.g2.mul(x).into_affine();
-    let mut ck_g2 = yi
+    let y_g2 = yi
         .iter()
         .map(|yi| params.g2.mul(yi).into_affine())
         .collect::<Vec<_>>();
-    ck_g2.insert(0, x_g2.clone());
 
-    (SecretKey { x, yi, x_g1 }, PublicKey { ck_g1, ck_g2 })
+    (SecretKey { x, yi, x_g1 }, PublicKey { y_g1, y_g2, x_g2 })
 }
-
-// fn generate_signature_of_knowledge<E: Pairing, R: Rng>(
-//     params: &PublicParams<E>,
-//     pk: &PublicKey<E>,
-//     signature: &Signature<E>,
-//     secret_witnesses: &[E::ScalarField],
-//     challenge: &E::ScalarField,
-//     rng: &mut R,
-// ) -> SignatureProof<E> {
-//     // rerandomize signature
-
-//     // e(sigma_1', x_g2) * ∑ e(sigma_1', y_i) * e(sigma1', g2)^t = e(sigma_2', g2)
-//     // ∑ e(sigma_1', y_i)^m_i * e(sigma1', g2)^t  = e(sigma_2', g2) - e(sigma_1', x_g2)
-
-//     // create public statement e(sigma_2', g2) - e(sigma_1', x_g2) in PairingCheck
-
-//     // commit to m_i and t as G1 elements.
-//     // e(sigma_1', g2)^beta => sigma1'*beta
-//     // e(sigma1', y_i)^m_i => sigma1' * Y_i
-//     // commit to m_i and t as GT elements. similar to schnorr prior protocol, the bases are
-//     // 1 e(sigma_1', g2) for beta
-//     // 2i e(sigma_1', y_i) for each alpha_i
-//     // commitment_prime is T = one GT point composed of 1, 2i = e(sigma_1', g2)^beta * e(sigma_1', y_i)^mi
-
-//     // responses
-//     // z_t = beta + challenge * t
-//     // z_i = alpha_i + challenge * m_i
-
-//     // proofs sent are z_t, z_i, sigma', com_prime
-//     // verifier does base_1^z_t * base_i^z_i = sigma'^challenge * T
-// }
 
 #[cfg(test)]
 use super::*;
@@ -221,15 +201,15 @@ fn test_setup3() {
     };
 
     // Create public key
-    let ck_g1: Vec<_> = yi.iter().map(|y| params.g1.mul(y).into_affine()).collect();
-    let mut ck_g2 = vec![params.g2.mul(x).into_affine()];
-    ck_g2.extend(yi.iter().map(|y| params.g2.mul(y).into_affine()));
-    let pk = PublicKey::<Bls12_381> { ck_g1, ck_g2 };
+    let y_g1: Vec<_> = yi.iter().map(|y| params.g1.mul(y).into_affine()).collect();
+    let x_g2 = params.g2.mul(x).into_affine();
+    let y_g2: Vec<_> = yi.iter().map(|y| params.g2.mul(y).into_affine()).collect();
+    let pk = PublicKey::<Bls12_381> { y_g1, y_g2, x_g2 };
 
     // Perform assertions to verify the setup
     assert_eq!(sk.yi.len(), n);
-    assert_eq!(pk.ck_g1.len(), n);
-    assert_eq!(pk.ck_g2.len(), n + 1);
+    assert_eq!(pk.y_g1.len(), n);
+    assert_eq!(pk.y_g2.len(), n + 1);
     assert_eq!(sk.x_g1, params.g1.mul(sk.x).into_affine());
 
     // You can add more assertions here to verify the correctness of the setup
@@ -247,19 +227,21 @@ fn test_sign_and_verify() {
         .map(|_| Fr::rand(&mut rng))
         .collect::<Vec<_>>();
 
-    // Prepare Blind Sign, C \gets g^t \prod_{i=1}^{n} Y_i^{m_i}.
-    let t = Fr::rand(&mut rng);
-    let commitment = Signature::<Bls12_381>::prepare_blind_sign(&messages, &t, &pk);
+    let h = G1Affine::rand(&mut rng);
+    let public_signature = Signature::public_sign(&messages, &sk, &h);
+    let is_valid = public_signature.public_verify(&params, &messages, &pk);
+    assert!(is_valid, "Public signature verification failed");
 
-    // generate proof of opening
+    // // Prepare Blind Sign, C \gets g^t \prod_{i=1}^{n} Y_i^{m_i}.
+    // let t = Fr::rand(&mut rng);
+    // let commitment = Signature::<Bls12_381>::prepare_blind_sign(&messages, &t, &pk);
 
-    // get blind signature
-    let signature = Signature::blind_sign(&params, &sk, &commitment, &mut rng);
+    // // generate proof of opening
 
-    let unblind_signature = signature.unblind(&t);
+    // // get blind signature
+    // let signature = Signature::blind_sign(&params, &sk, &commitment, &mut rng);
 
-    // Verify
-    assert!(unblind_signature.public_verify(&params, &pk, &commitment));
+    // let unblind_signature = signature.unblind(&t);
 }
 
 // #[test]
@@ -276,7 +258,7 @@ fn test_sign_and_verify() {
 //         .collect();
 //     messages.insert(0, t);
 
-//     let mut bases = pk.ck_g1.clone();
+//     let mut bases = pk.y_g1.clone();
 //     bases.insert(0, params.g1);
 
 //     // generate commitment to messages

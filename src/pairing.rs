@@ -3,6 +3,7 @@ use ark_ec::{
     CurveGroup,
 };
 // {AffineCurve, PairingEngine, ProjectiveCurve};
+use crate::pairing_util::PairingTuple;
 use ark_ff::{Field, PrimeField};
 use ark_std::test_rng;
 use ark_std::{ops::Mul, rand::Rng, sync::Mutex, One, UniformRand, Zero};
@@ -187,10 +188,24 @@ fn mul_if_not_one<E: Pairing>(
     left.mul_assign(right);
 }
 
+// //
+// // sam test
+// //
+// fn verify_using_struct<E: Pairing>(left: PairingTuple<E>, right: PairingTuple<E>) -> bool {
+//     let mut rng = test_rng();
+//     let mr = Mutex::new(rng);
+
+//     let lhs_pairing_check = PairingCheck::<E>::rand(
+//         &mr,
+//         &left.pairing_vec,
+//         &E::TargetField::one(),
+//     )
+// }
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use ark_bls12_381::{Bls12_381 as Bls12, G1Projective, G2Projective};
+    use ark_bls12_381::{Bls12_381 as Bls12, G1Affine, G1Projective, G2Affine, G2Projective};
     use ark_std::{rand::Rng, UniformRand};
 
     fn gen_pairing_check<R: Rng + Send>(r: &mut R) -> PairingCheck<Bls12> {
