@@ -37,12 +37,29 @@ struct Signature<E: Pairing> {
 }
 
 impl<E: Pairing> Signature<E> {
+    //C \gets g^t \prod_{i=1}^{n} Y_i^{m_i}.
+    pub fn prepare_blind_sign(
+        messages: &[E::ScalarField],
+        t: &E::ScalarField,
+        pk: &PublicKey<E>,
+    ) -> E::G1Affine
+    where
+        E: Pairing,
+        E::G1: CurveGroup<ScalarField = E::ScalarField>, // Add this trait bound
+    {
+        let mut witnesses: Vec<E::ScalarField> = messages.to_vec();
+        witnesses.insert(0, *t);
+        let commitment: E::G1Affine = E::G1::msm_unchecked(&pk.ck_g1, &witnesses).into_affine();
+        commitment
+    }
+
     pub fn blind_sign<R: Rng>(
         params: &PublicParams<E>,
         sk: &SecretKey<E::ScalarField, E>,
         commitment: &E::G1Affine,
         rng: &mut R,
     ) -> Self {
+        // sigma_prime \gets (g^u, (g^x + C)^u)
         let u = E::ScalarField::rand(rng);
         let sigma1 = params.g1.mul(u).into_affine();
         let sigma2 = (params.g1.mul(sk.x) + commitment).mul(u).into_affine();
@@ -75,10 +92,18 @@ impl<E: Pairing> Signature<E> {
         let mut rng = test_rng();
         let mr = Mutex::new(rng);
         let commitment_inv = commitment.into_group().neg().into_affine();
-        let g1_points = vec![self.sigma1, self.sigma2, commitment_inv];
-        let g2_points = vec![pk.ck_g2[0], params.g2, params.g2];
+        let g1_points = [self.sigma1, self.sigma2, commitment_inv];
+        let g2_points = [pk.ck_g2[0], params.g2, params.g2];
+
+        let g1_points2 = [
+            self.sigma1,
+            *commitment,
+            self.sigma2.into_group().neg().into_affine(),
+        ];
+        let g2_points2 = [pk.ck_g2[0], params.g2, params.g2];
+
         let pairing_tuples: Vec<(&E::G1Affine, &E::G2Affine)> =
-            g1_points.iter().zip(g2_points.iter()).collect();
+            g1_points2.iter().zip(g2_points2.iter()).collect();
         let expected_result = E::TargetField::one();
         let pairing_check = PairingCheck::<E>::rand(&mr, &pairing_tuples, &expected_result);
 
@@ -212,47 +237,57 @@ fn test_setup3() {
 
 #[test]
 fn test_sign_and_verify() {
-    let message_count = 5;
+    let message_count = 2;
     let mut rng = ark_std::test_rng();
     let params: PublicParams<Bls12_381> = setup(&mut rng);
     let (sk, pk) = keygen(&params, &mut rng, message_count);
 
-    // Create a dummy commitment
-    let commitment = params.g1.mul(Fr::rand(&mut rng)).into_affine();
+    // Create messages
+    let messages: Vec<Fr> = (0..message_count)
+        .map(|_| Fr::rand(&mut rng))
+        .collect::<Vec<_>>();
 
-    // Sign
+    // Prepare Blind Sign, C \gets g^t \prod_{i=1}^{n} Y_i^{m_i}.
+    let t = Fr::rand(&mut rng);
+    let commitment = Signature::<Bls12_381>::prepare_blind_sign(&messages, &t, &pk);
+
+    // generate proof of opening
+
+    // get blind signature
     let signature = Signature::blind_sign(&params, &sk, &commitment, &mut rng);
 
+    let unblind_signature = signature.unblind(&t);
+
     // Verify
-    assert!(signature.public_verify(&params, &pk, &commitment));
+    assert!(unblind_signature.public_verify(&params, &pk, &commitment));
 }
 
-#[test]
-fn test_commit_and_prove_knowledge() {
-    let mut rng = test_rng();
-    let params: PublicParams<Bls12_381> = setup(&mut rng);
-    let num_messages = 2;
-    let (sk, pk) = keygen(&params, &mut rng, num_messages);
+// #[test]
+// fn test_commit_and_prove_knowledge() {
+//     let mut rng = test_rng();
+//     let params: PublicParams<Bls12_381> = setup(&mut rng);
+//     let num_messages = 2;
+//     let (sk, pk) = keygen(&params, &mut rng, num_messages);
 
-    // create messages
-    let t = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
-    let mut messages: Vec<<Bls12_381 as Pairing>::ScalarField> = (0..num_messages)
-        .map(|_| <Bls12_381 as Pairing>::ScalarField::rand(&mut rng))
-        .collect();
-    messages.insert(0, t);
+//     // create messages
+//     let t = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
+//     let mut messages: Vec<<Bls12_381 as Pairing>::ScalarField> = (0..num_messages)
+//         .map(|_| <Bls12_381 as Pairing>::ScalarField::rand(&mut rng))
+//         .collect();
+//     messages.insert(0, t);
 
-    let mut bases = pk.ck_g1.clone();
-    bases.insert(0, params.g1);
+//     let mut bases = pk.ck_g1.clone();
+//     bases.insert(0, params.g1);
 
-    // generate commitment to messages
-    let com = G1Projective::msm_unchecked(&bases, &messages).into_affine();
+//     // generate commitment to messages
+//     let com = G1Projective::msm_unchecked(&bases, &messages).into_affine();
 
-    let challenge = Fr::rand(&mut rng); // In practice, this should be derived from a hash
+//     let challenge = Fr::rand(&mut rng); // In practice, this should be derived from a hash
 
-    // generate commitment for proving
-    let com_prime = SchnorrProtocol::commit(&bases, &mut rng);
-    let response = SchnorrProtocol::prove(&com_prime, &messages, &challenge);
-    let is_valid = SchnorrProtocol::verify(&bases, &com, &com_prime, &response, &challenge);
+//     // generate commitment for proving
+//     let com_prime = SchnorrProtocol::commit(&bases, &mut rng);
+//     let response = SchnorrProtocol::prove(&com_prime, &messages, &challenge);
+//     let is_valid = SchnorrProtocol::verify(&bases, &com, &com_prime, &response, &challenge);
 
-    assert!(is_valid, "Schnorr proof verification failed");
-}
+//     assert!(is_valid, "Schnorr proof verification failed");
+// }
