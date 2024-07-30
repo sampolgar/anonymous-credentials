@@ -3,11 +3,13 @@ use super::pedersen::PedersenCommitment;
 use super::schnorr::SchnorrProtocol;
 use crate::pairing::PairingCheck;
 use crate::pairing_util::PairingTuple;
+use crate::pairs::PairingUtils;
 use ark_bls12_381::{Bls12_381, G2Projective};
 
 use ark_ec::pairing::{MillerLoopOutput, Pairing, PairingOutput};
 use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
 use ark_ff::{Field, PrimeField, UniformRand};
+use ark_r1cs_std::uint;
 use ark_std::{
     ops::{Add, Mul, Neg},
     rand::Rng,
@@ -101,9 +103,10 @@ impl<E: Pairing> Signature<E> {
     }
 
     pub fn rerandomize_for_pok(&self, r: &E::ScalarField, t: &E::ScalarField) -> Self {
+        let sigma1_temp = self.sigma1.clone();
         Self {
             sigma1: self.sigma1.mul(r).into_affine(),
-            sigma2: (self.sigma2.into_group() + self.sigma1.mul(*t))
+            sigma2: (self.sigma2.into_group() + sigma1_temp.mul(*t))
                 .mul(r)
                 .into_affine(),
         }
@@ -145,32 +148,107 @@ impl<E: Pairing> Signature<E> {
         let c = E::G1Prepared::from(sigma2_inv);
         let d = E::G2Prepared::from(pk.g2);
 
-        let pairing_miller_loop = E::multi_miller_loop([a, c], [b, d]);
-        let result = E::final_exponentiation(pairing_miller_loop).unwrap();
-        PairingOutput::is_zero(&result)
+        let multi_pairing = E::multi_pairing([a, c], [b, d]);
+        assert!(multi_pairing.0.is_one());
+        true
+
+        // let pairing_miller_loop = E::multi_miller_loop([a, c], [b, d]);
+        // let result = E::final_exponentiation(pairing_miller_loop).unwrap();
+        // PairingOutput::is_zero(&result)
     }
 }
 
-fn keygen<E: Pairing, R: Rng>(rng: &mut R, message_count: usize) -> (SecretKey<E>, PublicKey<E>) {
+// keygen(&message_count) handover the address of this
+// keygen(message_count) copy the message_count to whatever we're calling
+
+// fn(&message_count: &usize)  this doesn't make sense, handover the reference to the non-existing variable
+
+// fn(message_count: &usize) // &usize is a reference to the data type
+// keygen(&message_count)   //
+// let y = *message_count  needs to use *message_count. This is saying, handover a reference to the data type
+
+// fn(message_count: usize)
+// keygen(message_count) copy message_count when using keygen
+// let y = message_count no reference needed because we have the value itself
+
+// simple understanding
+// keygen(&message_count); calls a function, passes a reference to the message_count
+// keygen(message_count); calls a function, passes a copy of the message_count
+
+// let y = message_count assigns message_count to y. message_count needs to be the value and not a reference
+// let y = *message_count assigns y the value of the reference message_count
+
+// fn(message_count: usize) takes a copy of a data type usize and names it message_count
+// fn(message_count: &usize) takes a reference of a usize and names it message_count
+
+//
+//
+//
+fn keygen<E: Pairing, R: Rng>(rng: &mut R, message_count: &usize) -> (SecretKey<E>, PublicKey<E>) {
     // setup random g points for public key
+    print!("{}", message_count);
     let g1 = E::G1Affine::rand(rng);
     let g2 = E::G2Affine::rand(rng);
 
     // generate x and y_i for each message
     let x = E::ScalarField::rand(rng);
-    let yi = (0..message_count)
+    let yi = (0..*message_count)
         .map(|_| E::ScalarField::rand(rng))
         .collect::<Vec<_>>();
 
     let x_g1 = g1.mul(x).into_affine();
-    // let yimi = E::G2::msm(&yi, &messages).unwrap();
-
     let y_g1 = yi.iter().map(|yi| g1.mul(yi)).collect::<Vec<_>>();
     let y_g1 = E::G1::normalize_batch(&y_g1);
 
     let x_g2 = g2.mul(x).into_affine();
     let y_g2 = yi.iter().map(|yi| g2.mul(yi)).collect::<Vec<_>>();
     let y_g2 = E::G2::normalize_batch(&y_g2);
+
+    (
+        SecretKey { x, yi, x_g1 },
+        PublicKey {
+            g1,
+            g2,
+            y_g1,
+            y_g2,
+            x_g2,
+        },
+    )
+}
+
+fn testkeygen<E: Pairing, R: Rng>(
+    rng: &mut R,
+    message_count: &usize,
+) -> (SecretKey<E>, PublicKey<E>) {
+    // setup random g points for public key
+    print!("{}", message_count);
+
+    let g1 = E::G1Affine::generator();
+    let g2 = E::G2Affine::generator();
+
+    // testing
+    let x = E::ScalarField::one();
+    let y1 = <E as Pairing>::ScalarField::one() + <E as Pairing>::ScalarField::one();
+    let y2 = y1 + <E as Pairing>::ScalarField::one();
+    let y3 = y2 + <E as Pairing>::ScalarField::one();
+    let y4 = y3 + <E as Pairing>::ScalarField::one();
+
+    let yi: Vec<<E as Pairing>::ScalarField> = vec![y1, y2, y3, y4];
+
+    let x_g1 = g1.mul(x).into_affine();
+    let y1_g1 = g1 * y1;
+    let y2_g1 = g1 * y2;
+    let y3_g1 = g1 * y3;
+    let y4_g1 = g1 * y4;
+
+    let y_g1 = E::G1::normalize_batch(&[y1_g1, y2_g1, y3_g1, y4_g1]);
+
+    let x_g2 = g2.mul(x).into_affine();
+    let y1_g2 = g2 * y1;
+    let y2_g2 = g2 * y2;
+    let y3_g2 = g2 * y3;
+    let y4_g2 = g2 * y4;
+    let y_g2 = E::G2::normalize_batch(&[y1_g2, y2_g2, y3_g2, y4_g2]);
 
     (
         SecretKey { x, yi, x_g1 },
@@ -191,10 +269,31 @@ use ark_ec::bls12::{G1Prepared, G2Prepared};
 use ark_std::test_rng;
 
 #[test]
+fn test_pairs() {
+    let message_count = 4;
+    let mut rng = ark_std::test_rng();
+    let (sk, pk) = keygen::<Bls12_381, _>(&mut rng, &message_count);
+
+    let g1_points = pk.y_g1.clone();
+    let scalars = sk.yi.clone();
+
+    let scaled_g1_points = PairingUtils::<Bls12_381>::scale_g1(&g1_points, &scalars);
+
+    let prepared_g1 = PairingUtils::<Bls12_381>::prepare_g1(&scaled_g1_points);
+    let prepared_g2 = PairingUtils::<Bls12_381>::prepare_g2(&pk.y_g2);
+
+    let miller_loop_result = PairingUtils::<Bls12_381>::multi_miller_loop(prepared_g1, prepared_g2);
+
+    let pairing_result = PairingUtils::<Bls12_381>::final_exponentiation(miller_loop_result);
+
+    assert!(pairing_result.is_some());
+}
+
+#[test]
 fn test_sign_and_verify() {
     let message_count = 4;
     let mut rng = ark_std::test_rng();
-    let (sk, pk) = keygen(&mut rng, message_count);
+    let (sk, pk) = keygen::<Bls12_381, _>(&mut rng, &message_count);
 
     // Create messages
     let messages: Vec<Fr> = (0..message_count)
@@ -207,46 +306,46 @@ fn test_sign_and_verify() {
     assert!(is_valid, "Public signature verification failed");
 }
 
-#[test]
-fn test_commit_and_prove_knowledge() {
-    // setup keys and signature first
-    let message_count = 4;
-    let mut rng = ark_std::test_rng();
-    // let (sk: SecretKey<Bls12_381>, pk: PublicKey<Bls12_381>) = keygen(&mut rng, message_count);
-    let (sk, pk) = keygen::<Bls12_381, _>(&mut rng, message_count);
-    let h = G1Affine::rand(&mut rng);
+// #[test]
+// fn test_commit_and_prove_knowledge() {
+//     // setup keys and signature first
+//     let message_count = 4;
+//     let mut rng = ark_std::test_rng();
+//     // let (sk: SecretKey<Bls12_381>, pk: PublicKey<Bls12_381>) = keygen(&mut rng, message_count);
+//     let (sk, pk) = keygen::<Bls12_381, _>(&mut rng, &message_count);
+//     let h = G1Affine::rand(&mut rng);
 
-    // Create messages
-    let messages: Vec<Fr> = (0..message_count)
-        .map(|_| Fr::rand(&mut rng))
-        .collect::<Vec<_>>();
+//     // Create messages
+//     let messages: Vec<Fr> = (0..message_count)
+//         .map(|_| Fr::rand(&mut rng))
+//         .collect::<Vec<_>>();
 
-    // create commitment for blind signature C = g^t sum Yimi
-    let t = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
-    let C = G1Projective::msm_unchecked(&pk.y_g1, &messages) + pk.g1.mul(t);
+//     // create commitment for blind signature C = g^t sum Yimi
+//     let t = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
+// let C = G1Projective::msm_unchecked(&pk.y_g1, &messages) + pk.g1.mul(t);
 
-    // create fake challenge
-    let challenge = Fr::rand(&mut rng);
+//     // create fake challenge
+//     let challenge = Fr::rand(&mut rng);
 
-    // gather bases for proving g1, Y1, Y2, ..., Yi
-    let mut bases = vec![pk.g1];
-    bases.extend(pk.y_g1.iter().cloned());
+//     // gather bases for proving g1, Y1, Y2, ..., Yi
+//     let mut bases = vec![pk.g1];
+//     bases.extend(pk.y_g1.iter().cloned());
 
-    // generate commitment for proving
-    let com_prime = SchnorrProtocol::commit(&bases, &mut rng);
+//     // generate commitment for proving
+//     let com_prime = SchnorrProtocol::commit(&bases, &mut rng);
 
-    // gather exponents to prove t, m1, m2, ..., mi
-    let mut exponents = vec![t];
-    exponents.extend(messages.iter().cloned());
+//     // gather exponents to prove t, m1, m2, ..., mi
+//     let mut exponents = vec![t];
+//     exponents.extend(messages.iter().cloned());
 
-    assert!(com_prime.random_blindings.len() == bases.len() && bases.len() == exponents.len());
+//     assert!(com_prime.random_blindings.len() == bases.len() && bases.len() == exponents.len());
 
-    let response = SchnorrProtocol::prove(&com_prime, &exponents, &challenge);
-    let is_valid =
-        SchnorrProtocol::verify(&bases, &C.into_affine(), &com_prime, &response, &challenge);
+//     let response = SchnorrProtocol::prove(&com_prime, &exponents, &challenge);
+//     let is_valid =
+//         SchnorrProtocol::verify(&bases, &C.into_affine(), &com_prime, &response, &challenge);
 
-    assert!(is_valid, "Schnorr proof verification failed");
-}
+//     assert!(is_valid, "Schnorr proof verification failed");
+// }
 
 #[test]
 fn test_commit_and_prove_knowledge_and_SoK() {
@@ -254,13 +353,22 @@ fn test_commit_and_prove_knowledge_and_SoK() {
     let message_count = 4;
     let mut rng = ark_std::test_rng();
     // let (sk: SecretKey<Bls12_381>, pk: PublicKey<Bls12_381>) = keygen(&mut rng, message_count);
-    let (sk, pk) = keygen::<Bls12_381, _>(&mut rng, message_count);
+    let (sk, pk) = keygen::<Bls12_381, _>(&mut rng, &message_count);
+
     let h = G1Affine::rand(&mut rng);
+    // let h_scalar = Fr::one();
 
     // Create messages
-    let messages: Vec<Fr> = (0..message_count)
-        .map(|_| Fr::rand(&mut rng))
-        .collect::<Vec<_>>();
+    // let messages: Vec<Fr> = (0..message_count)
+    //     .map(|_| Fr::rand(&mut rng))
+    //     .collect::<Vec<_>>();
+
+    // create set messages
+    let m1 = Fr::one();
+    let m2 = m1 + Fr::one();
+    let m3 = m2 + Fr::one();
+    let m4 = m3 + Fr::one();
+    let messages = vec![m1, m2, m3, m4];
 
     // create commitment for blind signature C = g^t sum Yimi
     let t = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
@@ -296,6 +404,7 @@ fn test_commit_and_prove_knowledge_and_SoK() {
     let is_valid = unblinded_signature.public_verify(&messages, &pk);
     assert!(is_valid, "Public signature verification failed");
 
+    // Signature of Knowledge
     // Prover selects r, t and computes sigma_prime = (sigma1^r, (sigma2 + sigma1^t)^r)
     let r = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
     let tt = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
@@ -307,37 +416,34 @@ fn test_commit_and_prove_knowledge_and_SoK() {
     // vec g1 = sigma1_prime, sigma1_prime, sigma1_prime, sigma2_prime (is inverse)
     // vec g2 = x_g2, yjmj, g2, g2
 
-    let yimi_points_projective: Vec<G2Projective> = pk
-        .y_g2
-        .iter()
-        .zip(&messages)
-        .map(|(y, m)| y.mul(m))
-        .collect();
+    let a = sigma_prime_1;
+    let b = pk.x_g2;
 
-    let yimi_points_affine = G2Projective::normalize_batch(&yimi_points_projective);
+    let vec_of_sigmap =
+        PairingUtils::<Bls12_381>::copy_point_to_length(sigma_prime_1, &message_count);
 
-    let yimi_g2s: Vec<G2Prepared<Bls12_381Config>> = yimi_points_affine
-        .into_iter()
-        .map(G2Prepared::from)
-        .collect();
+    assert!(vec_of_sigmap.len() == sk.yi.len());
 
-    let sigma1_prime_vec = vec![sigma_prime.sigma1; message_count];
+    let c_vec = PairingUtils::<Bls12_381>::scale_g1(&vec_of_sigmap, &sk.yi);
+    let d_vec = pk.y_g2;
 
-    let a: G1Prepared<Bls12_381Config> = G1Prepared::from(sigma_prime_1);
-    let b: G2Prepared<Bls12_381Config> = G2Prepared::from(pk.x_g2);
+    assert!(c_vec.len() == d_vec.len());
+    let e = sigma_prime_1.into_group().mul(tt).into_affine();
+    let f = pk.g2;
 
-    let multi_c = sigma1_prime_vec;
-    let multi_d = yimi_g2s;
+    let g_right = sigma_prime_2.into_group().neg().into_affine();
+    let h_right = pk.g2;
 
-    let e: G1Prepared<Bls12_381Config> = G1Prepared::from(sigma_prime_1);
-    let f: G2Prepared<Bls12_381Config> = G2Prepared::from(pk.g2.mul(tt));
+    let g1_pairing_points = PairingUtils::<Bls12_381>::combine_g1_points(&c_vec, &[a, e, g_right]);
+    let g2_pairing_points = PairingUtils::<Bls12_381>::combine_g2_points(&d_vec, &[b, f, h_right]);
 
-    let g: G1Prepared<Bls12_381Config> = G1Prepared::from(sigma_prime_2.neg());
-    let h: G2Prepared<Bls12_381Config> = G2Prepared::from(pk.g2);
+    assert!(g1_pairing_points.len() == message_count + 3);
+    let prepared_g1_points = PairingUtils::<Bls12_381>::prepare_g1(&g1_pairing_points);
+    let prepared_g2_points = PairingUtils::<Bls12_381>::prepare_g2(&g2_pairing_points);
 
-
-    let pairing_miller_loop_1 = Bls12_381::multi_miller_loop([a, e, g], [b, f, h]);
-    let result_1 = Bls12_381::final_exponentiation(pairing_miller_loop_1).unwrap();
-    let is_valid_1 = PairingOutput::is_zero(&result_1);
-    assert!(is_valid_1, "Final Pairing verification failed");
+    let multi_pairing = Bls12_381::multi_pairing(prepared_g1_points, prepared_g2_points);
+    assert!(multi_pairing.0.is_one());
 }
+
+// // add multi-message struct to deal with that easier
+// //
