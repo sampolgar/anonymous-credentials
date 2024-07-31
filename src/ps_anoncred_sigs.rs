@@ -158,31 +158,6 @@ impl<E: Pairing> Signature<E> {
     }
 }
 
-// keygen(&message_count) handover the address of this
-// keygen(message_count) copy the message_count to whatever we're calling
-
-// fn(&message_count: &usize)  this doesn't make sense, handover the reference to the non-existing variable
-
-// fn(message_count: &usize) // &usize is a reference to the data type
-// keygen(&message_count)   //
-// let y = *message_count  needs to use *message_count. This is saying, handover a reference to the data type
-
-// fn(message_count: usize)
-// keygen(message_count) copy message_count when using keygen
-// let y = message_count no reference needed because we have the value itself
-
-// simple understanding
-// keygen(&message_count); calls a function, passes a reference to the message_count
-// keygen(message_count); calls a function, passes a copy of the message_count
-
-// let y = message_count assigns message_count to y. message_count needs to be the value and not a reference
-// let y = *message_count assigns y the value of the reference message_count
-
-// fn(message_count: usize) takes a copy of a data type usize and names it message_count
-// fn(message_count: &usize) takes a reference of a usize and names it message_count
-
-//
-//
 //
 fn keygen<E: Pairing, R: Rng>(rng: &mut R, message_count: &usize) -> (SecretKey<E>, PublicKey<E>) {
     // setup random g points for public key
@@ -203,52 +178,6 @@ fn keygen<E: Pairing, R: Rng>(rng: &mut R, message_count: &usize) -> (SecretKey<
     let x_g2 = g2.mul(x).into_affine();
     let y_g2 = yi.iter().map(|yi| g2.mul(yi)).collect::<Vec<_>>();
     let y_g2 = E::G2::normalize_batch(&y_g2);
-
-    (
-        SecretKey { x, yi, x_g1 },
-        PublicKey {
-            g1,
-            g2,
-            y_g1,
-            y_g2,
-            x_g2,
-        },
-    )
-}
-
-fn testkeygen<E: Pairing, R: Rng>(
-    rng: &mut R,
-    message_count: &usize,
-) -> (SecretKey<E>, PublicKey<E>) {
-    // setup random g points for public key
-    print!("{}", message_count);
-
-    let g1 = E::G1Affine::generator();
-    let g2 = E::G2Affine::generator();
-
-    // testing
-    let x = E::ScalarField::one();
-    let y1 = <E as Pairing>::ScalarField::one() + <E as Pairing>::ScalarField::one();
-    let y2 = y1 + <E as Pairing>::ScalarField::one();
-    let y3 = y2 + <E as Pairing>::ScalarField::one();
-    let y4 = y3 + <E as Pairing>::ScalarField::one();
-
-    let yi: Vec<<E as Pairing>::ScalarField> = vec![y1, y2, y3, y4];
-
-    let x_g1 = g1.mul(x).into_affine();
-    let y1_g1 = g1 * y1;
-    let y2_g1 = g1 * y2;
-    let y3_g1 = g1 * y3;
-    let y4_g1 = g1 * y4;
-
-    let y_g1 = E::G1::normalize_batch(&[y1_g1, y2_g1, y3_g1, y4_g1]);
-
-    let x_g2 = g2.mul(x).into_affine();
-    let y1_g2 = g2 * y1;
-    let y2_g2 = g2 * y2;
-    let y3_g2 = g2 * y3;
-    let y4_g2 = g2 * y4;
-    let y_g2 = E::G2::normalize_batch(&[y1_g2, y2_g2, y3_g2, y4_g2]);
 
     (
         SecretKey { x, yi, x_g1 },
@@ -416,7 +345,6 @@ fn test_commit_and_prove_knowledge_and_SoK() {
     let gt_commitment: PairingOutput<Bls12_381> =
         Bls12_381::pairing(sigma_prime_1.clone(), g2_commitment);
 
-    
     // Response Phase
     // generate responses for Verifier: z1 = alpha1 + e*m1, z2 = alpha2 + e*m2,... z_beta = beta + e * tt
     let z_alpha_i: Vec<Fr> = alpha_blindings
@@ -450,42 +378,7 @@ fn test_commit_and_prove_knowledge_and_SoK() {
     let e_sigma1_X = Bls12_381::pairing(sigma_prime_1, pk.x_g2);
     let pairing_fraction = e_sigma2_g2 - e_sigma1_X;
     let rhs = (pairing_fraction.mul_bigint(challenge2.into_bigint())) + gt_commitment;
-
     assert!(lhs == rhs, "SoK verification failed");
-
-    // Verifier now has
-    // - Commitment in GT of the schnorr blindings for mi and t
-    // - Responses z1 = alpha1 + e * m1;
-
-    // Verifier proves knowledge
-    // Verifier has public items sigma1 prime, Yi, g2
-    // GT_0^z1 + GT_1^z2+...+GT_beta^z_beta = (e(sigma1, X) * e(sigma2, g))^e + commitment
-    // let z_alpha_g1_points =
-    //     PairingUtils::<Bls12_381>::copy_point_to_length(sigma_prime_1, &message_count);
-    // let z_alpha_g2_points = PairingUtils::<Bls12_381>::scale_g2(&pk.y_g2, &z_alpha_i);
-
-    // let z_beta_g1_point = sigma_prime_1.clone();
-    // let z_beta_g2_point = pk.g2.clone().mul(z_beta).into_affine();
-
-    // // lhs = e(sigma1, yj)^z1 + e(sigma1, yj)^zj + e(sigma1, g)^zt
-    // let combined_g1_lhs =
-    //     PairingUtils::<Bls12_381>::combine_g1_points(&z_alpha_g1_points, &[z_beta_g1_point]);
-    // let combined_g2_lhs =
-    //     PairingUtils::<Bls12_381>::combine_g2_points(&z_alpha_g2_points, &[z_beta_g2_point]);
-
-    // let prepared_combined_g1_lhs = PairingUtils::<Bls12_381>::prepare_g1(&combined_g1_lhs);
-    // let prepared_combined_g2_lhs = PairingUtils::<Bls12_381>::prepare_g2(&combined_g2_lhs);
-    // let lhs = Bls12_381::multi_pairing(prepared_combined_g1_lhs, prepared_combined_g2_lhs);
-
-    // // rhs
-    // // (e(sigma1, X) / e(sigma2, g))^challenge2 + commitment
-    // let rhs1 = Bls12_381::pairing(sigma_prime_1.clone(), pk.x_g2);
-    // let rhs2 = Bls12_381::pairing(sigma_prime_2.clone(), pk.g2);
-
-    // let rhs3 = (rhs1 - rhs2).0.pow(challenge2);
-    // let rhs = rhs3 + commitment;
-
-    // assert!(lhs == rhs, "final pairing isn't equal");
 }
 
 #[test]
