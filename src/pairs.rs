@@ -12,7 +12,8 @@ pub struct PairingUtils<P: Pairing> {
 impl<P: Pairing> PairingUtils<P>
 // where
 //     P: Bls12Config,
-{
+{   
+    // for sigma_prime, takes in sigma_prime and copies it to the length of the vector to create pairings
     pub fn copy_point_to_length(point: P::G1Affine, length: &usize) -> Vec<P::G1Affine> {
         vec![point; *length]
     }
