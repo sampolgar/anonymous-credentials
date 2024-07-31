@@ -266,6 +266,7 @@ fn testkeygen<E: Pairing, R: Rng>(
 use super::*;
 use ark_bls12_381::{Config as Bls12_381Config, Fr, G1Affine, G1Projective, G2Affine};
 use ark_ec::bls12::{Bls12, G1Prepared, G2Prepared};
+use ark_ff::CyclotomicMultSubgroup;
 use ark_std::test_rng;
 
 #[test]
@@ -306,51 +307,10 @@ fn test_sign_and_verify() {
     assert!(is_valid, "Public signature verification failed");
 }
 
-// #[test]
-// fn test_commit_and_prove_knowledge() {
-//     // setup keys and signature first
-//     let message_count = 4;
-//     let mut rng = ark_std::test_rng();
-//     // let (sk: SecretKey<Bls12_381>, pk: PublicKey<Bls12_381>) = keygen(&mut rng, message_count);
-//     let (sk, pk) = keygen::<Bls12_381, _>(&mut rng, &message_count);
-//     let h = G1Affine::rand(&mut rng);
-
-//     // Create messages
-//     let messages: Vec<Fr> = (0..message_count)
-//         .map(|_| Fr::rand(&mut rng))
-//         .collect::<Vec<_>>();
-
-//     // create commitment for blind signature C = g^t sum Yimi
-//     let t = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
-// let C = G1Projective::msm_unchecked(&pk.y_g1, &messages) + pk.g1.mul(t);
-
-//     // create fake challenge
-//     let challenge = Fr::rand(&mut rng);
-
-//     // gather bases for proving g1, Y1, Y2, ..., Yi
-//     let mut bases = vec![pk.g1];
-//     bases.extend(pk.y_g1.iter().cloned());
-
-//     // generate commitment for proving
-//     let com_prime = SchnorrProtocol::commit(&bases, &mut rng);
-
-//     // gather exponents to prove t, m1, m2, ..., mi
-//     let mut exponents = vec![t];
-//     exponents.extend(messages.iter().cloned());
-
-//     assert!(com_prime.random_blindings.len() == bases.len() && bases.len() == exponents.len());
-
-//     let response = SchnorrProtocol::prove(&com_prime, &exponents, &challenge);
-//     let is_valid =
-//         SchnorrProtocol::verify(&bases, &C.into_affine(), &com_prime, &response, &challenge);
-
-//     assert!(is_valid, "Schnorr proof verification failed");
-// }
-
 #[test]
 fn test_commit_and_prove_knowledge_and_SoK() {
     // setup keys and signature first
-    let message_count = 4;
+    let message_count = 6;
     let mut rng = ark_std::test_rng();
     let (sk, pk) = keygen::<Bls12_381, _>(&mut rng, &message_count);
     let h = G1Affine::rand(&mut rng);
@@ -392,9 +352,8 @@ fn test_commit_and_prove_knowledge_and_SoK() {
     let is_valid = unblinded_signature.public_verify(&messages, &pk);
     assert!(is_valid, "Public signature verification failed");
 
-    
     // Signature of Knowledge
-    // 
+    //
     // Prover selects r, t and computes sigma_prime = (sigma1^r, (sigma2 + sigma1^t)^r)
     let r = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
     let tt = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
@@ -402,71 +361,28 @@ fn test_commit_and_prove_knowledge_and_SoK() {
     let sigma_prime_1 = sigma_prime.sigma1;
     let sigma_prime_2 = sigma_prime.sigma2;
 
+    //
+    // First test the pairing works
+    //
+    //
     let a = sigma_prime_1.clone();
-    print!("a, {}", a);
     let b = pk.x_g2;
-    print!("b, {}", a);
-    let ab = Bls12_381::pairing(a, b);
-
-    let c = sigma_prime_1.clone();
-    let dish = G2Projective::msm_unchecked(&pk.y_g2, &messages);
-    let cdish = Bls12_381::pairing(c, dish);
-
-    let c0 = sigma_prime_1.clone();
-    let c1 = sigma_prime_1.clone();
-    let c2 = sigma_prime_1.clone();
-    let c3 = sigma_prime_1.clone();
-
-    let d0 = pk.y_g2[0].mul(messages[0]);
-    let d1 = pk.y_g2[1].mul(messages[1]);
-    let d2 = pk.y_g2[2].mul(messages[2]);
-    let d3 = pk.y_g2[3].mul(messages[3]);
-
-    let c0d0 = Bls12_381::pairing(c0, d0);
-    let c1d1 = Bls12_381::pairing(c1, d1);
-    let c2d2 = Bls12_381::pairing(c2, d2);
-    let c3d3 = Bls12_381::pairing(c3, d3);
 
     let vec_of_sigmap =
         PairingUtils::<Bls12_381>::copy_point_to_length(sigma_prime_1.clone(), &message_count);
 
-    assert!(vec_of_sigmap.len() == sk.yi.len());
-
     let c_vec = PairingUtils::<Bls12_381>::scale_g1(&vec_of_sigmap, &messages);
-    // let d_vec2 = PairingUtils::<Bls12_381>::scale_g2(&pk.y_g2.clone(), &sk.yi);
     let d_vec = pk.y_g2.clone();
-
-    let c0d0prime = Bls12_381::pairing(c_vec[0], d_vec[0]);
-    let c1d1prime = Bls12_381::pairing(c_vec[1], d_vec[1]);
-    let c2d2prime = Bls12_381::pairing(c_vec[2], d_vec[2]);
-    let c3d3prime = Bls12_381::pairing(c_vec[3], d_vec[3]);
-
-    // assert!(d0 == d_vec2[0], "g2 points aren't equal!");
-    assert!(c0d0 == c0d0prime, "0 isn't equal!!!");
-    assert!(c1d1 == c1d1prime, "1 isn't equal!!!");
-    assert!(c2d2 == c2d2prime, "2 isn't equal!!!");
-    assert!(c3d3 == c3d3prime, "3 isn't equal!!!");
 
     let e = sigma_prime_1.clone().into_group().mul(tt).into_affine();
     let f = pk.g2;
 
-    let ef = Bls12_381::pairing(e, f);
+    let g_inv = sigma_prime_2.into_group().neg().into_affine();
+    let h = pk.g2;
 
-    let g_right = sigma_prime_2.into_group().neg().into_affine();
-    let g = sigma_prime_2.clone();
-    let h_right = pk.g2;
+    let g1_pairing_points = PairingUtils::<Bls12_381>::combine_g1_points(&c_vec, &[a, e, g_inv]);
+    let g2_pairing_points = PairingUtils::<Bls12_381>::combine_g2_points(&d_vec, &[b, f, h]);
 
-    let gh = Bls12_381::pairing(g_right, h_right);
-    let cd = c0d0 + c1d1 + c2d2 + c3d3;
-    println!("cd point is: {}", cd);
-    let sum = ab + c0d0 + c1d1 + c2d2 + c3d3 + ef + gh;
-    // let sum = ab + cdish + ef + gh;
-    assert!(sum.is_zero());
-
-    let g1_pairing_points = PairingUtils::<Bls12_381>::combine_g1_points(&c_vec, &[a, e, g_right]);
-    let g2_pairing_points = PairingUtils::<Bls12_381>::combine_g2_points(&d_vec, &[b, f, h_right]);
-
-    assert!(g1_pairing_points.len() == message_count + 3);
     let prepared_g1_points = PairingUtils::<Bls12_381>::prepare_g1(&g1_pairing_points);
     let prepared_g2_points = PairingUtils::<Bls12_381>::prepare_g2(&g2_pairing_points);
 
@@ -474,9 +390,139 @@ fn test_commit_and_prove_knowledge_and_SoK() {
     print!("multi pairing: {}", multi_pairing.0);
     assert!(multi_pairing.0.is_one());
 
-    let gt_identity = <Bls12_381 as Pairing>::TargetField::one();
-    println!("GT Identity: {}", gt_identity);
+    //
+    // Then prove signature of knowledge
+    //
+    //
+
+    // Commit Phase
+    // create blindings for mi and t
+    let alpha_blindings: Vec<Fr> = (0..message_count)
+        .map(|_| Fr::rand(&mut rng))
+        .collect::<Vec<_>>();
+
+    let beta_blinding = Fr::rand(&mut rng);
+    //  create fake challenge
+    let challenge2 = Fr::rand(&mut rng);
+
+    // create commitment to mi and t in GT
+    let mut bases = vec![pk.g2];
+    bases.extend(pk.y_g2.iter().cloned());
+
+    let mut blindings = vec![beta_blinding];
+    blindings.extend(alpha_blindings.iter().cloned());
+
+    let g2_commitment = <G2Projective as VariableBaseMSM>::msm(&bases, &blindings).unwrap();
+    let gt_commitment: PairingOutput<Bls12_381> =
+        Bls12_381::pairing(sigma_prime_1.clone(), g2_commitment);
+
+    
+    // Response Phase
+    // generate responses for Verifier: z1 = alpha1 + e*m1, z2 = alpha2 + e*m2,... z_beta = beta + e * tt
+    let z_alpha_i: Vec<Fr> = alpha_blindings
+        .iter()
+        .zip(messages.iter())
+        .map(|(alpha, message)| *alpha + challenge2 * *message) // Dereference message
+        .collect();
+
+    let z_beta = beta_blinding + challenge2 * tt;
+
+    let mut lhs_g1_points = vec![sigma_prime_1.clone()];
+    let mut lhs_g2_points = vec![pk.g2.mul(z_beta).into_affine()];
+
+    for (i, z_i) in z_alpha_i.iter().enumerate() {
+        lhs_g1_points.push(sigma_prime_1.clone());
+        lhs_g2_points.push(pk.y_g2[i].mul(z_i).into_affine());
+    }
+
+    // Compute LHS
+    let lhs = Bls12_381::multi_pairing(
+        lhs_g1_points
+            .iter()
+            .map(|p| <Bls12_381 as Pairing>::G1Prepared::from(p)),
+        lhs_g2_points
+            .iter()
+            .map(|p| <Bls12_381 as Pairing>::G2Prepared::from(p)),
+    );
+
+    // Compute RHS
+    let e_sigma2_g2 = Bls12_381::pairing(sigma_prime_2, pk.g2);
+    let e_sigma1_X = Bls12_381::pairing(sigma_prime_1, pk.x_g2);
+    let pairing_fraction = e_sigma2_g2 - e_sigma1_X;
+    let rhs = (pairing_fraction.mul_bigint(challenge2.into_bigint())) + gt_commitment;
+
+    assert!(lhs == rhs, "SoK verification failed");
+
+    // Verifier now has
+    // - Commitment in GT of the schnorr blindings for mi and t
+    // - Responses z1 = alpha1 + e * m1;
+
+    // Verifier proves knowledge
+    // Verifier has public items sigma1 prime, Yi, g2
+    // GT_0^z1 + GT_1^z2+...+GT_beta^z_beta = (e(sigma1, X) * e(sigma2, g))^e + commitment
+    // let z_alpha_g1_points =
+    //     PairingUtils::<Bls12_381>::copy_point_to_length(sigma_prime_1, &message_count);
+    // let z_alpha_g2_points = PairingUtils::<Bls12_381>::scale_g2(&pk.y_g2, &z_alpha_i);
+
+    // let z_beta_g1_point = sigma_prime_1.clone();
+    // let z_beta_g2_point = pk.g2.clone().mul(z_beta).into_affine();
+
+    // // lhs = e(sigma1, yj)^z1 + e(sigma1, yj)^zj + e(sigma1, g)^zt
+    // let combined_g1_lhs =
+    //     PairingUtils::<Bls12_381>::combine_g1_points(&z_alpha_g1_points, &[z_beta_g1_point]);
+    // let combined_g2_lhs =
+    //     PairingUtils::<Bls12_381>::combine_g2_points(&z_alpha_g2_points, &[z_beta_g2_point]);
+
+    // let prepared_combined_g1_lhs = PairingUtils::<Bls12_381>::prepare_g1(&combined_g1_lhs);
+    // let prepared_combined_g2_lhs = PairingUtils::<Bls12_381>::prepare_g2(&combined_g2_lhs);
+    // let lhs = Bls12_381::multi_pairing(prepared_combined_g1_lhs, prepared_combined_g2_lhs);
+
+    // // rhs
+    // // (e(sigma1, X) / e(sigma2, g))^challenge2 + commitment
+    // let rhs1 = Bls12_381::pairing(sigma_prime_1.clone(), pk.x_g2);
+    // let rhs2 = Bls12_381::pairing(sigma_prime_2.clone(), pk.g2);
+
+    // let rhs3 = (rhs1 - rhs2).0.pow(challenge2);
+    // let rhs = rhs3 + commitment;
+
+    // assert!(lhs == rhs, "final pairing isn't equal");
 }
 
-// // add multi-message struct to deal with that easier
-// //
+#[test]
+fn test_gt_points() {
+    let g1 = G1Affine::generator();
+    let g2 = G2Affine::generator();
+    let s1 = Fr::one();
+    let s2 = s1 + Fr::one();
+    let s3 = s2 + Fr::one();
+    let s4 = s3 + Fr::one();
+    let s5 = s4 + Fr::one();
+    let s6 = s5 + Fr::one();
+
+    let gt1 = Bls12_381::pairing(g1.mul(s1), g2.mul(s4));
+    let gt2 = Bls12_381::pairing(g1.mul(s2), g2.mul(s2));
+    assert!(gt1 == gt2);
+
+    let gt3 = Bls12_381::pairing(g1.mul(s1), g2.mul(s4));
+    let gt4 = Bls12_381::pairing(g1.mul(s1), g2.mul(s2));
+    assert!(gt3 == gt4 + gt4, "test 2");
+
+    let gt5 = Bls12_381::pairing(g1.mul(s1), g2.mul(s6));
+    let gt6 = Bls12_381::pairing(g1.mul(s2), g2.mul(s3));
+    // e(1,6) = e(2,3)
+    assert!(gt5 == gt6, "test 3");
+
+    // e(1,4) + e(1,2) = e(1,6)
+    assert!(gt3 + gt4 == gt5, "test 4");
+
+    // e(1,2)^3 = e(1,6)
+    let s3_big_int = s3.into_bigint();
+    let gt7 = gt4.mul_bigint(s3_big_int);
+    assert!(gt7 == gt5, "test 5");
+
+    // e(1,6) - e(1,2) = e(1,4) - can't divide
+    let gt8 = Bls12_381::pairing(g1.mul(s1), g2.mul(s3));
+    assert!(gt5 - gt4 == gt3, "gt5 - gt4 == gt3");
+
+    // e(1,6) - e(1,2) = e(1,4)
+}
