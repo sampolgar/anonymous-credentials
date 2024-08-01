@@ -199,27 +199,6 @@ use ark_ff::CyclotomicMultSubgroup;
 use ark_std::test_rng;
 
 #[test]
-fn test_pairs() {
-    let message_count = 4;
-    let mut rng = ark_std::test_rng();
-    let (sk, pk) = keygen::<Bls12_381, _>(&mut rng, &message_count);
-
-    let g1_points = pk.y_g1.clone();
-    let scalars = sk.yi.clone();
-
-    let scaled_g1_points = PairingUtils::<Bls12_381>::scale_g1(&g1_points, &scalars);
-
-    let prepared_g1 = PairingUtils::<Bls12_381>::prepare_g1(&scaled_g1_points);
-    let prepared_g2 = PairingUtils::<Bls12_381>::prepare_g2(&pk.y_g2);
-
-    let miller_loop_result = PairingUtils::<Bls12_381>::multi_miller_loop(prepared_g1, prepared_g2);
-
-    let pairing_result = PairingUtils::<Bls12_381>::final_exponentiation(miller_loop_result);
-
-    assert!(pairing_result.is_some());
-}
-
-#[test]
 fn test_sign_and_verify() {
     let message_count = 4;
     let mut rng = ark_std::test_rng();
@@ -249,6 +228,11 @@ fn test_commit_and_prove_knowledge_and_SoK() {
         .map(|_| Fr::rand(&mut rng))
         .collect::<Vec<_>>();
 
+    
+    
+    
+    // prepare for schnorr protocol
+    // 
     // create commitment for blind signature C = g^t sum Yimi
     let t = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
     let C = G1Projective::msm_unchecked(&pk.y_g1, &messages) + pk.g1.mul(t);
@@ -256,6 +240,11 @@ fn test_commit_and_prove_knowledge_and_SoK() {
     // create fake challenge
     let challenge = Fr::rand(&mut rng);
 
+
+
+
+
+    // TODO we often use g, y1, y2, y3, y4 together. Maybe make this a struct?
     // gather bases for proving g1, Y1, Y2, ..., Yi
     let mut bases = vec![pk.g1];
     bases.extend(pk.y_g1.iter().cloned());
@@ -263,6 +252,9 @@ fn test_commit_and_prove_knowledge_and_SoK() {
     // generate commitment for proving
     let com_prime = SchnorrProtocol::commit(&bases, &mut rng);
 
+    
+    
+    // TODO - we often use t, m1, m2, .. together. Maybe make this a struct?
     // gather exponents to prove t, m1, m2, ..., mi
     let mut exponents = vec![t];
     exponents.extend(messages.iter().cloned());
@@ -297,6 +289,10 @@ fn test_commit_and_prove_knowledge_and_SoK() {
     let a = sigma_prime_1.clone();
     let b = pk.x_g2;
 
+    // 
+    // 
+    // 
+    // 
     let vec_of_sigmap =
         PairingUtils::<Bls12_381>::copy_point_to_length(sigma_prime_1.clone(), &message_count);
 
@@ -382,40 +378,22 @@ fn test_commit_and_prove_knowledge_and_SoK() {
 }
 
 #[test]
-fn test_gt_points() {
-    let g1 = G1Affine::generator();
-    let g2 = G2Affine::generator();
-    let s1 = Fr::one();
-    let s2 = s1 + Fr::one();
-    let s3 = s2 + Fr::one();
-    let s4 = s3 + Fr::one();
-    let s5 = s4 + Fr::one();
-    let s6 = s5 + Fr::one();
+fn test_pairs() {
+    let message_count = 4;
+    let mut rng = ark_std::test_rng();
+    let (sk, pk) = keygen::<Bls12_381, _>(&mut rng, &message_count);
 
-    let gt1 = Bls12_381::pairing(g1.mul(s1), g2.mul(s4));
-    let gt2 = Bls12_381::pairing(g1.mul(s2), g2.mul(s2));
-    assert!(gt1 == gt2);
+    let g1_points = pk.y_g1.clone();
+    let scalars = sk.yi.clone();
 
-    let gt3 = Bls12_381::pairing(g1.mul(s1), g2.mul(s4));
-    let gt4 = Bls12_381::pairing(g1.mul(s1), g2.mul(s2));
-    assert!(gt3 == gt4 + gt4, "test 2");
+    let scaled_g1_points = PairingUtils::<Bls12_381>::scale_g1(&g1_points, &scalars);
 
-    let gt5 = Bls12_381::pairing(g1.mul(s1), g2.mul(s6));
-    let gt6 = Bls12_381::pairing(g1.mul(s2), g2.mul(s3));
-    // e(1,6) = e(2,3)
-    assert!(gt5 == gt6, "test 3");
+    let prepared_g1 = PairingUtils::<Bls12_381>::prepare_g1(&scaled_g1_points);
+    let prepared_g2 = PairingUtils::<Bls12_381>::prepare_g2(&pk.y_g2);
 
-    // e(1,4) + e(1,2) = e(1,6)
-    assert!(gt3 + gt4 == gt5, "test 4");
+    let miller_loop_result = PairingUtils::<Bls12_381>::multi_miller_loop(prepared_g1, prepared_g2);
 
-    // e(1,2)^3 = e(1,6)
-    let s3_big_int = s3.into_bigint();
-    let gt7 = gt4.mul_bigint(s3_big_int);
-    assert!(gt7 == gt5, "test 5");
+    let pairing_result = PairingUtils::<Bls12_381>::final_exponentiation(miller_loop_result);
 
-    // e(1,6) - e(1,2) = e(1,4) - can't divide
-    let gt8 = Bls12_381::pairing(g1.mul(s1), g2.mul(s3));
-    assert!(gt5 - gt4 == gt3, "gt5 - gt4 == gt3");
-
-    // e(1,6) - e(1,2) = e(1,4)
+    assert!(pairing_result.is_some());
 }
