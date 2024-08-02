@@ -345,7 +345,7 @@ fn test_commit_and_prove_knowledge_and_SoK() {
     let gt_commitment: PairingOutput<Bls12_381> =
         Bls12_381::pairing(sigma_prime_1.clone(), g2_commitment);
 
-    // Response Phase
+    // Response Phasex
     // generate responses for Verifier: z1 = alpha1 + e*m1, z2 = alpha2 + e*m2,... z_beta = beta + e * tt
     let z_alpha_i: Vec<Fr> = alpha_blindings
         .iter()
