@@ -1,6 +1,17 @@
-use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
-use ark_std::UniformRand;
+use ark_bls12_381::{Bls12_381, Config as Bls12_381Config, Fr, G1Affine, G1Projective, G2Affine};
+use ark_ec::bls12::{Bls12, G1Prepared, G2Prepared};
+use ark_ec::pairing::{MillerLoopOutput, Pairing, PairingOutput};
+use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
+use ark_ff::CyclotomicMultSubgroup;
+use ark_ff::{Field, PrimeField, UniformRand};
+use ark_r1cs_std::uint;
+use ark_std::test_rng;
+use ark_std::{
+    ops::{Add, Mul, Neg},
+    rand::Rng,
+    sync::Mutex,
+    One, Zero,
+};
 // Type aliases for clarity
 type G1A = G1Affine;
 type G2A = G2Affine;
@@ -67,5 +78,44 @@ mod tests {
 
         // Test pairing equality: e(a*G1, b*G2) = e(G1, ab*G2)
         assert!(compare_pairings(&g1_mul1, &g2_mul2, &g1, &g2_mul1_2));
+    }
+
+    #[test]
+    fn test_gt_points() {
+        let g1 = G1Affine::generator();
+        let g2 = G2Affine::generator();
+        let s1 = Fr::one();
+        let s2 = s1 + Fr::one();
+        let s3 = s2 + Fr::one();
+        let s4 = s3 + Fr::one();
+        let s5 = s4 + Fr::one();
+        let s6 = s5 + Fr::one();
+
+        let gt1 = Bls12_381::pairing(g1.mul(s1), g2.mul(s4));
+        let gt2 = Bls12_381::pairing(g1.mul(s2), g2.mul(s2));
+        assert!(gt1 == gt2);
+
+        let gt3 = Bls12_381::pairing(g1.mul(s1), g2.mul(s4));
+        let gt4 = Bls12_381::pairing(g1.mul(s1), g2.mul(s2));
+        assert!(gt3 == gt4 + gt4, "test 2");
+
+        let gt5 = Bls12_381::pairing(g1.mul(s1), g2.mul(s6));
+        let gt6 = Bls12_381::pairing(g1.mul(s2), g2.mul(s3));
+        // e(1,6) = e(2,3)
+        assert!(gt5 == gt6, "test 3");
+
+        // e(1,4) + e(1,2) = e(1,6)
+        assert!(gt3 + gt4 == gt5, "test 4");
+
+        // e(1,2)^3 = e(1,6)
+        let s3_big_int = s3.into_bigint();
+        let gt7 = gt4.mul_bigint(s3_big_int);
+        assert!(gt7 == gt5, "test 5");
+
+        // e(1,6) - e(1,2) = e(1,4) - can't divide
+        let gt8 = Bls12_381::pairing(g1.mul(s1), g2.mul(s3));
+        assert!(gt5 - gt4 == gt3, "gt5 - gt4 == gt3");
+
+        // e(1,6) - e(1,2) = e(1,4)
     }
 }
