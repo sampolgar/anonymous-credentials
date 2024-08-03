@@ -255,6 +255,10 @@ mod test {
 
         assert!(is_valid, "Schnorr proof verification failed");
 
+        
+        
+        
+        
         // if signer is convinced, she signs
         let blind_signature =
             Signature::<Bls12_381>::blind_sign(&pk, &sk, &C.into_affine(), &mut rng);

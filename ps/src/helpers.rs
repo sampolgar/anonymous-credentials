@@ -178,12 +178,66 @@ impl Helpers {
             points,
         )
     }
+
+    /// Combines a single scalar with a vector of scalars.
+    ///
+    /// # Arguments
+    ///
+    /// * `additional_scalar` - A single scalar to be added at the start
+    /// * `scalars` - A slice of scalar field elements
+    ///
+    /// # Returns
+    ///
+    /// A vector of scalar field elements with the additional scalar at the start
+    pub fn add_scalar_to_vector<E: Pairing>(
+        additional_scalar: &E::ScalarField,
+        scalars: &[E::ScalarField],
+    ) -> Vec<E::ScalarField> {
+        let mut all_scalars = vec![*additional_scalar];
+        all_scalars.extend_from_slice(scalars);
+        all_scalars
+    }
+
+    /// Combines a single group element with a vector of group elements.
+    ///
+    /// # Arguments
+    ///
+    /// * `additional_element` - A single group element to be added at the start
+    /// * `elements` - A slice of group elements
+    ///
+    /// # Returns
+    ///
+    /// A vector of group elements with the additional element at the start
+    pub fn add_group_element_to_vector<G: Group>(additional_element: &G, elements: &[G]) -> Vec<G> {
+        let mut all_elements = vec![*additional_element];
+        all_elements.extend_from_slice(elements);
+        all_elements
+    }
+
+    /// Combines a single affine group element with a vector of affine group elements.
+    ///
+    /// # Arguments
+    ///
+    /// * `additional_element` - A single affine group element to be added at the start
+    /// * `elements` - A slice of affine group elements
+    ///
+    /// # Returns
+    ///
+    /// A vector of affine group elements with the additional element at the start
+    pub fn add_affine_to_vector<G: CurveGroup>(
+        additional_element: &G::Affine,
+        elements: &[G::Affine],
+    ) -> Vec<G::Affine> {
+        let mut all_elements = vec![*additional_element];
+        all_elements.extend_from_slice(elements);
+        all_elements
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
+    use ark_bls12_381::{Bls12_381, Fr, G1Affine, G1Projective, G2Affine};
     use ark_std::rand::thread_rng;
     use ark_std::UniformRand;
 
@@ -263,5 +317,18 @@ mod tests {
         for point in scaled_points {
             assert!(point.is_on_curve());
         }
+    }
+
+    #[test]
+    fn test_add_affine_to_vector() {
+        let mut rng = thread_rng();
+        let additional_element = G1Affine::rand(&mut rng);
+        let elements: Vec<G1Affine> = (0..5).map(|_| G1Affine::rand(&mut rng)).collect();
+
+        let result = Helpers::add_affine_to_vector::<G1Projective>(&additional_element, &elements);
+
+        assert_eq!(result.len(), 6);
+        assert_eq!(result[0], additional_element);
+        assert_eq!(result[1..], elements[..]);
     }
 }
