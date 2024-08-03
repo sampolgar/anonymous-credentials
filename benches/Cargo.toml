@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ps = { path = "../ps"}
 ark-ff = { workspace = true }
 ark-ec = { workspace = true }
 ark-std = { workspace = true }
@@ -14,6 +13,10 @@ serde_with = { workspace = true }
 itertools = { workspace = true }
 zeroize = { workspace = true }
 blake2 = { version = "0.10", default-features = false }
+schnorr = {default-features = false, path = "../schnorr" }
+utils = {default-features = false, path = "../utils" }
+ps = {default-features = false, path = "../ps" }
+
 
 [dev-dependencies]
 criterion = "0.5"

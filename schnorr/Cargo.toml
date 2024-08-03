@@ -1,0 +1,30 @@
+[package]
+name = "schnorr"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+ark-ff.workspace = true
+ark-ec.workspace = true
+ark-std.workspace = true
+ark-serialize.workspace = true
+rayon = {workspace = true, optional = true}
+digest.workspace = true
+serde.workspace = true
+serde_with.workspace = true
+zeroize.workspace = true
+utils = {default-features = false, path = "../utils" }
+ark-bls12-381.workspace = true
+ark-poly.workspace = true
+
+[dev-dependencies]
+blake2.workspace = true
+serde_json = "1.0"
+
+[features]
+default = [ "parallel" ]
+parallel = [ "std", "ark-ff/parallel", "ark-ec/parallel", "ark-std/parallel", "rayon" ]
+std = ["serde/std", "ark-serialize/std", "ark-std/std", "ark-poly/std", "ark-ec/std", "ark-ff/std"]

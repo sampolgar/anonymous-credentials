@@ -3,7 +3,6 @@
 //! Schnorr protocol to prove knowledge of 1 or more discrete logs in zero knowledge.
 //! Refer [this](https://crypto.stanford.edu/cs355/19sp/lec5.pdf) for more details of Schnorr protocol.
 
-use crate::pairing::PairingCheck;
 use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
 use ark_ec::pairing::{MillerLoopOutput, Pairing, PairingOutput};
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
@@ -16,6 +15,10 @@ use ark_std::{
     UniformRand,
 };
 use digest::Digest;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use utils::pairing::PairingCheck;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SchnorrCommitment<G: AffineRepr> {

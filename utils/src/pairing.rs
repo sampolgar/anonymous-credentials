@@ -3,12 +3,10 @@ use ark_ec::{
     CurveGroup,
 };
 // {AffineCurve, PairingEngine, ProjectiveCurve};
-use crate::pairing_util::PairingTuple;
 use ark_ff::{Field, PrimeField};
-use ark_std::test_rng;
 use ark_std::{ops::Mul, rand::Rng, sync::Mutex, One, UniformRand, Zero};
+use itertools::Itertools;
 use rayon::prelude::*;
-
 use std::ops::MulAssign;
 
 /// PairingCheck represents a check of the form e(A,B)e(C,D)... = T. Checks can
@@ -206,35 +204,35 @@ fn mul_if_not_one<E: Pairing>(
 mod test {
     use super::*;
     use ark_bls12_381::{Bls12_381 as Bls12, G1Affine, G1Projective, G2Affine, G2Projective};
+    use ark_std::test_rng;
     use ark_std::{rand::Rng, UniformRand};
 
     fn gen_pairing_check<R: Rng + Send>(r: &mut R) -> PairingCheck<Bls12> {
         let g1r = G1Projective::rand(r);
         let g2r = G2Projective::rand(r);
-        
+
         // expected output from g1r and g2r
         let exp = Bls12::pairing(g1r.clone(), g2r.clone());
 
         // Wrap the random number generator in a Mutex for safe data parallelism
         let mr = Mutex::new(r);
-        
+
         // the pairing lhs should equal the expected output
         let tuple =
             PairingCheck::<Bls12>::rand(&mr, &[(&g1r.into_affine(), &g2r.into_affine())], &exp.0);
-        
-        
+
         assert!(tuple.verify());
         tuple
     }
     #[test]
     fn test_pairing_randomize() {
         let mut rng = test_rng();
-        
+
         let tuples = (0..3)
             .map(|_| gen_pairing_check(&mut rng))
             .collect::<Vec<_>>();
-        
-        // 
+
+        //
         let final_tuple = tuples
             .iter()
             .fold(PairingCheck::<Bls12>::new(), |mut acc, tu| {

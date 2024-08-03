@@ -95,3 +95,30 @@ What does into_iter() do differently?
         .zip(messages.iter())
         .map(|(alpha, message)| alpha + challenge2 * *message) // Dereference message
         .collect();
+
+expects a slice of references to tuples, but we're providing a vector of owned tuples
+expected reference `&[(&ark_ec::short_weierstrass::Affine<ark_bls12_381::g1::Config>, &ark_ec::short_weierstrass::Affine<ark_bls12_381::g2::Config>)]`
+found reference `&std::vec::Vec<(ark_ec::short_weierstrass::Affine<ark_bls12_381::g1::Config>, ark_ec::short_weierstrass::Affine<ark_bls12_381::g2::Config>)>`
+
+before
+let mut lhs_pairs = vec![(sigma_prime_1, pk.g2.mul(z_beta).into_affine())];
+
+after
+let lhs_pairs: Vec<(&G1Affine, &G2Affine)> = vec![
+    (&sigma_prime_1, &pk.g2.mul(z_beta).into_affine())
+];
+
+change
+define Vec<(&G1Affine, &G2Affine)>
+
+let y_g1 = E::G1::normalize_batch(&y_g1);
+
+
+
+
+a value of type `std::vec::Vec<<G as ark_ec::CurveGroup>::Affine>` cannot be built from an iterator over elements of type `G`
+the trait `std::iter::FromIterator<G>` is not implemented for `std::vec::Vec<<G as ark_ec::CurveGroup>::Affine>`
+
+An iterator in Rust is an object that allows you to traverse a sequence of elements. It's a trait that provides methods to access elements one by one.
+The collect() method is used to transform an iterator into a collection (like a Vec).
+In our case, we're trying to collect a sequence of G (which are projective points) into a Vec<G::Affine> (which is a vector of affine points). This is causing the type mismatch.
