@@ -16,9 +16,9 @@ digest.workspace = true
 serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true
-utils = {default-features = false, path = "../utils" }
 ark-bls12-381.workspace = true
 ark-poly.workspace = true
+utils = {default-features = false, path = "../utils" }
 
 [dev-dependencies]
 blake2.workspace = true

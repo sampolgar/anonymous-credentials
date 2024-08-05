@@ -1,8 +1,7 @@
-// use ark_bls12_381::Fr;
-// use ark_ff::UniformRand;
-// use ark_std::test_rng;
-// use criterion::{black_box, criterion_group, criterion_main, Criterion};
-// use ps::{keygen, sign, verify, PublicKey, SecretKey, Signature};
+use ark_bls12_381::Fr;
+use ark_ff::UniformRand;
+use ark_std::test_rng;
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 // fn benchmark_keygen(c: &mut Criterion) {
 //     let mut group = c.benchmark_group("PS Signature");
@@ -46,5 +45,6 @@
 
 // // Add similar functions for sign and verify
 
-// criterion_group!(benches, benchmark_keygen, benchmark_sign, benchmark_verify); // Add other benchmark functions here
+// criterion_group!(benches); // Add other benchmark functions here
+//                            // criterion_group!(benches, benchmark_keygen, benchmark_sign, benchmark_verify); // Add other benchmark functions here
 // criterion_main!(benches);

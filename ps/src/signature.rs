@@ -20,6 +20,12 @@ pub struct Signature<E: Pairing> {
     pub sigma2: E::G1Affine,
 }
 
+pub struct SignatureMessages<E: Pairing> {
+    pub messages: Vec<E::ScalarField>,
+    pub t: E::ScalarField,
+    pub tt: E::ScalarField,
+}
+
 impl<E: Pairing> Signature<E> {
     //
     pub fn blind_sign<R: Rng>(

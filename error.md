@@ -122,3 +122,10 @@ the trait `std::iter::FromIterator<G>` is not implemented for `std::vec::Vec<<G 
 An iterator in Rust is an object that allows you to traverse a sequence of elements. It's a trait that provides methods to access elements one by one.
 The collect() method is used to transform an iterator into a collection (like a Vec).
 In our case, we're trying to collect a sequence of G (which are projective points) into a Vec<G::Affine> (which is a vector of affine points). This is causing the type mismatch.
+
+
+Explain
+PairingOutput<E>
+E::TargetField 
+
+PairingOutput is a wrapper around TargetField
