@@ -202,48 +202,71 @@ mod test {
         let disclosed_length = message_count / 2;
         let disclosed_indices: Vec<usize> = (0..disclosed_length).collect();
         let mut disclosed_messages = vec![];
+        let mut disclosed_bases_g2 = vec![];
         let mut hidden_messages = vec![tt];
-        let mut bases_g2 = vec![pk.g2];
+        let mut hidden_bases_g2 = vec![pk.g2];
+
         for (i, m) in messages.iter().enumerate() {
             if disclosed_indices.contains(&i) {
                 disclosed_messages.insert(0, *m);
+                disclosed_bases_g2.insert(0, pk.y_g2[i]);
             } else {
                 hidden_messages.insert(0, *m);
-                bases_g2.insert(0, pk.y_g2[i]);
+                hidden_bases_g2.insert(0, pk.y_g2[i]);
             }
         }
 
         // commit to hidden messages and prove it later. This is like g^t*Y1*m1 for all hidden m
         let bases_g1 =
-            Helpers::copy_point_to_length_g1::<Bls12_381>(sigma_prime_1, &bases_g2.len());
+            Helpers::copy_point_to_length_g1::<Bls12_381>(sigma_prime_1, &hidden_bases_g2.len());
         let witness_scaled_g1_points =
             Helpers::compute_scaled_points_g1::<Bls12_381>(None, None, &hidden_messages, &bases_g1);
         let witness_commitment_gt =
-            Helpers::compute_gt::<Bls12_381>(&witness_scaled_g1_points, &bases_g2);
-
+            Helpers::compute_gt::<Bls12_381>(&witness_scaled_g1_points, &hidden_bases_g2);
 
         // generate proving commitment
         let schnorr_commitment_gt =
-            SchnorrProtocolPairing::commit::<Bls12_381, _>(&bases_g1, &bases_g2, &mut rng);
+            SchnorrProtocolPairing::commit::<Bls12_381, _>(&bases_g1, &hidden_bases_g2, &mut rng);
 
         let challenge2 = Fr::rand(&mut rng);
 
         // gen vector [tt, m1, m2, m....
-        let m_vector = Helpers::add_scalar_to_vector::<Bls12_381>(&tt, &hidden_messages);
+        // let m_vector = Helpers::add_scalar_to_vector::<Bls12_381>(&tt, &hidden_messages);
         let responses =
-            SchnorrProtocolPairing::prove(&schnorr_commitment_gt, &m_vector, &challenge2);
-
-        // Prover proves knowledge of hidden elements.
+            SchnorrProtocolPairing::prove(&schnorr_commitment_gt, &hidden_messages, &challenge2);
 
         let isvalid = SchnorrProtocolPairing::verify(
             &schnorr_commitment_gt.t_com,
-            &signature_commitment_gt,
+            &witness_commitment_gt,
             &challenge2,
             &bases_g1,
-            &bases_g2,
+            &hidden_bases_g2,
             &responses.0,
         );
 
         assert!(isvalid, "pairing not valid");
+
+        // we proved the commitment is valid
+        // if we use this commitment with the messages and public generators we sent
+        // Verification involves schnorr_commitment_gt and
+        // Verifier computes pairings of disclosed items
+        let sigma_1_vector =
+            Helpers::copy_point_to_length_g1::<Bls12_381>(sigma_prime_1, &disclosed_length);
+        let disclosed_m_scaled_g1 = Helpers::compute_scaled_points_g1::<Bls12_381>(
+            None,
+            None,
+            &disclosed_messages,
+            &sigma_1_vector,
+        );
+        let disclosed_messages_gt =
+            Helpers::compute_gt::<Bls12_381>(&disclosed_m_scaled_g1, &disclosed_bases_g2);
+
+        // to verify with pairing equation, add undisclosed to disclosed
+        let public_and_private_gt = witness_commitment_gt + disclosed_messages_gt;
+        let lhs = public_and_private_gt;
+        let rhs = signature_commitment_gt;
+        assert!(lhs == rhs, "lhs neq rhs");
     }
+
+    
 }
