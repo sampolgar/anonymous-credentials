@@ -75,6 +75,8 @@ mod test {
         let is_valid = unblinded_signature.public_verify(&messages, &pk);
         assert!(is_valid, "Public signature verification failed");
 
+        //
+        //
         // Signature of Knowledge
         //
         let r = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
@@ -121,7 +123,8 @@ mod test {
         assert!(isvalid, "pairing not valid");
     }
 
-    fn test_multiattribute_selectivedisclosure_ps() {
+    #[test]
+    fn test_multiattribute_ps_selectivedisclosure() {
         // setup / keygen
         //
         let message_count = 6;
@@ -172,7 +175,9 @@ mod test {
         let is_valid = unblinded_signature.public_verify(&messages, &pk);
         assert!(is_valid, "Public signature verification failed");
 
-        // Signature of Knowledge
+        //
+        //
+        // Signature of Knowledge with selective disclosure
         //
         let r = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
         let tt = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
@@ -190,10 +195,32 @@ mod test {
             &[pk.g2, pk.x_g2],
         );
 
-        // generate commitment to secret exponents tt, m1, ... ,mn
-        let base_length = message_count + 1;
-        let bases_g1 = Helpers::copy_point_to_length_g1::<Bls12_381>(sigma_prime_1, &base_length);
-        let bases_g2 = Helpers::add_affine_to_vector::<G2Projective>(&pk.g2, &pk.y_g2);
+        //
+        // magic starts here
+        //
+        //  split messages to disclosed and undisclosed
+        let disclosed_length = message_count / 2;
+        let disclosed_indices: Vec<usize> = (0..disclosed_length).collect();
+        let mut disclosed_messages = vec![];
+        let mut hidden_messages = vec![tt];
+        let mut bases_g2 = vec![pk.g2];
+        for (i, m) in messages.iter().enumerate() {
+            if disclosed_indices.contains(&i) {
+                disclosed_messages.insert(0, *m);
+            } else {
+                hidden_messages.insert(0, *m);
+                bases_g2.insert(0, pk.y_g2[i]);
+            }
+        }
+
+        // commit to hidden messages and prove it later. This is like g^t*Y1*m1 for all hidden m
+        let bases_g1 =
+            Helpers::copy_point_to_length_g1::<Bls12_381>(sigma_prime_1, &bases_g2.len());
+        let witness_scaled_g1_points =
+            Helpers::compute_scaled_points_g1::<Bls12_381>(None, None, &hidden_messages, &bases_g1);
+        let witness_commitment_gt =
+            Helpers::compute_gt::<Bls12_381>(&witness_scaled_g1_points, &bases_g2);
+
 
         // generate proving commitment
         let schnorr_commitment_gt =
@@ -202,9 +229,11 @@ mod test {
         let challenge2 = Fr::rand(&mut rng);
 
         // gen vector [tt, m1, m2, m....
-        let m_vector = Helpers::add_scalar_to_vector::<Bls12_381>(&tt, &messages);
+        let m_vector = Helpers::add_scalar_to_vector::<Bls12_381>(&tt, &hidden_messages);
         let responses =
             SchnorrProtocolPairing::prove(&schnorr_commitment_gt, &m_vector, &challenge2);
+
+        // Prover proves knowledge of hidden elements.
 
         let isvalid = SchnorrProtocolPairing::verify(
             &schnorr_commitment_gt.t_com,

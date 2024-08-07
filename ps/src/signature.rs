@@ -105,63 +105,70 @@ impl<E: Pairing> Signature<E> {
         multi_pairing.0.is_one()
     }
 
-    /// Process:
-    /// 1. Randomize the signature
-    /// 2. Create Schnorr proof for hidden messages and randomization factor
-    /// 3. Compute signature commitment in GT
-    /// 4. Return proof containing randomized signature, Schnorr proof, and disclosed messages
-    pub fn prove_selective_disclosure<R: Rng>(
-        &self,
-        pk: &keygen::PublicKey<E>,
-        messages: &[E::ScalarField],
-        disclosed_indices: &[usize],
-        rng: &mut R,
-    ) -> SelectiveDisclosureProof<E> {
-        let r = E::ScalarField::rand(rng);
-        let t = E::ScalarField::rand(rng);
-        let proof_length = disclosed_indices.len() + 1; //t + m for undisclosed m
-        let randomized_sig = self.randomize_for_pok(&r, &t);
+    // /// Process:
+    // /// 1. Randomize the signature
+    // /// 2. Create Schnorr proof for hidden messages and randomization factor
+    // /// 3. Compute signature commitment in GT
+    // /// 4. Return proof containing randomized signature, Schnorr proof, and disclosed messages
+    // pub fn prove_selective_disclosure<R: Rng>(
+    //     &self,
+    //     pk: &keygen::PublicKey<E>,
+    //     messages: &[E::ScalarField],
+    //     disclosed_indices: &[usize],
+    //     rng: &mut R,
+    // ) -> SelectiveDisclosureProof<E> {
+    //     let r = E::ScalarField::rand(rng);
+    //     let t = E::ScalarField::rand(rng);
+    //     let proof_length = messages.len() - disclosed_indices.len() + 1; //t + m1,m2,.., for hidden messages + t
+    //     let randomized_sig = self.randomize_for_pok(&r, &t);
 
-        // prepare bases and exponents for proof
-        let bases_g1 =
-            Helpers::copy_point_to_length_g1::<E>(randomized_sig.sigma1.clone(), &proof_length);
-        let bases_g2 = Helpers::add_affine_to_vector::<E::G2>(&pk.g2, &pk.y_g2);
+    //     // prepare bases and exponents for proof
+    //     let bases_g1_undisclosed =
+    //         Helpers::copy_point_to_length_g1::<E>(randomized_sig.sigma1.clone(), &proof_length);
+    //     let bases_g2_undisclosed = Helpers::add_affine_to_vector::<E::G2>(&pk.g2, &pk.y_g2);
 
-        let mut exponents = vec![t];
-        for (i, m) in messages.iter().enumerate() {
-            if !disclosed_indices.contains(&i) {
-                exponents.push(*m);
-            }
-        }
+    //     // add undisclosed exponents to the commitment
+    //     let mut exponents = vec![t];
+    //     for (i, m) in messages.iter().enumerate() {
+    //         if !disclosed_indices.contains(&i) {
+    //             exponents.push(*m);
+    //         }
+    //     }
 
-        // generate blindings and commitment to blindings for messages size of hidden messages
-        let schnorr_commitment = SchnorrProtocolPairing::commit::<E, _>(&bases_g1, &bases_g2, rng);
+    //     // generate commitment to the sizesecret exponents tt, m1, ... ,mn
+    //     let schnorr_commitment = SchnorrProtocolPairing::commit::<E, _>(
+    //         &bases_g1_undisclosed,
+    //         &bases_g2_undisclosed,
+    //         rng,
+    //     );
 
-        let signature_commitment = Helpers::compute_gt::<E>(
-            &[
-                randomized_sig.sigma2,
-                randomized_sig.sigma1.into_group().neg().into_affine(),
-            ],
-            &[pk.g2, pk.x_g2],
-        );
+    //     // generate a commitment to the signature
+    //     // e(sigma2p, pk.g2) * e(sigma1p, -pk.xg2)
+    //     let signature_commitment = Helpers::compute_gt::<E>(
+    //         &[
+    //             randomized_sig.sigma2,
+    //             randomized_sig.sigma1.into_group().neg().into_affine(),
+    //         ],
+    //         &[pk.g2, pk.x_g2],
+    //     );
 
-        SelectiveDisclosureProof {
-            randomized_sig,
-            schnorr_commitment,
-            signature_commitment,
-            disclosed_indices: disclosed_indices.to_vec(),
-            disclosed_messages: disclosed_indices.iter().map(|&i| messages[i]).collect(),
-        }
-    }
+    //     SelectiveDisclosureProof {
+    //         randomized_sig,
+    //         schnorr_commitment,
+    //         signature_commitment,
+    //         disclosed_indices: disclosed_indices.to_vec(),
+    //         disclosed_messages: disclosed_indices.iter().map(|&i| messages[i]).collect(),
+    //     }
+    // }
 }
 
-pub struct SelectiveDisclosureProof<E: Pairing> {
-    randomized_sig: Signature<E>,
-    schnorr_commitment: SchnorrCommitmentPairing<E>,
-    signature_commitment: PairingOutput<E>,
-    disclosed_indices: Vec<usize>,
-    disclosed_messages: Vec<E::ScalarField>,
-}
+// pub struct SelectiveDisclosureProof<E: Pairing> {
+//     randomized_sig: Signature<E>,
+//     schnorr_commitment: SchnorrCommitmentPairing<E>,
+//     signature_commitment: PairingOutput<E>,
+//     disclosed_indices: Vec<usize>,
+//     disclosed_messages: Vec<E::ScalarField>,
+// }
 
 /// Verifies the pairing equation for the selective disclosure proof
 ///
@@ -170,11 +177,37 @@ pub struct SelectiveDisclosureProof<E: Pairing> {
 /// 2. Compute RHS: e(σ₁', X) * ∏ᵢ₍ᵈᵢₛcˡₒₛₑᵈ₎ e(σ₁', Yᵢ)^mᵢ
 /// 3. Implicitly verify undisclosed messages (handled by Schnorr proof)
 /// 4. Check if LHS == RHS
-impl<E: Pairing> SelectiveDisclosureProof<E> {
-    fn verify_signature_commitment(&self, pk: &keygen::PublicKey<E>) -> bool {
-        //Implement
-    }
-}
+// impl<E: Pairing> SelectiveDisclosureProof<E> {
+//     fn verify_signature_commitment(
+//         &self,
+//         pk: &keygen::PublicKey<E>,
+//         challenge: &E::ScalarField,
+//     ) -> bool {
+//         self.verify_schnorr_proof(pk, challenge) && self.verify_signature_commitment(pk)
+//     }
+
+//     fn verify_schnorr_proof(&self, pk: &keygen::PublicKey<E>, challenge: &E::ScalarField) -> bool {
+//         // Reconstruct the bases for verification
+//         let mut bases_g1 = vec![self.randomized_sig.sigma1]; // For t
+//         let mut bases_g2 = vec![pk.g2]; // For t
+
+//         // create e(sigma1p, Yi)^mi for hidden messages
+//         for i in 0..pk.y_g2.len() {
+//             if !self.disclosed_indices.contains(&i) {
+//                 bases_g1.push(self.randomized_sig.sigma1);
+//                 bases_g2.push(pk.y_g2[i]);
+//             }
+//         }
+
+//         SchnorrProtocolPairing::verify(
+//             &self.schnorr_commitment.t_com,
+//             &self.signature_commitment,
+//             challenge,
+//             &bases_g1,
+//             &bases_g2,
+//         )
+//     }
+// }
 
 #[cfg(feature = "parallel")]
 #[cfg(test)]

@@ -129,3 +129,31 @@ PairingOutput<E>
 E::TargetField 
 
 PairingOutput is a wrapper around TargetField
+
+
+
+
+Selective Disclosure with standard group
+We have commitment C = g^t * Y1^m1 * Y2^m2...
+We want to disclose m1
+Prover reveal m1, computes C' = g^t * Y2^m2 and proves C' = C / Y1m1
+Runs PoK for t, m2
+
+Verification
+1. ensure disclosed values are consistent with original commitment: e(C / (Y1m1), g) = e(C', g)
+2. verify pok of hidden values
+
+
+Selective disclosure with GT points
+1. Prover creates a schnorr proof for undisclosed attributes and randomization factor 
+e(σ₁', g₂)^t * ∏ e(σ₁', Yi)^mi for undisclosed
+
+2. Compute commitment to the randomized signature as per Signature of Knowledge protocol
+3. Prover reveals disclosed attributes
+Verification
+4. Verifier checks schnorr proof for 1
+5. Verifier checks pairing equation
+ *  e(σ₁', Yi)^mi for disclosed = 
+
+= 
+e(σ₁', -X)*e(σ₂', g₂) = e(σ₁', g₂)^t * ∏ e(σ₁', Yi)^mi for undisclosed
