@@ -1,5 +1,5 @@
 use crate::{keygen, signature};
-use ark_ff::{Field, PrimeField, UniformRand};
+use ark_ff::{Field, PrimeField, UniformRand, Zero};
 use ark_std::{
     ops::{Mul, Neg},
     rand::Rng,
@@ -75,7 +75,6 @@ mod test {
         let is_valid = unblinded_signature.public_verify(&messages, &pk);
         assert!(is_valid, "Public signature verification failed");
 
-        //
         //
         // Signature of Knowledge
         //
@@ -268,5 +267,145 @@ mod test {
         assert!(lhs == rhs, "lhs neq rhs");
     }
 
-    
+    #[test]
+    fn test_multiattribute_ps_equality() {
+        // Setup
+        let message_count = 4;
+        let mut rng = ark_std::test_rng();
+        let key_pair = keygen::keygen::<Bls12_381, _>(&mut rng, &message_count);
+        let sk = key_pair.sk;
+        let pk = key_pair.pk;
+
+        // Create messages
+        let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
+
+        // Set one message to be our "hidden" value (e.g., "australia")
+        let equality_index = 1; // Assuming the second attribute is the one we want to prove equality for
+        let equal_value = messages[equality_index];
+        let equal_value_blindness = Fr::rand(&mut rng);
+        let mut prepared_blindness = vec![Fr::zero(); message_count + 1];
+        prepared_blindness[equality_index] = equal_value_blindness;
+
+        // Sign the messages
+        let t = Fr::rand(&mut rng);
+        let signature_commitment =
+            Helpers::compute_commitment_g1::<Bls12_381>(&t, &pk.g1, &messages, &pk.y_g1);
+        let blind_signature =
+            Signature::<Bls12_381>::blind_sign(&pk, &sk, &signature_commitment, &mut rng);
+        let signature = blind_signature.unblind(&t);
+
+        // Verify the signature
+        assert!(
+            signature.public_verify(&messages, &pk),
+            "Signature verification failed"
+        );
+
+        // Prepare for the Signature of Knowledge (SoK)
+        let r = Fr::rand(&mut rng);
+        let tt = Fr::rand(&mut rng);
+        let randomized_sig = signature.randomize_for_pok(&r, &tt);
+
+        // Compute the signature commitment in GT
+        let sig_commitment_gt = Helpers::compute_gt::<Bls12_381>(
+            &[
+                randomized_sig.sigma2,
+                randomized_sig.sigma1.into_group().neg().into_affine(),
+            ],
+            &[pk.g2, pk.x_g2],
+        );
+
+        // Prepare bases for the SoK
+        let bases_g1 = vec![randomized_sig.sigma1; message_count + 1]; // One for tt, and one for each message
+                                                                       // now adding g2 to the back instead of the front
+        let mut bases_g2: Vec<_> = pk.y_g2.iter().cloned().collect();
+        bases_g2.push(pk.g2);
+        // Generate the Schnorr commitment for SoK
+        let sok_commitment = SchnorrProtocolPairing::commit_with_prepared_blindness::<Bls12_381, _>(
+            &bases_g1,
+            &bases_g2,
+            &prepared_blindness,
+            &mut rng,
+        );
+
+        // Prepare witnesses for SoK (tt and all messages)
+        let mut sok_witnesses = messages.clone();
+        sok_witnesses.push(tt);
+
+        let sok_witness_commitment_gt = Helpers::compute_gt_from_g1_g2_scalars::<Bls12_381>(
+            &bases_g1,
+            &bases_g2,
+            &sok_witnesses,
+        );
+
+        // Generate the challenge
+        let challenge = Fr::rand(&mut rng);
+
+        // Generate the Schnorr responses for SoK
+        let sok_responses =
+            SchnorrProtocolPairing::prove(&sok_commitment, &sok_witnesses, &challenge);
+
+        // Verify the Schnorr proof for SoK
+        let sok_valid = SchnorrProtocolPairing::verify(
+            &sok_commitment.t_com,
+            &sok_witness_commitment_gt,
+            &challenge,
+            &bases_g1,
+            &bases_g2,
+            &sok_responses.0,
+        );
+
+        assert!(sok_valid, "Signature of Knowledge verification failed");
+        // the sok_valid verifies the messages and randomness inside the signature.
+        // The verifier needs to verify it there because we will use the response to compare to a committed response below
+        // if the response is equal to the other, that means they're equal
+        // we then use the commitment above to verify with the signature
+
+        // // now let's create equality proof
+        // generate pairing commitment
+        let prepared_blindness_equality = vec![equal_value_blindness, Fr::zero()];
+        let equality_bases_g1 = vec![randomized_sig.sigma1, pk.g1];
+        let equality_bases_g2 = vec![pk.y_g2[equality_index], pk.g2];
+        println!(
+            "g1: {}, g2: {}, blindness: {}",
+            equality_bases_g1.len(),
+            equality_bases_g2.len(),
+            prepared_blindness_equality.len()
+        );
+        let equality_commitment =
+            SchnorrProtocolPairing::commit_with_prepared_blindness::<Bls12_381, _>(
+                &equality_bases_g1,
+                &equality_bases_g2,
+                &prepared_blindness_equality,
+                &mut rng,
+            );
+
+        let equality_witnesses = vec![equal_value, equal_value_blindness];
+        let equality_witness_commitment_gt = Helpers::compute_gt_from_g1_g2_scalars::<Bls12_381>(
+            &equality_bases_g1,
+            &equality_bases_g2,
+            &equality_witnesses,
+        );
+
+        let equality_responses =
+            SchnorrProtocolPairing::prove(&equality_commitment, &equality_witnesses, &challenge);
+
+        // print responses
+        for (i, m) in sok_responses.0.iter().enumerate() {
+            println!("i: {}, m: {:?}", i, m);
+        }
+
+        for (i, m) in equality_responses.0.iter().enumerate() {
+            println!("i: {}, m: {:?}", i, m);
+        }
+
+        // // Final check: Verify that the responses for the hidden value are equal in both proofs
+        assert_eq!(
+            sok_responses.0[equality_index], equality_responses.0[0],
+            "Hidden value responses do not match"
+        );
+
+        let lhs = sok_witness_commitment_gt;
+        let rhs = sig_commitment_gt;
+        assert_eq!(lhs, rhs, "Pairing equation verification failed");
+    }
 }

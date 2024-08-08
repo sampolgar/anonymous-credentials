@@ -157,3 +157,6 @@ Verification
 
 = 
 e(σ₁', -X)*e(σ₂', g₂) = e(σ₁', g₂)^t * ∏ e(σ₁', Yi)^mi for undisclosed
+
+
+Note to self: it will be easier if I do m1Y1 * m2Y2 * m3Y3 * .... tg2

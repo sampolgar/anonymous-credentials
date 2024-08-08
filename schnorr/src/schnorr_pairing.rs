@@ -1,6 +1,6 @@
 use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
-use ark_ff::{Field, PrimeField, UniformRand};
+use ark_ff::{Field, PrimeField, UniformRand, Zero};
 use ark_std::{
     ops::{Mul, Neg},
     rand::Rng,
@@ -32,10 +32,43 @@ impl SchnorrProtocolPairing {
             bases_g2.len(),
             "public_generators lengths must match"
         );
-        // generate blinding factors for t and m1, m2,...
+
+        // random_blindings hide the exponent like a pedersen commitment e.g. g^m h^r
         let blindings: Vec<E::ScalarField> = (0..bases_g1.len())
             .map(|_| E::ScalarField::rand(rng))
             .collect();
+        // scale one side of the pairing eqn by blinding. e(blinding * sigma1, y1)..
+        let scaled_g1bases_by_blindings =
+            Helpers::compute_scaled_points_g1::<E>(None, None, &blindings, &bases_g1);
+
+        let t_com = Helpers::compute_gt::<E>(&scaled_g1bases_by_blindings, &bases_g2);
+
+        SchnorrCommitmentPairing { blindings, t_com }
+    }
+
+    pub fn commit_with_prepared_blindness<E: Pairing, R: Rng>(
+        bases_g1: &[E::G1Affine],
+        bases_g2: &[E::G2Affine],
+        prepared_blindness: &[E::ScalarField], //[0,0,blinding,0,0,0,blinding]...
+        rng: &mut R,
+    ) -> SchnorrCommitmentPairing<E> {
+        assert!(
+            bases_g1.len() == bases_g2.len() && bases_g1.len() == prepared_blindness.len(),
+            "lengths of bases {}, {} and prepared blindness {} must match",
+            bases_g1.len(),
+            bases_g2.len(),
+            prepared_blindness.len()
+        );
+
+        // generate blinding factors for t and m1, m2,...
+        let mut blindings = vec![];
+        for blinding in prepared_blindness.iter() {
+            if blinding.is_zero() {
+                blindings.push(E::ScalarField::rand(rng));
+            } else {
+                blindings.push(*blinding);
+            }
+        }
 
         // scale one side of the pairing eqn by blinding. e(blinding * sigma1, y1)..
         let scaled_g1bases_by_blindings =

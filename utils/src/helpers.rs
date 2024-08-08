@@ -5,6 +5,79 @@ use ark_std::ops::{Mul, Neg};
 pub struct Helpers;
 
 impl Helpers {
+    /// Computes a GT commitment from multiple G1 and G2 pairings.
+    ///
+    /// This function efficiently computes the product of multiple pairings:
+    /// ∏ e(g1_i, g2_i)
+    ///
+    /// # Arguments
+    ///
+    /// * `g1_points` - A slice of G1 affine points
+    /// * `g2_points` - A slice of G2 affine points
+    ///
+    /// # Returns
+    ///
+    /// The result of the multi-pairing computation as a PairingOutput
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of G1 and G2 points don't match.
+    pub fn compute_gt<E: Pairing>(
+        g1_points: &[E::G1Affine],
+        g2_points: &[E::G2Affine],
+    ) -> PairingOutput<E> {
+        assert_eq!(
+            g1_points.len(),
+            g2_points.len(),
+            "Mismatched number of G1 and G2 points"
+        );
+
+        // Prepare points for pairing
+        let prepared_g1: Vec<_> = g1_points.iter().map(E::G1Prepared::from).collect();
+        let prepared_g2: Vec<_> = g2_points.iter().map(E::G2Prepared::from).collect();
+
+        // Compute and return the multi-pairing
+        E::multi_pairing(prepared_g1, prepared_g2)
+    }
+
+    /// Computes a GT commitment from multiple G1 and G2, Scalars
+    ///
+    /// This function efficiently computes the product of multiple pairings:
+    /// ∏ e(g1_i, g2_i)
+    ///
+    /// # Arguments
+    ///
+    /// * `g1_points` - A slice of G1 affine points
+    /// * `g2_points` - A slice of G2 affine points
+    /// * `scalars` = A slice of Scalars
+    ///
+    /// # Returns
+    ///
+    /// The result of the multi-pairing computation as a PairingOutput
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of G1 and G2 points don't match.
+    pub fn compute_gt_from_g1_g2_scalars<E: Pairing>(
+        g1_points: &[E::G1Affine],
+        g2_points: &[E::G2Affine],
+        scalars: &[E::ScalarField],
+    ) -> PairingOutput<E> {
+        assert!(
+            g1_points.len() == g2_points.len() && g2_points.len() == scalars.len(),
+            "Mismatched number of G1, G2, and scalars"
+        );
+
+        // Prepare points for pairing
+        let scaled_g1_points =
+            Helpers::compute_scaled_points_g1::<E>(None, None, scalars, g1_points);
+
+        let prepared_g1: Vec<_> = scaled_g1_points.iter().map(E::G1Prepared::from).collect();
+        let prepared_g2: Vec<_> = g2_points.iter().map(E::G2Prepared::from).collect();
+
+        // Compute and return the multi-pairing
+        E::multi_pairing(prepared_g1, prepared_g2)
+    }
     /// Extends 1 point to every point in a vector, used for sigma_prime in ps sigs
     ///
     /// # Arguments
@@ -151,6 +224,43 @@ impl Helpers {
         G::normalize_batch(&scaled_projective)
     }
 
+    pub fn compute_scaled_points_2<
+        E: Pairing,
+        G: Group<ScalarField = E::ScalarField> + VariableBaseMSM + CurveGroup,
+    >(
+        additional_scalar: Option<&E::ScalarField>,
+        additional_point: Option<&G::Affine>,
+        scalars: &[E::ScalarField],
+        points: &[G::Affine],
+    ) -> Vec<G::Affine> {
+        assert_eq!(
+            scalars.len(),
+            points.len(),
+            "The number of scalars and points must be equal"
+        );
+
+        let mut all_scalars =
+            Vec::with_capacity(scalars.len() + additional_scalar.is_some() as usize);
+        all_scalars.extend_from_slice(scalars);
+        if let Some(scalar) = additional_scalar {
+            all_scalars.push(*scalar);
+        }
+
+        let mut all_points = Vec::with_capacity(points.len() + additional_point.is_some() as usize);
+        all_points.extend_from_slice(points);
+        if let Some(point) = additional_point {
+            all_points.push(*point);
+        }
+
+        let scaled_projective: Vec<G> = all_points
+            .into_iter()
+            .zip(all_scalars.iter())
+            .map(|(point, scalar)| point.mul(*scalar))
+            .collect();
+
+        G::normalize_batch(&scaled_projective)
+    }
+
     /// Computes a vector of scaled G1 points.
     ///
     /// # Arguments
@@ -164,6 +274,32 @@ impl Helpers {
     ///
     /// A vector of scaled G1 points in affine coordinates
     pub fn compute_scaled_points_g1<E: Pairing>(
+        additional_scalar: Option<&E::ScalarField>,
+        additional_point: Option<&E::G1Affine>,
+        scalars: &[E::ScalarField],
+        points: &[E::G1Affine],
+    ) -> Vec<E::G1Affine> {
+        Self::compute_scaled_points::<E, E::G1>(
+            additional_scalar,
+            additional_point,
+            scalars,
+            points,
+        )
+    }
+
+    /// Computes a vector of scaled G1 points.
+    ///
+    /// # Arguments
+    ///
+    /// * optional: `additional_scalar` - A single scalar to be added at the start
+    /// * optional: `additional_point` - A single G1 point to be added at the start
+    /// * `scalars` - A slice of scalar field elements
+    /// * `points` - A slice of G1 affine points
+    ///
+    /// # Returns
+    ///
+    /// A vector of scaled G1 points in affine coordinates
+    pub fn compute_scaled_points_g1_2<E: Pairing>(
         additional_scalar: Option<&E::ScalarField>,
         additional_point: Option<&E::G1Affine>,
         scalars: &[E::ScalarField],
@@ -255,41 +391,6 @@ impl Helpers {
         let mut all_elements = vec![*additional_element];
         all_elements.extend_from_slice(elements);
         all_elements
-    }
-
-    /// Computes a GT commitment from multiple G1 and G2 pairings.
-    ///
-    /// This function efficiently computes the product of multiple pairings:
-    /// ∏ e(g1_i, g2_i)
-    ///
-    /// # Arguments
-    ///
-    /// * `g1_points` - A slice of G1 affine points
-    /// * `g2_points` - A slice of G2 affine points
-    ///
-    /// # Returns
-    ///
-    /// The result of the multi-pairing computation as a PairingOutput
-    ///
-    /// # Panics
-    ///
-    /// Panics if the number of G1 and G2 points don't match.
-    pub fn compute_gt<E: Pairing>(
-        g1_points: &[E::G1Affine],
-        g2_points: &[E::G2Affine],
-    ) -> PairingOutput<E> {
-        assert_eq!(
-            g1_points.len(),
-            g2_points.len(),
-            "Mismatched number of G1 and G2 points"
-        );
-
-        // Prepare points for pairing
-        let prepared_g1: Vec<_> = g1_points.iter().map(E::G1Prepared::from).collect();
-        let prepared_g2: Vec<_> = g2_points.iter().map(E::G2Prepared::from).collect();
-
-        // Compute and return the multi-pairing
-        E::multi_pairing(prepared_g1, prepared_g2)
     }
 }
 
