@@ -389,6 +389,17 @@ mod test {
         let equality_responses =
             SchnorrProtocolPairing::prove(&equality_commitment, &equality_witnesses, &challenge);
 
+        let equality_valid = SchnorrProtocolPairing::verify(
+            &equality_commitment.t_com,
+            &equality_witness_commitment_gt,
+            &challenge,
+            &equality_bases_g1,
+            &equality_bases_g2,
+            &equality_responses.0,
+        );
+
+        assert!(equality_valid, "equality pairing is not valid");
+
         // print responses
         for (i, m) in sok_responses.0.iter().enumerate() {
             println!("i: {}, m: {:?}", i, m);

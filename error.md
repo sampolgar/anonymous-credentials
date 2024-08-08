@@ -113,9 +113,6 @@ define Vec<(&G1Affine, &G2Affine)>
 
 let y_g1 = E::G1::normalize_batch(&y_g1);
 
-
-
-
 a value of type `std::vec::Vec<<G as ark_ec::CurveGroup>::Affine>` cannot be built from an iterator over elements of type `G`
 the trait `std::iter::FromIterator<G>` is not implemented for `std::vec::Vec<<G as ark_ec::CurveGroup>::Affine>`
 
@@ -123,40 +120,39 @@ An iterator in Rust is an object that allows you to traverse a sequence of eleme
 The collect() method is used to transform an iterator into a collection (like a Vec).
 In our case, we're trying to collect a sequence of G (which are projective points) into a Vec<G::Affine> (which is a vector of affine points). This is causing the type mismatch.
 
-
 Explain
 PairingOutput<E>
-E::TargetField 
+E::TargetField
 
 PairingOutput is a wrapper around TargetField
 
-
-
-
 Selective Disclosure with standard group
-We have commitment C = g^t * Y1^m1 * Y2^m2...
+We have commitment C = g^t _ Y1^m1 _ Y2^m2...
 We want to disclose m1
-Prover reveal m1, computes C' = g^t * Y2^m2 and proves C' = C / Y1m1
+Prover reveal m1, computes C' = g^t \* Y2^m2 and proves C' = C / Y1m1
 Runs PoK for t, m2
 
 Verification
+
 1. ensure disclosed values are consistent with original commitment: e(C / (Y1m1), g) = e(C', g)
 2. verify pok of hidden values
 
-
 Selective disclosure with GT points
-1. Prover creates a schnorr proof for undisclosed attributes and randomization factor 
-e(σ₁', g₂)^t * ∏ e(σ₁', Yi)^mi for undisclosed
+
+1. Prover creates a schnorr proof for undisclosed attributes and randomization factor
+   e(σ₁', g₂)^t \* ∏ e(σ₁', Yi)^mi for undisclosed
 
 2. Compute commitment to the randomized signature as per Signature of Knowledge protocol
 3. Prover reveals disclosed attributes
-Verification
+   Verification
 4. Verifier checks schnorr proof for 1
 5. Verifier checks pairing equation
- *  e(σ₁', Yi)^mi for disclosed = 
 
-= 
-e(σ₁', -X)*e(σ₂', g₂) = e(σ₁', g₂)^t * ∏ e(σ₁', Yi)^mi for undisclosed
+- e(σ₁', Yi)^mi for disclosed =
 
+=
+e(σ₁', -X)_e(σ₂', g₂) = e(σ₁', g₂)^t _ ∏ e(σ₁', Yi)^mi for undisclosed
 
-Note to self: it will be easier if I do m1Y1 * m2Y2 * m3Y3 * .... tg2
+Note to self: it will be easier if I do m1Y1 _ m2Y2 _ m3Y3 \* .... tg2
+
+cargo test test_multiattribute_ps_equality -- --nocapture
