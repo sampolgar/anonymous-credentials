@@ -19,6 +19,7 @@ digest.workspace = true
 serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true
+thiserror.workspace = true
 schnorr = {default-features = false, path = "../schnorr" }
 utils = {default-features = false, path = "../utils" }
 ark-bls12-381.workspace = true

@@ -23,7 +23,6 @@ pub struct Signature<E: Pairing> {
 }
 
 impl<E: Pairing> Signature<E> {
-    //
     pub fn blind_sign<R: Rng>(
         pk: &keygen::PublicKey<E>,
         sk: &keygen::SecretKey<E>,
@@ -62,6 +61,26 @@ impl<E: Pairing> Signature<E> {
                 .mul(r)
                 .into_affine(),
         }
+    }
+
+    //
+    pub fn randomize_for_pok_new<R: Rng>(&self, rng: &mut R, t: &E::ScalarField) -> Self {
+        let sigma1_temp = self.sigma1;
+        let r = E::ScalarField::rand(rng);
+        Self {
+            sigma1: self.sigma1.mul(r).into_affine(),
+            sigma2: (self.sigma2.into_group() + sigma1_temp.mul(*t))
+                .mul(r)
+                .into_affine(),
+        }
+    }
+
+    pub fn generate_commitment_gt(&self, pk: &keygen::PublicKey<E>) -> PairingOutput<E> {
+        let signature_commitment_gt = Helpers::compute_gt::<E>(
+            &[self.sigma2, self.sigma1.into_group().neg().into_affine()],
+            &[pk.g2, pk.x_g2],
+        );
+        signature_commitment_gt
     }
 
     // this is for testing, public signature isn't used in anonymous credentials

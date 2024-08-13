@@ -348,8 +348,27 @@ impl Helpers {
     ///
     /// # Returns
     ///
-    /// A vector of scalar field elements with the additional scalar at the start
+    /// A vector of scalar field elements with the additional scalar at the end
     pub fn add_scalar_to_vector<E: Pairing>(
+        additional_scalar: &E::ScalarField,
+        scalars: &[E::ScalarField],
+    ) -> Vec<E::ScalarField> {
+        let mut all_scalars = scalars.to_vec();
+        all_scalars.push(*additional_scalar);
+        all_scalars
+    }
+
+    /// Combines a single scalar with a vector of scalars.
+    ///
+    /// # Arguments
+    ///
+    /// * `additional_scalar` - A single scalar to be added at the start
+    /// * `scalars` - A slice of scalar field elements
+    ///
+    /// # Returns
+    ///
+    /// A vector of scalar field elements with the additional scalar at the start
+    pub fn add_scalar_to_vector_old<E: Pairing>(
         additional_scalar: &E::ScalarField,
         scalars: &[E::ScalarField],
     ) -> Vec<E::ScalarField> {
@@ -385,6 +404,25 @@ impl Helpers {
     ///
     /// A vector of affine group elements with the additional element at the start
     pub fn add_affine_to_vector<G: CurveGroup>(
+        additional_element: &G::Affine,
+        elements: &[G::Affine],
+    ) -> Vec<G::Affine> {
+        let mut all_elements = elements.to_vec();
+        all_elements.push(*additional_element);
+        all_elements
+    }
+
+    /// Combines a single affine group element with a vector of affine group elements.
+    ///
+    /// # Arguments
+    ///
+    /// * `additional_element` - A single affine group element to be added at the start
+    /// * `elements` - A slice of affine group elements
+    ///
+    /// # Returns
+    ///
+    /// A vector of affine group elements with the additional element at the start
+    pub fn add_affine_to_vector_old<G: CurveGroup>(
         additional_element: &G::Affine,
         elements: &[G::Affine],
     ) -> Vec<G::Affine> {

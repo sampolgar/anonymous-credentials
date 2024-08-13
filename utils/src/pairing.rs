@@ -5,10 +5,11 @@ use ark_ec::{
 // {AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{Field, PrimeField};
 use ark_std::{ops::Mul, rand::Rng, sync::Mutex, One, UniformRand, Zero};
-use itertools::Itertools;
+// use itertools::Itertools;
 use rayon::prelude::*;
 use std::ops::MulAssign;
 
+// https://github.com/nikkolasg/snarkpack/blob/main/src/pairing_check.rs
 /// PairingCheck represents a check of the form e(A,B)e(C,D)... = T. Checks can
 /// be aggregated together using random linear combination. The efficiency comes
 /// from keeping the results from the miller loop output before proceding to a final
@@ -109,20 +110,8 @@ where
                 (E::G1Prepared::from(na), E::G2Prepared::from(**b))
             })
             .map(|(a, b)| E::miller_loop(a, b))
-            .fold(
-                || <E as Pairing>::TargetField::one(),
-                |mut acc, res| {
-                    acc.mul_assign(&(res.0));
-                    acc
-                },
-            )
-            .reduce(
-                || <E as Pairing>::TargetField::one(),
-                |mut acc, res| {
-                    acc.mul_assign(&res);
-                    acc
-                },
-            );
+            .map(|res| res.0)
+            .product();
         let mut outt = out.clone();
         if out != &<E as Pairing>::TargetField::one() {
             // we only need to make this expensive operation is the output is

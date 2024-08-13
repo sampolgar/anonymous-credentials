@@ -156,3 +156,41 @@ e(σ₁', -X)_e(σ₂', g₂) = e(σ₁', g₂)^t _ ∏ e(σ₁', Yi)^mi for und
 Note to self: it will be easier if I do m1Y1 _ m2Y2 _ m3Y3 \* .... tg2
 
 cargo test test_multiattribute_ps_equality -- --nocapture
+
+
+
+lots of errors with rayon
+One fix was
+
+remove into_par_iter()
+
+pub fn rand<'a, R: Rng + Send>(
+        rng: &Mutex<R>,
+        it: &[(&'a E::G1Affine, &'a E::G2Affine)],
+        out: &'a <E as Pairing>::TargetField,
+    ) -> PairingCheck<E> {
+        let coeff = rand_fr::<E, R>(&rng);
+        let miller_out = it
+            .iter()
+            .map(|(a, b)| {
+                let na = a.mul(coeff).into_affine();
+                (E::G1Prepared::from(na), E::G2Prepared::from(**b))
+            })
+            .map(|(a, b)| E::miller_loop(a, b))
+            .map(|res| res.0)
+            .product();
+        let mut outt = out.clone();
+        if out != &<E as Pairing>::TargetField::one() {
+            // we only need to make this expensive operation is the output is
+            // not one since 1^r = 1
+            outt = outt.pow(&(coeff.into_bigint()));
+        }
+        PairingCheck {
+            left: miller_out,
+            right: outt,
+            non_randomized: 0,
+        }
+    }
+
+    and add rayon to dependencies in dev and normal without optional and remove from features
+    

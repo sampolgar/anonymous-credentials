@@ -103,7 +103,10 @@ impl SchnorrProtocolPairing {
     ) -> bool {
         assert!(
             bases_g1.len() == bases_g2.len() && bases_g1.len() == responses.len(),
-            "bases in g1, g2, and scalars in responses must match length"
+            "bases in g1, g2, and scalars in responses must match length, found {}, {}, {}",
+            bases_g1.len(),
+            bases_g2.len(),
+            responses.len()
         );
 
         let scaled_g1_by_responses =

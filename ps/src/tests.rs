@@ -75,6 +75,7 @@ mod test {
         let is_valid = unblinded_signature.public_verify(&messages, &pk);
         assert!(is_valid, "Public signature verification failed");
 
+        
         //
         // Signature of Knowledge
         //

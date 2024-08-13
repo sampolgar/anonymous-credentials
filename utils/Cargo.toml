@@ -15,7 +15,7 @@ ark-serialize.workspace = true
 ark-relations.workspace = true
 ark-r1cs-std.workspace = true
 ark-groth16.workspace = true
-rayon = { workspace = true, optional = true }
+rayon = { workspace = true}
 digest.workspace = true
 serde.workspace = true
 serde_with.workspace = true
@@ -27,6 +27,7 @@ itertools.workspace = true
 lazy_static.workspace = true
 
 [dev-dependencies]
+rayon = { workspace = true}
 blake2.workspace = true
 ark-bls12-381.workspace = true
 serde_json = "1.0"
@@ -36,7 +37,6 @@ num = "0.4"
 subtle = "2"
 
 [features]
-default = ["parallel"] 
+default = ["parallel"]
 std = ["ark-ff/std", "ark-ec/std", "ark-poly/std", "ark-groth16/std", "ark-relations/std", "ark-crypto-primitives/std", "ark-std/std" ]
-parallel = ["std", "ark-ff/parallel", "ark-poly/parallel", "ark-groth16/parallel", "ark-ec/parallel", "ark-crypto-primitives/parallel", "ark-std/parallel", "rayon"]
-#with-serde = ["serde", "serde_with"]
+parallel = ["ark-std/parallel", "std", "ark-ff/parallel", "ark-poly/parallel", "ark-groth16/parallel", "ark-ec/parallel", "ark-crypto-primitives/parallel"]
