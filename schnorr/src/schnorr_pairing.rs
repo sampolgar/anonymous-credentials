@@ -110,9 +110,9 @@ impl SchnorrProtocolPairing {
         );
 
         let scaled_g1_by_responses =
-            Helpers::compute_scaled_points_g1::<E>(None, None, &responses, &bases_g1);
+            Helpers::compute_scaled_points_g1::<E>(None, None, responses, bases_g1);
 
-        let lhs = Helpers::compute_gt::<E>(&scaled_g1_by_responses, &bases_g2);
+        let lhs = Helpers::compute_gt::<E>(&scaled_g1_by_responses, bases_g2);
 
         let rhs = public_commitment.mul_bigint(challenge.into_bigint()) + schnorr_commitment;
 

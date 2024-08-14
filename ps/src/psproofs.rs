@@ -1,7 +1,8 @@
 use crate::{keygen, signature::Signature, test_helpers::PSTestSetup};
 use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
-use ark_ff::UniformRand;
+use ark_ff::{Field, PrimeField, UniformRand};
+use ark_r1cs_std::uint;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     ops::{Mul, Neg},
@@ -36,6 +37,18 @@ pub struct SelectiveDisclosureProof<E: Pairing> {
     pub disclosed_messages: Vec<(usize, E::ScalarField)>,
 }
 
+#[derive(CanonicalSerialize, CanonicalDeserialize)]
+pub struct EqualityProof<E: Pairing> {
+    pub randomized_signature: (E::G1Affine, E::G1Affine),
+    pub signature_commitment: PairingOutput<E>,
+    pub schnorr_commitment: PairingOutput<E>,
+    pub witness_commitment: PairingOutput<E>,
+    pub equality_commitments: Vec<PairingOutput<E>>,
+    pub challenge: E::ScalarField,
+    pub schnorr_responses: Vec<E::ScalarField>,
+    pub equality_responses: Vec<E::ScalarField>,
+}
+
 #[derive(Error, Debug)]
 pub enum ProofError {
     #[error("Invalid disclosed index")]
@@ -44,7 +57,12 @@ pub enum ProofError {
     TooManyDisclosedIndices,
     #[error("Serialization error: {0}")]
     SerializationError(#[from] ark_serialize::SerializationError),
-    // Add other error types as needed
+    #[error("Invalid equality index")]
+    InvalidEqualityIndex,
+    #[error("No equality indices provided")]
+    NoEqualityIndices,
+    #[error("No equality checks provided")]
+    NoEqualityChecks,
 }
 
 pub struct PSProofs;
@@ -52,9 +70,11 @@ pub struct PSProofs;
 impl PSProofs {
     pub fn prove_knowledge<E: Pairing>(setup: &PSTestSetup<E>) -> Vec<u8> {
         let mut rng = ark_std::test_rng();
-        let r = E::ScalarField::rand(&mut rng);
-        let tt = E::ScalarField::rand(&mut rng);
-        let sigma_prime = setup.signature.randomize_for_pok(&r, &tt);
+        let t = E::ScalarField::rand(&mut rng);
+        let sigma_prime = setup.signature.randomize_for_pok_new(&mut rng, &t);
+        // let r = E::ScalarField::rand(&mut rng);
+        // let tt = E::ScalarField::rand(&mut rng);
+        // let sigma_prime = setup.signature.randomize_for_pok(&r, &tt);
 
         // Generate a commitment to the signature
         let signature_commitment_gt = sigma_prime.generate_commitment_gt(&setup.pk);
@@ -70,7 +90,7 @@ impl PSProofs {
         let challenge = E::ScalarField::rand(&mut rng);
 
         // generate message vector
-        let m_vector = Helpers::add_scalar_to_vector::<E>(&tt, &setup.messages);
+        let m_vector = Helpers::add_scalar_to_vector::<E>(&t, &setup.messages);
         let responses =
             SchnorrProtocolPairing::prove(&schnorr_commitment_gt, &m_vector, &challenge);
 
@@ -135,10 +155,9 @@ impl PSProofs {
         is_valid
     }
 
-    pub fn prove_selective_disclosure<E: Pairing, R: Rng>(
+    pub fn prove_selective_disclosure<E: Pairing>(
         setup: &PSTestSetup<E>,
         disclosed_indices: &[usize],
-        rng: &mut R,
     ) -> Result<Vec<u8>, ProofError> {
         let message_count = setup.messages.len() - 1; //-1 for t?
         if disclosed_indices.iter().any(|&i| i >= setup.messages.len()) {
@@ -147,9 +166,10 @@ impl PSProofs {
         if disclosed_indices.len() > setup.messages.len() {
             return Err(ProofError::TooManyDisclosedIndices);
         }
-        // Randomize signature
-        let t = E::ScalarField::rand(rng);
-        let sigma_prime = setup.signature.randomize_for_pok_new(rng, &t);
+        // randomize signature
+        let mut rng = ark_std::test_rng();
+        let t = E::ScalarField::rand(&mut rng);
+        let sigma_prime = setup.signature.randomize_for_pok_new(&mut rng, &t);
         // Generate signature commitment
         let signature_commitment = Helpers::compute_gt::<E>(
             &[
@@ -165,50 +185,83 @@ impl PSProofs {
         let mut hidden_bases_g2 = vec![];
 
         for (i, m) in setup.messages.iter().enumerate() {
-            if i < message_count {
-                if disclosed_indices.contains(&i) {
-                    disclosed_messages.push((i, *m));
-                } else {
-                    hidden_messages.push(*m);
-                    hidden_bases_g2.push(setup.pk.y_g2[i]);
-                }
+            print!("i: {}, message_count: {}", i, message_count);
+            if disclosed_indices.contains(&i) {
+                disclosed_messages.push((i, *m));
             } else {
-                // This is tt (the last element)
                 hidden_messages.push(*m);
-                hidden_bases_g2.push(setup.pk.g2);
+                hidden_bases_g2.push(setup.pk.y_g2[i]);
             }
         }
+        hidden_messages.push(t);
+        hidden_bases_g2.push(setup.pk.g2);
 
-        // Commit to hidden messages
+        // Commit to hidden messages. Which includes [m1, m2,...tt], hidden bases [y1, y2,...g]
         let bases_g1 =
             Helpers::copy_point_to_length_g1::<E>(sigma_prime.sigma1, &hidden_bases_g2.len());
-        let witness_commitment = Helpers::compute_gt_from_g1_g2_scalars::<E>(
+
+        let witness_commitment_hidden_values = Helpers::compute_gt_from_g1_g2_scalars::<E>(
             &bases_g1,
             &hidden_bases_g2,
             &hidden_messages,
         );
 
         // Generate Schnorr commitment
-        let schnorr_commitment =
-            SchnorrProtocolPairing::commit::<E, _>(&bases_g1, &hidden_bases_g2, rng);
+        let schnorr_commitment_hidden_values =
+            SchnorrProtocolPairing::commit::<E, _>(&bases_g1, &hidden_bases_g2, &mut rng);
 
         // Generate challenge
-        let challenge = E::ScalarField::rand(rng);
+        let challenge = E::ScalarField::rand(&mut rng);
 
         // Generate responses
-        let responses =
-            SchnorrProtocolPairing::prove(&schnorr_commitment, &hidden_messages, &challenge);
+        let responses = SchnorrProtocolPairing::prove(
+            &schnorr_commitment_hidden_values,
+            &hidden_messages,
+            &challenge,
+        );
+        println!(
+            "responseslen: {}, baseslen: {}",
+            responses.0.len(),
+            bases_g1.len()
+        );
+
+        println!("Bases G1:");
+        for base in &bases_g1 {
+            println!("{:?}", base);
+        }
+
+        println!("Hidden Bases G2:");
+        for base in &hidden_bases_g2 {
+            println!("{:?}", base);
+        }
+
+        println!("Responses:");
+        for response in &responses.0 {
+            println!("{:?}", response);
+        }
+
+        let is_valid = SchnorrProtocolPairing::verify(
+            &schnorr_commitment_hidden_values.t_com,
+            &witness_commitment_hidden_values,
+            &challenge,
+            &bases_g1,
+            &hidden_bases_g2,
+            &responses.0,
+        );
+
+        assert!(is_valid, "initial verification isn't valid");
 
         // Create and serialize the proof
         let proof = SelectiveDisclosureProof::<E> {
             randomized_signature: (sigma_prime.sigma1, sigma_prime.sigma2),
             signature_commitment,
-            witness_commitment,
-            schnorr_commitment: schnorr_commitment.t_com,
+            witness_commitment: witness_commitment_hidden_values,
+            schnorr_commitment: schnorr_commitment_hidden_values.t_com,
             challenge,
             responses: responses.0,
             disclosed_messages,
         };
+        println!("initial verification is valid");
 
         let mut serialized_proof = Vec::new();
         proof.serialize_compressed(&mut serialized_proof)?;
@@ -236,9 +289,11 @@ impl PSProofs {
             ],
             &[setup.pk.g2, setup.pk.x_g2],
         );
+
         if computed_signature_commitment != proof.signature_commitment {
             return Ok(false);
         }
+        println!("computed sig commitment is ok");
 
         // Prepare bases for verification
         let hidden_bases_g2: Vec<E::G2Affine> = setup
@@ -256,7 +311,22 @@ impl PSProofs {
             &hidden_bases_g2.len(),
         );
 
-        // Verify Schnorr proof
+        // Verify Schnorr proof. This should verify as a proof of knowledge of the hidden values
+        println!("Bases G1 mk2:");
+        for base in &bases_g1 {
+            println!("{:?}", base);
+        }
+
+        println!("Hidden Bases G2 mk2:");
+        for base in &hidden_bases_g2 {
+            println!("{:?}", base);
+        }
+
+        println!("Responses mk2:");
+        for response in &proof.responses {
+            println!("{:?}", response);
+        }
+
         let is_schnorr_valid = SchnorrProtocolPairing::verify(
             &proof.schnorr_commitment,
             &proof.witness_commitment,
@@ -267,8 +337,10 @@ impl PSProofs {
         );
 
         if !is_schnorr_valid {
+            println!("schnorr is not valid");
             return Ok(false);
         }
+        println!("schnorr is valid");
 
         // Compute disclosed messages commitment
         let disclosed_bases_g2: Vec<E::G2Affine> = proof
@@ -296,21 +368,204 @@ impl PSProofs {
         Ok(public_and_private_gt == proof.signature_commitment)
     }
 
-    // // Equality Proof (when you implement it)
-    // pub fn prove_equality<E: Pairing>(
-    //     setup: &PSTestSetup<E>,
-    //     equality_indices: &[usize],
-    // ) -> Vec<u8> {
-    //     // Implementation...
-    // }
+    pub fn prove_equality<E: Pairing>(
+        setup: &PSTestSetup<E>,
+        equality_checks: &[(usize, E::ScalarField)],
+    ) -> Result<Vec<u8>, ProofError> {
+        let mut rng = ark_std::test_rng();
 
-    // pub fn verify_equality<E: Pairing>(
-    //     setup: &PSTestSetup<E>,
-    //     serialized_proof: &[u8],
-    //     equality_indices: &[usize],
-    // ) -> bool {
-    //     // Implementation...
-    // }
+        if equality_checks.is_empty() {
+            return Err(ProofError::NoEqualityChecks);
+        }
+        if equality_checks
+            .iter()
+            .any(|&(i, _)| i >= setup.messages.len())
+        {
+            return Err(ProofError::InvalidEqualityIndex);
+        }
+
+        let t = E::ScalarField::rand(&mut rng);
+        let sigma_prime = setup.signature.randomize_for_pok_new(&mut rng, &t);
+
+        let signature_commitment = Helpers::compute_gt::<E>(
+            &[
+                sigma_prime.sigma2,
+                sigma_prime.sigma1.into_group().neg().into_affine(),
+            ],
+            &[setup.pk.g2, setup.pk.x_g2],
+        );
+
+        let mut bases_g1 = Vec::new();
+        let mut bases_g2 = Vec::new();
+        let mut messages = Vec::new();
+
+        for (i, &msg) in setup.messages.iter().enumerate() {
+            if !equality_checks.iter().any(|&(j, _)| i == j) {
+                bases_g1.push(sigma_prime.sigma1);
+                bases_g2.push(setup.pk.y_g2[i]);
+                messages.push(msg);
+            }
+        }
+
+        // Add 't' and its corresponding base
+        bases_g1.push(sigma_prime.sigma1);
+        bases_g2.push(setup.pk.g2);
+        messages.push(t);
+
+        let schnorr_commitment =
+            SchnorrProtocolPairing::commit::<E, _>(&bases_g1, &bases_g2, &mut rng);
+        let challenge = E::ScalarField::rand(&mut rng);
+        let schnorr_responses =
+            SchnorrProtocolPairing::prove(&schnorr_commitment, &messages, &challenge);
+
+        let witness_commitment =
+            Helpers::compute_gt_from_g1_g2_scalars::<E>(&bases_g1, &bases_g2, &messages);
+
+        // Test Schnorr verification
+        let is_schnorr_valid = SchnorrProtocolPairing::verify(
+            &schnorr_commitment.t_com,
+            &witness_commitment,
+            &challenge,
+            &bases_g1,
+            &bases_g2,
+            &schnorr_responses.0,
+        );
+        assert!(
+            is_schnorr_valid,
+            "Schnorr verification failed in prove_equality"
+        );
+
+        // Equality proofs
+        let mut equality_commitments = Vec::new();
+        let mut equality_responses = Vec::new();
+
+        for &(index, _) in equality_checks {
+            let equality_base_g1 = sigma_prime.sigma1;
+            let equality_base_g2 = setup.pk.y_g2[index];
+            let equality_message = setup.messages[index];
+            let equality_randomness = E::ScalarField::rand(&mut rng);
+            let equality_commitment = Helpers::compute_gt::<E>(
+                &[equality_base_g1.mul(equality_randomness).into_affine()],
+                &[equality_base_g2],
+            );
+            let equality_response = equality_randomness + challenge * equality_message;
+
+            equality_commitments.push(equality_commitment);
+            equality_responses.push(equality_response);
+        }
+
+        let proof = EqualityProof {
+            randomized_signature: (sigma_prime.sigma1, sigma_prime.sigma2),
+            signature_commitment,
+            schnorr_commitment: schnorr_commitment.t_com,
+            witness_commitment, // Add this to the proof
+            equality_commitments,
+            challenge,
+            schnorr_responses: schnorr_responses.0,
+            equality_responses,
+        };
+
+        let mut serialized_proof = Vec::new();
+        proof.serialize_compressed(&mut serialized_proof)?;
+
+        Ok(serialized_proof)
+    }
+
+    pub fn verify_equality<E: Pairing>(
+        setup: &PSTestSetup<E>,
+        serialized_proof: &[u8],
+        equality_checks: &[(usize, E::ScalarField)],
+    ) -> Result<bool, ProofError> {
+        let proof: EqualityProof<E> =
+            CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
+        // Verify signature commitment
+        let computed_signature_commitment = Helpers::compute_gt::<E>(
+            &[
+                proof.randomized_signature.1,
+                proof
+                    .randomized_signature
+                    .0
+                    .into_group()
+                    .neg()
+                    .into_affine(),
+            ],
+            &[setup.pk.g2, setup.pk.x_g2],
+        );
+        if computed_signature_commitment != proof.signature_commitment {
+            return Ok(false);
+        }
+
+        // Prepare bases for Schnorr verification
+        let mut bases_g1 = Vec::new();
+        let mut bases_g2 = Vec::new();
+
+        for (i, base) in setup.pk.y_g2.iter().enumerate() {
+            if !equality_checks.iter().any(|&(j, _)| i == j) {
+                bases_g1.push(proof.randomized_signature.0);
+                bases_g2.push(*base);
+            }
+        }
+
+        // Add base for 't'
+        bases_g1.push(proof.randomized_signature.0);
+        bases_g2.push(setup.pk.g2);
+
+        // Verify Schnorr proof
+        let is_schnorr_valid = SchnorrProtocolPairing::verify(
+            &proof.schnorr_commitment,
+            &proof.witness_commitment,
+            &proof.challenge,
+            &bases_g1,
+            &bases_g2,
+            &proof.schnorr_responses,
+        );
+
+        if !is_schnorr_valid {
+            println!("schnorr isn't valid");
+            return Ok(false);
+        }
+        // Verify equality proofs
+        for ((&(index, public_message), equality_commitment), equality_response) in equality_checks
+            .iter()
+            .zip(proof.equality_commitments.iter())
+            .zip(proof.equality_responses.iter())
+        {
+            println!("index {}   message:{}", index, public_message);
+            let equality_base_g1 = proof.randomized_signature.0;
+            let equality_base_g2 = setup.pk.y_g2[index];
+
+            // Step 1: Verify the consistency of the equality commitment
+            let lhs = Helpers::compute_gt::<E>(
+                &[equality_base_g1.mul(equality_response).into_affine()],
+                &[equality_base_g2],
+            );
+
+            let rhs = *equality_commitment
+                + proof
+                    .signature_commitment
+                    .mul_bigint(proof.challenge.into_bigint());
+
+            if lhs != rhs {
+                println!("Equality commitment consistency check failed");
+                return Ok(false);
+            }
+
+            // Step 2: Verify that the committed value equals the public message
+            let public_commitment = Helpers::compute_gt::<E>(
+                &[equality_base_g1.mul(public_message).into_affine()],
+                &[equality_base_g2],
+            );
+
+            let proven_commitment = equality_commitment.mul_bigint(proof.challenge.into_bigint());
+
+            if public_commitment != proven_commitment {
+                println!("Public message equality check failed");
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
+    }
 }
 
 #[cfg(test)]
@@ -328,9 +583,6 @@ mod tests {
 
     #[test]
     fn test_selective_disclosure() {
-        // Create a deterministic RNG for reproducibility
-        let mut rng = StdRng::seed_from_u64(12345);
-
         // Setup
         let message_count = 5; // 5 messages + 1 for tt
         let setup = create_ps_test_setup::<Bls12_381>(message_count);
@@ -339,7 +591,7 @@ mod tests {
         let disclosed_indices = vec![1, 3];
 
         // Generate the proof
-        let proof = PSProofs::prove_selective_disclosure(&setup, &disclosed_indices, &mut rng)
+        let proof = PSProofs::prove_selective_disclosure(&setup, &disclosed_indices)
             .expect("Proof generation should succeed");
 
         // Verify the proof
@@ -348,33 +600,45 @@ mod tests {
 
         assert!(is_valid, "Selective disclosure proof should be valid");
 
-        // Test with invalid proof
-        // let mut tampered_proof = proof.clone();
-        // tampered_proof[0] ^= 1; // Flip a bit in the proof
-        // let is_invalid = PSProofs::verify_selective_disclosure(&setup, &tampered_proof)
-        //     .expect("Tampered proof verification should complete");
+        // Test with invalid disclosed indices
+        let invalid_indices = vec![message_count]; // This index is out of bounds
+        let result = PSProofs::prove_selective_disclosure(&setup, &invalid_indices);
+        assert!(
+            result.is_err(),
+            "Proof generation should fail with invalid indices"
+        );
 
-        // assert!(!is_invalid, "Tampered proof should be invalid");
-
-        // // Test with invalid disclosed indices
-        // let invalid_indices = vec![message_count]; // This index is out of bounds
-        // let result = PSProofs::prove_selective_disclosure(&setup, &invalid_indices, &mut rng);
-        // assert!(
-        //     result.is_err(),
-        //     "Proof generation should fail with invalid indices"
-        // );
-
-        // // Test disclosing all messages
-        // let all_indices: Vec<usize> = (0..message_count).collect();
-        // let result = PSProofs::prove_selective_disclosure(&setup, &all_indices, &mut rng);
-        // assert!(result.is_ok(), "Should be able to disclose all messages");
+        // Test disclosing all messages
+        let all_indices: Vec<usize> = (0..message_count).collect();
+        let result = PSProofs::prove_selective_disclosure(&setup, &all_indices);
+        assert!(result.is_ok(), "Should be able to disclose all messages");
 
         // // Test disclosing no messages
-        // let no_indices: Vec<usize> = vec![];
-        // let proof = PSProofs::prove_selective_disclosure(&setup, &no_indices, &mut rng)
-        //     .expect("Should be able to generate proof with no disclosed messages");
-        // let is_valid = PSProofs::verify_selective_disclosure(&setup, &proof)
-        //     .expect("Should be able to verify proof with no disclosed messages");
-        // assert!(is_valid, "Proof with no disclosed messages should be valid");
+        let no_indices: Vec<usize> = vec![];
+        let proof = PSProofs::prove_selective_disclosure(&setup, &no_indices)
+            .expect("Should be able to generate proof with no disclosed messages");
+        let is_valid = PSProofs::verify_selective_disclosure(&setup, &proof)
+            .expect("Should be able to verify proof with no disclosed messages");
+        assert!(is_valid, "Proof with no disclosed messages should be valid");
+    }
+
+    #[test]
+    fn test_equality_proof() {
+        // Setup
+        let message_count = 5;
+        let mut setup = create_ps_test_setup::<Bls12_381>(message_count);
+
+        // Choose indices for equality proof (e.g., messages at indices 1 and 3)
+        let equality_checks = vec![(1, setup.messages[1]), (3, setup.messages[3])];
+
+        // Generate the proof
+        let proof = PSProofs::prove_equality(&setup, &equality_checks)
+            .expect("Proof generation should succeed");
+
+        // Verify the proof
+        let is_valid = PSProofs::verify_equality(&setup, &proof, &equality_checks)
+            .expect("Proof verification should complete");
+
+        assert!(is_valid, "Equality proof should be valid");
     }
 }

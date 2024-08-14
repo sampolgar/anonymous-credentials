@@ -2,7 +2,6 @@ use ark_bls12_381::{Bls12_381, G2Projective};
 use schnorr::schnorr::SchnorrProtocol;
 use utils::pairing::PairingCheck;
 use utils::pairs::PairingUtils;
-
 use ark_ec::pairing::{MillerLoopOutput, Pairing, PairingOutput};
 use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
 use ark_ff::{Field, PrimeField, UniformRand};
