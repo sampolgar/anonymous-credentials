@@ -410,7 +410,7 @@ mod test {
             println!("i: {}, m: {:?}", i, m);
         }
 
-        // // Final check: Verify that the responses for the hidden value are equal in both proofs
+        // Final check: Verify that the responses for the hidden value are equal in both proofs
         assert_eq!(
             sok_responses.0[equality_index], equality_responses.0[0],
             "Hidden value responses do not match"

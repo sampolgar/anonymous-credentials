@@ -43,10 +43,9 @@ pub struct EqualityProof<E: Pairing> {
     pub signature_commitment: PairingOutput<E>,
     pub schnorr_commitment: PairingOutput<E>,
     pub witness_commitment: PairingOutput<E>,
-    pub equality_commitments: Vec<PairingOutput<E>>,
     pub challenge: E::ScalarField,
-    pub schnorr_responses: Vec<E::ScalarField>,
-    pub equality_responses: Vec<E::ScalarField>,
+    pub responses: Vec<E::ScalarField>,
+    pub equality_blindings: Vec<E::ScalarField>,
 }
 
 #[derive(Error, Debug)]
@@ -72,9 +71,6 @@ impl PSProofs {
         let mut rng = ark_std::test_rng();
         let t = E::ScalarField::rand(&mut rng);
         let sigma_prime = setup.signature.randomize_for_pok_new(&mut rng, &t);
-        // let r = E::ScalarField::rand(&mut rng);
-        // let tt = E::ScalarField::rand(&mut rng);
-        // let sigma_prime = setup.signature.randomize_for_pok(&r, &tt);
 
         // Generate a commitment to the signature
         let signature_commitment_gt = sigma_prime.generate_commitment_gt(&setup.pk);
@@ -387,82 +383,60 @@ impl PSProofs {
         let t = E::ScalarField::rand(&mut rng);
         let sigma_prime = setup.signature.randomize_for_pok_new(&mut rng, &t);
 
-        let signature_commitment = Helpers::compute_gt::<E>(
-            &[
-                sigma_prime.sigma2,
-                sigma_prime.sigma1.into_group().neg().into_affine(),
-            ],
-            &[setup.pk.g2, setup.pk.x_g2],
-        );
-
-        let mut bases_g1 = Vec::new();
-        let mut bases_g2 = Vec::new();
-        let mut messages = Vec::new();
-
-        for (i, &msg) in setup.messages.iter().enumerate() {
-            if !equality_checks.iter().any(|&(j, _)| i == j) {
-                bases_g1.push(sigma_prime.sigma1);
-                bases_g2.push(setup.pk.y_g2[i]);
-                messages.push(msg);
-            }
-        }
-
-        // Add 't' and its corresponding base
-        bases_g1.push(sigma_prime.sigma1);
-        bases_g2.push(setup.pk.g2);
-        messages.push(t);
-
-        let schnorr_commitment =
+        // Generate a commitment to the signature
+        let signature_commitment_gt = sigma_prime.generate_commitment_gt(&setup.pk);
+        let base_length = setup.messages.len() + 1;
+        let bases_g1 = Helpers::copy_point_to_length_g1::<E>(sigma_prime.sigma1, &base_length);
+        let bases_g2 = Helpers::add_affine_to_vector::<E::G2>(&setup.pk.g2, &setup.pk.y_g2);
+        let schnorr_commitment_gt =
             SchnorrProtocolPairing::commit::<E, _>(&bases_g1, &bases_g2, &mut rng);
         let challenge = E::ScalarField::rand(&mut rng);
-        let schnorr_responses =
-            SchnorrProtocolPairing::prove(&schnorr_commitment, &messages, &challenge);
 
-        let witness_commitment =
-            Helpers::compute_gt_from_g1_g2_scalars::<E>(&bases_g1, &bases_g2, &messages);
+        // generate message vector
+        let m_vector = Helpers::add_scalar_to_vector::<E>(&t, &setup.messages);
+        // generate witness commitment
+        let witness_commitment_gt =
+            Helpers::compute_gt_from_g1_g2_scalars::<E>(&bases_g1, &bases_g2, &m_vector);
+
+        let responses =
+            SchnorrProtocolPairing::prove(&schnorr_commitment_gt, &m_vector, &challenge);
 
         // Test Schnorr verification
         let is_schnorr_valid = SchnorrProtocolPairing::verify(
-            &schnorr_commitment.t_com,
-            &witness_commitment,
+            &schnorr_commitment_gt.t_com,
+            &witness_commitment_gt,
             &challenge,
             &bases_g1,
             &bases_g2,
-            &schnorr_responses.0,
+            &responses.0,
         );
         assert!(
             is_schnorr_valid,
             "Schnorr verification failed in prove_equality"
         );
 
-        // Equality proofs
-        let mut equality_commitments = Vec::new();
-        let mut equality_responses = Vec::new();
-
-        for &(index, _) in equality_checks {
-            let equality_base_g1 = sigma_prime.sigma1;
-            let equality_base_g2 = setup.pk.y_g2[index];
-            let equality_message = setup.messages[index];
-            let equality_randomness = E::ScalarField::rand(&mut rng);
-            let equality_commitment = Helpers::compute_gt::<E>(
-                &[equality_base_g1.mul(equality_randomness).into_affine()],
-                &[equality_base_g2],
-            );
-            let equality_response = equality_randomness + challenge * equality_message;
-
-            equality_commitments.push(equality_commitment);
-            equality_responses.push(equality_response);
-        }
+        // create a new vector of messages with
+        let equality_blindings: Vec<E::ScalarField> = schnorr_commitment_gt
+            .blindings
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &blinding)| {
+                if equality_checks.iter().any(|&(index, _)| index == i) {
+                    Some(blinding)
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         let proof = EqualityProof {
             randomized_signature: (sigma_prime.sigma1, sigma_prime.sigma2),
-            signature_commitment,
-            schnorr_commitment: schnorr_commitment.t_com,
-            witness_commitment, // Add this to the proof
-            equality_commitments,
+            signature_commitment: signature_commitment_gt,
+            schnorr_commitment: schnorr_commitment_gt.t_com,
+            witness_commitment: witness_commitment_gt,
             challenge,
-            schnorr_responses: schnorr_responses.0,
-            equality_responses,
+            responses: responses.0,
+            equality_blindings,
         };
 
         let mut serialized_proof = Vec::new();
@@ -476,6 +450,7 @@ impl PSProofs {
         serialized_proof: &[u8],
         equality_checks: &[(usize, E::ScalarField)],
     ) -> Result<bool, ProofError> {
+        let mut rng = ark_std::test_rng();
         let proof: EqualityProof<E> =
             CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
         // Verify signature commitment
@@ -491,80 +466,90 @@ impl PSProofs {
             ],
             &[setup.pk.g2, setup.pk.x_g2],
         );
+
         if computed_signature_commitment != proof.signature_commitment {
             return Ok(false);
         }
 
-        // Prepare bases for Schnorr verification
-        let mut bases_g1 = Vec::new();
-        let mut bases_g2 = Vec::new();
+        let base_length = setup.messages.len() + 1;
+        let bases_g1 =
+            Helpers::copy_point_to_length_g1::<E>(proof.randomized_signature.0, &base_length);
+        let bases_g2 = Helpers::add_affine_to_vector::<E::G2>(&setup.pk.g2, &setup.pk.y_g2);
 
-        for (i, base) in setup.pk.y_g2.iter().enumerate() {
-            if !equality_checks.iter().any(|&(j, _)| i == j) {
-                bases_g1.push(proof.randomized_signature.0);
-                bases_g2.push(*base);
-            }
-        }
-
-        // Add base for 't'
-        bases_g1.push(proof.randomized_signature.0);
-        bases_g2.push(setup.pk.g2);
-
-        // Verify Schnorr proof
-        let is_schnorr_valid = SchnorrProtocolPairing::verify(
+        // Verify Signature Proof
+        // 3. Verify the Schnorr proof
+        let is_valid = SchnorrProtocolPairing::verify(
             &proof.schnorr_commitment,
-            &proof.witness_commitment,
+            &proof.signature_commitment,
             &proof.challenge,
             &bases_g1,
             &bases_g2,
-            &proof.schnorr_responses,
+            &proof.responses,
         );
 
-        if !is_schnorr_valid {
-            println!("schnorr isn't valid");
-            return Ok(false);
-        }
         // Verify equality proofs
-        for ((&(index, public_message), equality_commitment), equality_response) in equality_checks
+        // commit to equality messages with the same randomization factor and generator
+        let equality_messages: Vec<E::ScalarField> = equality_checks
             .iter()
-            .zip(proof.equality_commitments.iter())
-            .zip(proof.equality_responses.iter())
-        {
-            println!("index {}   message:{}", index, public_message);
-            let equality_base_g1 = proof.randomized_signature.0;
-            let equality_base_g2 = setup.pk.y_g2[index];
+            .map(|&(_, message)| message)
+            .collect();
 
-            // Step 1: Verify the consistency of the equality commitment
-            let lhs = Helpers::compute_gt::<E>(
-                &[equality_base_g1.mul(equality_response).into_affine()],
-                &[equality_base_g2],
-            );
+        let mut equality_bases_g1 = Vec::<E::G1Affine>::new();
+        let mut equality_bases_g2 = Vec::<E::G2Affine>::new();
 
-            let rhs = *equality_commitment
-                + proof
-                    .signature_commitment
-                    .mul_bigint(proof.challenge.into_bigint());
-
-            if lhs != rhs {
-                println!("Equality commitment consistency check failed");
-                return Ok(false);
-            }
-
-            // Step 2: Verify that the committed value equals the public message
-            let public_commitment = Helpers::compute_gt::<E>(
-                &[equality_base_g1.mul(public_message).into_affine()],
-                &[equality_base_g2],
-            );
-
-            let proven_commitment = equality_commitment.mul_bigint(proof.challenge.into_bigint());
-
-            if public_commitment != proven_commitment {
-                println!("Public message equality check failed");
-                return Ok(false);
-            }
+        for (i, _) in equality_checks.iter() {
+            equality_bases_g1.push(proof.randomized_signature.0);
+            equality_bases_g2.push(setup.pk.y_g2[*i]);
         }
 
-        Ok(true)
+        let equality_commitment = SchnorrProtocolPairing::commit_with_prepared_blindness::<E, _>(
+            &equality_bases_g1,
+            &equality_bases_g2,
+            &proof.equality_blindings,
+            &mut rng,
+        );
+
+        let equality_responses = SchnorrProtocolPairing::prove(
+            &equality_commitment,
+            &equality_messages,
+            &proof.challenge,
+        );
+
+        for response in &equality_responses.0 {
+            println!("equality repsonses:{:?}", response);
+        }
+
+        for (i, _) in equality_checks.iter() {
+            println!("proof responses: {:?}", proof.responses[*i]);
+        }
+
+        // first verify the responses are equal
+        for ((i, _), equality_response) in equality_checks.iter().zip(equality_responses.0.iter()) {
+            assert_eq!(
+                equality_response, &proof.responses[*i],
+                "Responses do not match at index {}",
+                i
+            );
+        }
+
+        // I don't think this is needed but just to prove the opening of the commitment
+        let equality_witness_commitment_gt = Helpers::compute_gt_from_g1_g2_scalars::<E>(
+            &equality_bases_g1,
+            &equality_bases_g2,
+            &equality_messages,
+        );
+
+        let equality_valid = SchnorrProtocolPairing::verify(
+            &equality_commitment.t_com,
+            &equality_witness_commitment_gt,
+            &proof.challenge,
+            &equality_bases_g1,
+            &equality_bases_g2,
+            &equality_responses.0,
+        );
+
+        // Ok(equality_valid)
+        Ok(is_valid)
     }
 }
 
