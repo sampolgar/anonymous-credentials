@@ -436,12 +436,12 @@ impl Helpers {
 mod tests {
     use super::*;
     use ark_bls12_381::{Bls12_381, Fr, G1Affine, G1Projective, G2Affine};
-    use ark_std::rand::thread_rng;
+    use ark_std::test_rng;
     use ark_std::UniformRand;
 
     #[test]
     fn test_compute_commitment_g1() {
-        let mut rng = thread_rng();
+        let mut rng = test_rng();
         let scalars: Vec<Fr> = (0..5).map(|_| Fr::rand(&mut rng)).collect();
         let points: Vec<G1Affine> = (0..5).map(|_| G1Affine::rand(&mut rng)).collect();
         let additional_scalar = Fr::rand(&mut rng);
@@ -459,7 +459,7 @@ mod tests {
 
     #[test]
     fn test_compute_commitment_g2() {
-        let mut rng = thread_rng();
+        let mut rng = test_rng();
         let scalars: Vec<Fr> = (0..5).map(|_| Fr::rand(&mut rng)).collect();
         let points: Vec<G2Affine> = (0..5).map(|_| G2Affine::rand(&mut rng)).collect();
         let additional_scalar = Fr::rand(&mut rng);
@@ -477,7 +477,7 @@ mod tests {
 
     #[test]
     fn test_compute_scaled_points_g1_with_optional() {
-        let mut rng = thread_rng();
+        let mut rng = test_rng();
         let scalars: Vec<Fr> = (0..5).map(|_| Fr::rand(&mut rng)).collect();
         let points: Vec<G1Affine> = (0..5).map(|_| G1Affine::rand(&mut rng)).collect();
 
@@ -491,7 +491,7 @@ mod tests {
     }
 
     fn test_compute_scaled_points_g1() {
-        let mut rng = thread_rng();
+        let mut rng = test_rng();
         let scalars: Vec<Fr> = (0..5).map(|_| Fr::rand(&mut rng)).collect();
         let points: Vec<G1Affine> = (0..5).map(|_| G1Affine::rand(&mut rng)).collect();
         let additional_scalar = Fr::rand(&mut rng);
@@ -512,7 +512,7 @@ mod tests {
 
     #[test]
     fn test_compute_scaled_points_g2_with_optional() {
-        let mut rng = thread_rng();
+        let mut rng = test_rng();
         let scalars: Vec<Fr> = (0..5).map(|_| Fr::rand(&mut rng)).collect();
         let points: Vec<G2Affine> = (0..5).map(|_| G2Affine::rand(&mut rng)).collect();
 
@@ -527,7 +527,7 @@ mod tests {
 
     #[test]
     fn test_compute_scaled_points_g2() {
-        let mut rng = thread_rng();
+        let mut rng = test_rng();
         let scalars: Vec<Fr> = (0..5).map(|_| Fr::rand(&mut rng)).collect();
         let points: Vec<G2Affine> = (0..5).map(|_| G2Affine::rand(&mut rng)).collect();
         let additional_scalar = Fr::rand(&mut rng);
@@ -548,7 +548,7 @@ mod tests {
 
     #[test]
     fn test_add_affine_to_vector() {
-        let mut rng = thread_rng();
+        let mut rng = test_rng();
         let additional_element = G1Affine::rand(&mut rng);
         let elements: Vec<G1Affine> = (0..5).map(|_| G1Affine::rand(&mut rng)).collect();
 

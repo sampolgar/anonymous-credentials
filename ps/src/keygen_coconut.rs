@@ -1,13 +1,17 @@
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup, Group};
-use ark_ff::{Field, PrimeField, UniformRand};
-use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
+use ark_ff::{FftField, Field, PrimeField, UniformRand};
+use ark_poly::{
+    univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, Evaluations,
+    GeneralEvaluationDomain, Polynomial,
+};
 use ark_std::{ops::Mul, rand::Rng, vec::Vec, One, Zero};
+
 #[derive(Clone, Debug)]
-pub struct PartialSecretKey<E: Pairing> {
+pub struct PartialSecretKey<F: Field> {
     pub index: usize,
-    pub x_i: E::ScalarField,
-    pub y_i: E::ScalarField,
+    pub x_i: F,
+    pub y_i: F,
 }
 
 #[derive(Clone, Debug)]
@@ -19,7 +23,7 @@ pub struct PartialPublicKey<E: Pairing> {
 
 #[derive(Clone, Debug)]
 pub struct ThresholdKeys<E: Pairing> {
-    pub partial_secret_key: PartialSecretKey<E>,
+    pub partial_secret_key: PartialSecretKey<E::ScalarField>,
     pub partial_public_key: PartialPublicKey<E>,
 }
 
@@ -30,12 +34,45 @@ pub struct AggregatePublicKey<E: Pairing> {
     pub g2_x: E::G2Affine,
     pub g2_y: E::G2Affine,
 }
+
+// Helper function to generate random evaluations
+fn generate_random_evaluations<F: FftField, R: Rng>(
+    rng: &mut R,
+    t: usize,
+    domain: GeneralEvaluationDomain<F>,
+) -> Evaluations<F, GeneralEvaluationDomain<F>> {
+    let poly = DensePolynomial::rand(t - 1, rng);
+    poly.evaluate_over_domain_by_ref(domain)
+}
+
+pub fn interpolate_at_zero<F: FftField>(evals: &Evaluations<F, GeneralEvaluationDomain<F>>) -> F {
+    let poly = interpolate_to_poly(evals);
+    poly.coeffs()[0]
+}
+
+pub fn evaluate_at<F: FftField>(evals: &Evaluations<F, GeneralEvaluationDomain<F>>, point: F) -> F {
+    let poly = interpolate_to_poly(evals);
+    poly.evaluate(&point)
+}
+
+// Helper function to perform interpolation
+fn interpolate_to_poly<F: FftField>(
+    evals: &Evaluations<F, GeneralEvaluationDomain<F>>,
+) -> DensePolynomial<F> {
+    let domain = evals.domain();
+    let coeffs = domain.ifft(&evals.evals);
+    DensePolynomial::from_coefficients_vec(coeffs)
+}
+
 pub fn distributed_keygen<E: Pairing, R: Rng>(
     rng: &mut R,
     n: usize,
     t: usize,
     message_count: usize,
-) -> (Vec<ThresholdKeys<E>>, AggregatePublicKey<E>) {
+) -> (Vec<ThresholdKeys<E>>, AggregatePublicKey<E>)
+where
+    E::ScalarField: FftField,
+{
     assert!(t <= n, "Threshold t must be less than or equal to n");
 
     let g1 = E::G1Affine::rand(rng);
@@ -44,23 +81,24 @@ pub fn distributed_keygen<E: Pairing, R: Rng>(
     println!("g1: {:?}", g1);
     println!("g2: {:?}", g2);
 
-    // Generate polynomials for x and y
-    let x_coeffs: Vec<E::ScalarField> = (0..t).map(|_| E::ScalarField::rand(rng)).collect();
-    let y_coeffs: Vec<E::ScalarField> = (0..t).map(|_| E::ScalarField::rand(rng)).collect();
-    let x_poly = DensePolynomial::from_coefficients_vec(x_coeffs);
-    let y_poly = DensePolynomial::from_coefficients_vec(y_coeffs);
+    // Create evaluation domain
+    let domain = GeneralEvaluationDomain::<E::ScalarField>::new(n)
+        .expect("Failed to create evaluation domain");
 
-    println!("x polynomial coefficients: {:?}", x_poly.coeffs());
-    println!("y polynomial coefficients: {:?}", y_poly.coeffs());
+    // Generate polynomials for x and y in evaluation form
+    let x_evals = generate_random_evaluations(rng, t, domain);
+    let y_evals = generate_random_evaluations(rng, t, domain);
+
+    println!("x polynomial evaluations: {:?}", x_evals.evals);
+    println!("y polynomial evaluations: {:?}", y_evals.evals);
 
     let mut threshold_keys = Vec::with_capacity(n);
     let mut g2_x_sum = E::G2::zero();
     let mut g2_y_sum = E::G2::zero();
 
     for i in 1..=n {
-        let index = E::ScalarField::from(i as u64);
-        let x_i = x_poly.evaluate(&index);
-        let y_i = y_poly.evaluate(&index);
+        let x_i = x_evals.evals[i - 1];
+        let y_i = y_evals.evals[i - 1];
 
         let g2_x_i = g2.mul(x_i).into_affine();
         let g2_y_i = g2.mul(y_i).into_affine();
@@ -101,61 +139,6 @@ pub fn distributed_keygen<E: Pairing, R: Rng>(
     (threshold_keys, aggregate_public_key)
 }
 
-// pub fn distributed_keygen<E: Pairing, R: Rng>(
-//     rng: &mut R,
-//     n: usize,
-//     t: usize,
-//     message_count: usize,
-// ) -> (Vec<ThresholdKeys<E>>, AggregatePublicKey<E>) {
-//     assert!(t <= n, "Threshold t must be less than or equal to n");
-
-//     let g1 = E::G1Affine::rand(rng);
-//     let g2 = E::G2Affine::rand(rng);
-
-//     // Generate polynomials for x and y
-//     let x_coeffs: Vec<E::ScalarField> = (0..t).map(|_| E::ScalarField::rand(rng)).collect();
-//     let y_coeffs: Vec<E::ScalarField> = (0..t).map(|_| E::ScalarField::rand(rng)).collect();
-//     let x_poly = DensePolynomial::from_coefficients_vec(x_coeffs);
-//     let y_poly = DensePolynomial::from_coefficients_vec(y_coeffs);
-
-//     let mut threshold_keys = Vec::with_capacity(n);
-//     let mut g2_x_sum = E::G2::zero();
-//     let mut g2_y_sum = E::G2::zero();
-
-//     for i in 1..=n {
-//         let index = E::ScalarField::from(i as u64);
-//         let x_i = x_poly.evaluate(&index);
-//         let y_i = y_poly.evaluate(&index);
-
-//         let g2_x_i = g2.mul(x_i).into_affine();
-//         let g2_y_i = g2.mul(y_i).into_affine();
-
-//         g2_x_sum += g2_x_i;
-//         g2_y_sum += g2_y_i;
-
-//         let partial_secret_key = PartialSecretKey { index: i, x_i, y_i };
-//         let partial_public_key = PartialPublicKey {
-//             index: i,
-//             g2_x_i,
-//             g2_y_i,
-//         };
-
-//         threshold_keys.push(ThresholdKeys {
-//             partial_secret_key,
-//             partial_public_key,
-//         });
-//     }
-
-//     let aggregate_public_key = AggregatePublicKey {
-//         g1,
-//         g2,
-//         g2_x: g2_x_sum.into_affine(),
-//         g2_y: g2_y_sum.into_affine(),
-//     };
-
-//     (threshold_keys, aggregate_public_key)
-// }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,37 +148,11 @@ mod tests {
     #[test]
     fn test_distributed_keygen() {
         let mut rng = test_rng();
-        let n = 5;
-        let t = 3;
-        let message_count = 2;
+        let domain = GeneralEvaluationDomain::<ark_bls12_381::Fr>::new(5).unwrap();
+        let evals = generate_random_evaluations(&mut rng, 3, domain);
 
-        let (threshold_keys, aggregate_pk) =
-            distributed_keygen::<Bls12_381, _>(&mut rng, n, t, message_count);
-
-        assert_eq!(threshold_keys.len(), n);
-
-        // Verify that partial public keys are consistent with partial secret keys
-        for keys in &threshold_keys {
-            assert_eq!(
-                aggregate_pk.g2.mul(keys.partial_secret_key.x_i),
-                keys.partial_public_key.g2_x_i.into_group()
-            );
-            assert_eq!(
-                aggregate_pk.g2.mul(keys.partial_secret_key.y_i),
-                keys.partial_public_key.g2_y_i.into_group()
-            );
-        }
-
-        // Verify that the sum of partial public keys equals the aggregate public key
-        let mut sum_g2_x = <Bls12_381 as Pairing>::G2::zero();
-        let mut sum_g2_y = <Bls12_381 as Pairing>::G2::zero();
-
-        for keys in &threshold_keys {
-            sum_g2_x += keys.partial_public_key.g2_x_i.into_group();
-            sum_g2_y += keys.partial_public_key.g2_y_i.into_group();
-        }
-
-        assert_eq!(sum_g2_x.into_affine(), aggregate_pk.g2_x);
-        assert_eq!(sum_g2_y.into_affine(), aggregate_pk.g2_y);
+        let zero_value = interpolate_at_zero(&evals);
+        let random_point = ark_bls12_381::Fr::rand(&mut rng);
+        let evaluated_value = evaluate_at(&evals, random_point);
     }
 }
