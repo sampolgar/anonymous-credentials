@@ -11,14 +11,14 @@ use ark_std::{ops::Mul, rand::Rng, vec::Vec, One, Zero};
 pub struct PartialSecretKey<F: Field> {
     pub index: usize,
     pub x_i: F,
-    pub y_i: F,
+    pub y_i: Vec<F>,
 }
 
 #[derive(Clone, Debug)]
 pub struct PartialPublicKey<E: Pairing> {
     pub index: usize,
     pub g2_x_i: E::G2Affine,
-    pub g2_y_i: E::G2Affine,
+    pub g2_y_i: Vec<E::G2Affine>,
 }
 
 #[derive(Clone, Debug)]
@@ -32,7 +32,7 @@ pub struct AggregatePublicKey<E: Pairing> {
     pub g1: E::G1Affine,
     pub g2: E::G2Affine,
     pub g2_x: E::G2Affine,
-    pub g2_y: E::G2Affine,
+    pub g2_y: Vec<E::G2Affine>,
 }
 
 // Helper function to generate random evaluations
@@ -68,7 +68,7 @@ pub fn distributed_keygen<E: Pairing, R: Rng>(
     rng: &mut R,
     n: usize,
     t: usize,
-    message_count: usize,
+    attribute_count: usize,
 ) -> (Vec<ThresholdKeys<E>>, AggregatePublicKey<E>)
 where
     E::ScalarField: FftField,
@@ -85,26 +85,34 @@ where
     let domain = GeneralEvaluationDomain::<E::ScalarField>::new(n)
         .expect("Failed to create evaluation domain");
 
-    // Generate polynomials for x and y in evaluation form
+    // Generate polynomial for x in evaluation form
     let x_evals = generate_random_evaluations(rng, t, domain);
-    let y_evals = generate_random_evaluations(rng, t, domain);
+
+    // Generate polynomials for y_1, ..., y_m in evaluation form
+    let y_evals: Vec<Evaluations<_, _>> = (0..attribute_count)
+        .map(|_| generate_random_evaluations(rng, t, domain))
+        .collect();
 
     println!("x polynomial evaluations: {:?}", x_evals.evals);
-    println!("y polynomial evaluations: {:?}", y_evals.evals);
+    for (i, y_eval) in y_evals.iter().enumerate() {
+        println!("y_{} polynomial evaluations: {:?}", i + 1, y_eval.evals);
+    }
 
     let mut threshold_keys = Vec::with_capacity(n);
     let mut g2_x_sum = E::G2::zero();
-    let mut g2_y_sum = E::G2::zero();
+    let mut g2_y_sums: Vec<E::G2> = vec![E::G2::zero(); attribute_count];
 
     for i in 1..=n {
         let x_i = x_evals.evals[i - 1];
-        let y_i = y_evals.evals[i - 1];
+        let y_i: Vec<_> = y_evals.iter().map(|y_eval| y_eval.evals[i - 1]).collect();
 
         let g2_x_i = g2.mul(x_i).into_affine();
-        let g2_y_i = g2.mul(y_i).into_affine();
+        let g2_y_i: Vec<_> = y_i.iter().map(|&y| g2.mul(y).into_affine()).collect();
 
         g2_x_sum += g2_x_i;
-        g2_y_sum += g2_y_i;
+        for j in 0..attribute_count {
+            g2_y_sums[j] += g2_y_i[j];
+        }
 
         let partial_secret_key = PartialSecretKey { index: i, x_i, y_i };
         let partial_public_key = PartialPublicKey {
@@ -115,9 +123,19 @@ where
 
         println!("Partial key {}: ", i);
         println!("  x_i: {:?}", x_i);
-        println!("  y_i: {:?}", y_i);
+        let y_i: Vec<_> = y_evals.iter().map(|y_eval| y_eval.evals[i - 1]).collect();
+        let y_i_clone = y_i.clone();
+
+        for (j, &y) in y_i.iter().enumerate() {
+            println!("  y_{}_i: {:?}", j + 1, y);
+        }
+
+        let g2_y_i: Vec<_> = y_i.iter().map(|&y| g2.mul(y).into_affine()).collect();
+        let g2_y_i_clone = g2_y_i.clone(); // Clone g2_y_i to avoid move
         println!("  g2_x_i: {:?}", g2_x_i);
-        println!("  g2_y_i: {:?}", g2_y_i);
+        for (j, &g2_y) in g2_y_i.iter().enumerate() {
+            println!("  g2_y_{}_i: {:?}", j + 1, g2_y);
+        }
 
         threshold_keys.push(ThresholdKeys {
             partial_secret_key,
@@ -129,12 +147,14 @@ where
         g1,
         g2,
         g2_x: g2_x_sum.into_affine(),
-        g2_y: g2_y_sum.into_affine(),
+        g2_y: g2_y_sums.into_iter().map(|sum| sum.into_affine()).collect(),
     };
 
     println!("Aggregate public key:");
     println!("  g2_x: {:?}", aggregate_public_key.g2_x);
-    println!("  g2_y: {:?}", aggregate_public_key.g2_y);
+    for (i, g2_y) in aggregate_public_key.g2_y.iter().enumerate() {
+        println!("  g2_y_{}: {:?}", i + 1, g2_y);
+    }
 
     (threshold_keys, aggregate_public_key)
 }
@@ -146,13 +166,37 @@ mod tests {
     use ark_std::test_rng;
 
     #[test]
-    fn test_distributed_keygen() {
+    fn test_distributed_keygen_multi_attribute() {
         let mut rng = test_rng();
-        let domain = GeneralEvaluationDomain::<ark_bls12_381::Fr>::new(5).unwrap();
-        let evals = generate_random_evaluations(&mut rng, 3, domain);
+        let n = 5;
+        let t = 3;
+        let attribute_count = 3;
 
-        let zero_value = interpolate_at_zero(&evals);
-        let random_point = ark_bls12_381::Fr::rand(&mut rng);
-        let evaluated_value = evaluate_at(&evals, random_point);
+        let (threshold_keys, aggregate_pk) =
+            distributed_keygen::<Bls12_381, _>(&mut rng, n, t, attribute_count);
+
+        assert_eq!(
+            threshold_keys.len(),
+            n,
+            "Incorrect number of threshold keys"
+        );
+        assert_eq!(
+            aggregate_pk.g2_y.len(),
+            attribute_count,
+            "Incorrect number of g2_y values in aggregate public key"
+        );
+
+        for key in &threshold_keys {
+            assert_eq!(
+                key.partial_secret_key.y_i.len(),
+                attribute_count,
+                "Incorrect number of y_i values in partial secret key"
+            );
+            assert_eq!(
+                key.partial_public_key.g2_y_i.len(),
+                attribute_count,
+                "Incorrect number of g2_y_i values in partial public key"
+            );
+        }
     }
 }
