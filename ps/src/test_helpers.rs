@@ -1,7 +1,6 @@
 use crate::{keygen, signature::Signature};
 use ark_ec::pairing::Pairing;
 use ark_ff::UniformRand;
-use ark_std::rand::Rng;
 
 pub struct PSTestSetup<E: Pairing> {
     pub pk: keygen::PublicKey<E>,

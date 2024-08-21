@@ -1,7 +1,6 @@
 use ark_ec::pairing::{Pairing, PairingOutput};
-use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
-use ark_ff::PrimeField;
-use ark_std::ops::{Mul, Neg};
+use ark_ec::{CurveGroup, Group, VariableBaseMSM};
+use ark_std::ops::Mul;
 pub struct Helpers;
 
 impl Helpers {

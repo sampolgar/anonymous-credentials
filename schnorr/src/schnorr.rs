@@ -1,24 +1,10 @@
 // Inspired by Lovesh's work https://github.com/docknetwork/crypto/blob/main/schnorr_pok/src/lib.rs
 
-//! Schnorr protocol to prove knowledge of 1 or more discrete logs in zero knowledge.
-//! Refer [this](https://crypto.stanford.edu/cs355/19sp/lec5.pdf) for more details of Schnorr protocol.
-
-use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
-use ark_ec::pairing::{MillerLoopOutput, Pairing, PairingOutput};
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{
-    ops::{Add, Mul, MulAssign, Neg, Sub},
-    rand::Rng,
-    vec::Vec,
-    UniformRand,
-};
+use ark_std::{rand::Rng, vec::Vec, UniformRand};
 use digest::Digest;
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use utils::pairing::PairingCheck;
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SchnorrCommitment<G: AffineRepr> {
@@ -89,7 +75,7 @@ impl SchnorrProtocol {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::{Fr, G1Affine, G1Projective};
+    use ark_bls12_381::{Fr, G1Affine, G1Projective, G2Affine};
     use ark_std::test_rng;
     use blake2::Blake2b512;
 

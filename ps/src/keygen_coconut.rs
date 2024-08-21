@@ -1,11 +1,11 @@
 use ark_ec::pairing::Pairing;
-use ark_ec::{AffineRepr, CurveGroup, Group};
-use ark_ff::{FftField, Field, PrimeField, UniformRand};
+use ark_ec::CurveGroup;
+use ark_ff::{FftField, Field, UniformRand};
 use ark_poly::{
     univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, Evaluations,
     GeneralEvaluationDomain, Polynomial,
 };
-use ark_std::{ops::Mul, rand::Rng, vec::Vec, One, Zero};
+use ark_std::{ops::Mul, rand::Rng, vec::Vec, Zero};
 
 #[derive(Clone, Debug)]
 pub struct PartialSecretKey<F: Field> {
@@ -142,7 +142,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::Bls12_381;
     use ark_std::test_rng;
 
     #[test]

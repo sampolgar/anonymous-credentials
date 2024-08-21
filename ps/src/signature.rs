@@ -1,20 +1,13 @@
 use crate::keygen;
-use schnorr::schnorr::SchnorrProtocol;
-use schnorr::schnorr_pairing::{SchnorrCommitmentPairing, SchnorrProtocolPairing};
-use utils::helpers::Helpers;
-use utils::pairing::PairingCheck;
-use utils::pairs::PairingUtils;
-
 use ark_ec::pairing::{Pairing, PairingOutput};
-use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
+use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::UniformRand;
 use ark_std::{
     ops::{Mul, Neg},
     rand::Rng,
-    sync::Mutex,
-    One, Zero,
+    One,
 };
-use rayon::prelude::*;
+use utils::helpers::Helpers;
 
 #[derive(Clone, Debug)]
 pub struct Signature<E: Pairing> {
@@ -123,10 +116,8 @@ impl<E: Pairing> Signature<E> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use ark_bls12_381::{Bls12_381, G2Projective};
-    use ark_bls12_381::{Config as Bls12_381Config, Fr, G1Affine, G1Projective, G2Affine};
-    use ark_ec::bls12::{Bls12, G1Prepared, G2Prepared};
-    use ark_std::test_rng;
+    use ark_bls12_381::Bls12_381;
+    use ark_bls12_381::{Fr, G1Affine};
 
     #[test]
     fn test_sign_and_verify() {

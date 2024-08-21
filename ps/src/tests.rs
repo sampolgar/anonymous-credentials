@@ -2,7 +2,6 @@ use crate::psproofs::PSProofs;
 use crate::test_helpers::create_ps_test_setup;
 use crate::test_helpers::PSTestSetup;
 use ark_bls12_381::Bls12_381;
-use ark_std::rand::{rngs::StdRng, SeedableRng};
 
 fn setup_test_environment(message_count: usize) -> PSTestSetup<Bls12_381> {
     create_ps_test_setup::<Bls12_381>(message_count)

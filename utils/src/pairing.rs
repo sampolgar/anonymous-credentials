@@ -192,7 +192,7 @@ fn mul_if_not_one<E: Pairing>(
 #[cfg(test)]
 mod test {
     use super::*;
-    use ark_bls12_381::{Bls12_381 as Bls12, G1Affine, G1Projective, G2Affine, G2Projective};
+    use ark_bls12_381::{Bls12_381 as Bls12, G1Projective, G2Projective};
     use ark_std::test_rng;
     use ark_std::{rand::Rng, UniformRand};
 
@@ -201,7 +201,7 @@ mod test {
         let g2r = G2Projective::rand(r);
 
         // expected output from g1r and g2r
-        let exp = Bls12::pairing(g1r.clone(), g2r.clone());
+        let exp = Bls12::pairing(g1r, g2r);
 
         // Wrap the random number generator in a Mutex for safe data parallelism
         let mr = Mutex::new(r);
@@ -225,7 +225,7 @@ mod test {
         let final_tuple = tuples
             .iter()
             .fold(PairingCheck::<Bls12>::new(), |mut acc, tu| {
-                acc.merge(&tu);
+                acc.merge(tu);
                 acc
             });
         assert!(final_tuple.verify());

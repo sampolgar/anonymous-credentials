@@ -1,21 +1,12 @@
-use crate::{keygen, signature::Signature, test_helpers::PSTestSetup};
+use crate::test_helpers::PSTestSetup;
 use ark_ec::pairing::{Pairing, PairingOutput};
-use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
-use ark_ff::{Field, PrimeField, UniformRand};
-use ark_r1cs_std::uint;
+use ark_ec::{AffineRepr, CurveGroup};
+use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{
-    ops::{Mul, Neg},
-    rand::Rng,
-    sync::Mutex,
-    One, Zero,
-};
-use rayon::prelude::*;
-use schnorr::schnorr_pairing::{SchnorrCommitmentPairing, SchnorrProtocolPairing};
+use ark_std::ops::Neg;
+use schnorr::schnorr_pairing::SchnorrProtocolPairing;
 use thiserror::Error;
 use utils::helpers::Helpers;
-use utils::pairing::PairingCheck;
-use utils::pairs::PairingUtils;
 
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProofOfKnowledge<E: Pairing> {

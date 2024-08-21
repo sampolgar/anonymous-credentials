@@ -1,14 +1,9 @@
 use ark_ec::pairing::{Pairing, PairingOutput};
-use ark_ec::{AffineRepr, CurveGroup, Group, VariableBaseMSM};
-use ark_ff::{Field, PrimeField, UniformRand, Zero};
-use ark_std::{
-    ops::{Mul, Neg},
-    rand::Rng,
-};
+use ark_ec::Group;
+use ark_ff::{PrimeField, UniformRand, Zero};
+use ark_std::rand::Rng;
 
 use utils::helpers::Helpers;
-use utils::pairing::PairingCheck;
-use utils::pairs::PairingUtils;
 
 #[derive(Clone, Debug)]
 pub struct SchnorrCommitmentPairing<E: Pairing> {
