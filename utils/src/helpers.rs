@@ -376,21 +376,21 @@ impl Helpers {
         all_scalars
     }
 
-    /// Combines a single group element with a vector of group elements.
-    ///
-    /// # Arguments
-    ///
-    /// * `additional_element` - A single group element to be added at the start
-    /// * `elements` - A slice of group elements
-    ///
-    /// # Returns
-    ///
-    /// A vector of group elements with the additional element at the start
-    pub fn add_group_element_to_vector<G: Group>(additional_element: &G, elements: &[G]) -> Vec<G> {
-        let mut all_elements = vec![*additional_element];
-        all_elements.extend_from_slice(elements);
-        all_elements
-    }
+    // /// Combines a single group element with a vector of group elements.
+    // ///
+    // /// # Arguments
+    // ///
+    // /// * `additional_element` - A single group element to be added at the start
+    // /// * `elements` - A slice of group elements
+    // ///
+    // /// # Returns
+    // ///
+    // /// A vector of group elements with the additional element at the start
+    // pub fn add_group_element_to_vector<G: Group>(additional_element: &G, elements: &[G]) -> Vec<G> {
+    //     let mut all_elements = vec![*additional_element];
+    //     all_elements.extend_from_slice(elements);
+    //     all_elements
+    // }
 
     /// Combines a single affine group element with a vector of affine group elements.
     ///
@@ -421,7 +421,7 @@ impl Helpers {
     /// # Returns
     ///
     /// A vector of affine group elements with the additional element at the start
-    pub fn add_affine_to_vector_old<G: CurveGroup>(
+    pub fn add_affine_to_front_of_vector<G: CurveGroup>(
         additional_element: &G::Affine,
         elements: &[G::Affine],
     ) -> Vec<G::Affine> {

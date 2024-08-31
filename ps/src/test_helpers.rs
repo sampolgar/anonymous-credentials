@@ -2,6 +2,7 @@ use crate::{keygen, signature::Signature};
 use ark_ec::pairing::Pairing;
 use ark_ff::UniformRand;
 
+// these make it much easier to test
 pub struct PSTestSetup<E: Pairing> {
     pub pk: keygen::PublicKey<E>,
     pub sk: keygen::SecretKey<E>,

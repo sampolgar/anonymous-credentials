@@ -14,8 +14,8 @@ pub struct PublicKey<E: Pairing> {
     pub g1: E::G1Affine,
     pub g2: E::G2Affine,
     pub h0: E::G1Affine,
-    pub h: Vec<E::G1Affine>, // [h_1, h_2, ..., h_L]
-    pub w: E::G2Affine,      // g2^x
+    pub h_l: Vec<E::G1Affine>, // [h_1, h_2, ..., h_L]
+    pub w: E::G2Affine,        // g2^x
 }
 
 #[derive(Clone, Debug)]
@@ -37,13 +37,13 @@ pub fn keygen<E: Pairing, R: Rng>(rng: &mut R, message_count: &usize) -> KeyPair
     let w = g2.mul(x).into_affine();
 
     // Generate h values
-    let h: Vec<E::G1Affine> = (0..*message_count)
+    let h_l: Vec<E::G1Affine> = (0..*message_count)
         .map(|_| E::G1Affine::rand(rng))
         .collect();
 
     KeyPair {
         sk: SecretKey { x },
-        pk: PublicKey { g1, g2, h0, h, w },
+        pk: PublicKey { g1, g2, h0, h_l, w },
     }
 }
 
@@ -70,7 +70,7 @@ mod tests {
         let key_pair = keygen::<Bls12_381, _>(&mut rng, &message_count);
 
         // Check that the correct number of h values were generated
-        assert_eq!(key_pair.pk.h.len(), message_count);
+        assert_eq!(key_pair.pk.h_l.len(), message_count);
 
         // Verify that w is correctly computed
         assert_eq!(
@@ -86,7 +86,7 @@ mod tests {
         let key_pair = keygen::<Bls12_381, _>(&mut rng, &message_count);
 
         // Check that the correct number of h values were generated
-        assert_eq!(key_pair.pk.h.len(), message_count);
+        assert_eq!(key_pair.pk.h_l.len(), message_count);
 
         // Verify that w is correctly computed
         assert_eq!(
