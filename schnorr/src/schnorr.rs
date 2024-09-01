@@ -37,7 +37,7 @@ impl SchnorrProtocol {
     }
 
     pub fn prove<G: AffineRepr>(
-        commitment: &SchnorrCommitment<G>,
+        commitment: &SchnorrCommitment<G>, //schnorr commitment
         witnesses: &[G::ScalarField],
         challenge: &G::ScalarField,
     ) -> SchnorrResponses<G> {
