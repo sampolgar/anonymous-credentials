@@ -104,7 +104,6 @@ impl<E: Pairing> Signature<E> {
         &self,
         pk: &keygen::PublicKey<E>,
         sk: &keygen::SecretKey<E>,
-        // messages: &[E::ScalarField],
         rng: &mut R,
     ) -> RandomizedSignature<E> {
         let r1 = E::ScalarField::rand(rng);
@@ -114,11 +113,9 @@ impl<E: Pairing> Signature<E> {
         let a_prime = self.a.mul(r1).into_affine();
         let a_bar = a_prime.mul(sk.x);
 
-        // let himi: E::G1 = E::G1::msm(&pk.h, messages).unwrap();
-        // let b = pk.g1 + pk.h0 * self.s + himi;
-        // let d = b.mul(r1) + pk.h0.mul(r2.inverse().unwrap());
-
         let s_prime = self.s + (r2 * r3);
+
+        let d = 
 
         RandomizedSignature {
             a_prime,
@@ -228,6 +225,37 @@ mod tests {
         let is_valid_signature = blind_signature.verify_blind(&pk, &public_commitment);
         assert!(is_valid_signature, "Signature verification failed");
     }
-}
 
-``
+    #[test]
+    fn test_sok() {
+        let mut rng = test_rng();
+        let message_count = 4;
+        let key_pair = keygen::keygen::<Bls12_381, _>(&mut rng, &message_count);
+        let sk = key_pair.secret_key();
+        let pk = key_pair.public_key();
+
+        // Create messages
+        let messages: Vec<<Bls12_381 as Pairing>::ScalarField> = (0..message_count)
+            .map(|_| <Bls12_381 as Pairing>::ScalarField::rand(&mut rng))
+            .collect();
+
+        let signature = Signature::sign(pk, sk, &messages, &mut rng);
+        let is_valid = signature.verify(pk, &messages);
+        assert!(is_valid, "Signature verification failed");
+
+        // Randomize signature
+        let randomized_signature = signature.randomize(pk, sk, &mut rng);
+
+        // Verify randomized signature
+        assert!(
+            randomized_signature.verify_pairing(pk),
+            "Randomized signature verification failed"
+        );
+
+        // Set up the equation Ābar/d = A'^-e · h0^r2
+        // Start SoK
+        let bases = vec![randomized_signature.a_prime, pk.h0];
+        let exponents = vec![randomized_signature.e.neg(), randomized_signature.r2];
+        let public_commitment = (Abar * d.inverse()).into_affine();
+    }
+}
