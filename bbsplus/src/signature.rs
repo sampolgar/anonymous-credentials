@@ -120,14 +120,12 @@ impl<E: Pairing> Signature<E> {
         let a_prime = self.a.mul(r1).into_affine();
         let a_bar = a_prime.mul(sk.x);
 
-        let s_prime = self.s - (r2 * r3);
-
         let himi: E::G1 = E::G1::msm(&pk.h_l, messages).unwrap();
         let b = pk.g1 + pk.h0 * self.s + himi;
-        let d = (b * r1) + (pk.h0 * r2.inverse().unwrap());
-        let abar2 = a_prime.mul(self.e.neg()) + pk.h0 * r2;
 
-        assert_eq!(a_bar, abar2, "abar abar");
+        let d = (b * r1) + (pk.h0 * r2.neg());
+
+        let s_prime = self.s - (r2 * r3);
 
         RandomizedSignature {
             a_prime,
@@ -259,18 +257,18 @@ mod tests {
         // Randomize signature
         let randomized_signature = signature.randomize(pk, sk, &mut rng, &messages);
 
-        // Verify randomized signature
+        // Verify randomized signature (A, e, s)
         assert!(
             randomized_signature.verify_pairing(pk),
             "Randomized signature verification failed"
         );
 
-        // Manual verification for the first part of the verification process to check the proofs
-        let lhs = randomized_signature
+        // Verify abar/d = a'^-e . h_0^r2
+        let lhs = randomized_signature.a_bar - randomized_signature.d;
+        let rhs = randomized_signature
             .a_prime
             .mul(randomized_signature.e.neg())
             + pk.h0.mul(randomized_signature.r2);
-        let rhs = randomized_signature.a_bar - randomized_signature.d;
 
         assert_eq!(
             lhs.into_affine(),
@@ -279,24 +277,24 @@ mod tests {
         );
 
         // Set up the equation Ābar/d = A'^-e · h0^r2
-        // // Start SoK
-        // let bases = vec![randomized_signature.a_prime, pk.h0];
-        // let exponents = vec![randomized_signature.e.neg(), randomized_signature.r2];
-        // let abar = randomized_signature.a_bar;
-        // let d = randomized_signature.d;
-        // let public_commitment = (abar.add(d.neg())).into_affine();
-        // let challenge = Fr::rand(&mut rng);
+        // Start SoK
+        let bases = vec![randomized_signature.a_prime, pk.h0];
+        let exponents = vec![randomized_signature.e.neg(), randomized_signature.r2];
+        let abar = randomized_signature.a_bar;
+        let d = randomized_signature.d;
+        let public_commitment = (abar.add(d.neg())).into_affine();
+        let challenge = Fr::rand(&mut rng);
 
-        // let schnorr_commitment_1 = SchnorrProtocol::commit(&bases, &mut rng);
-        // let schnorr_responses_1 =
-        //     SchnorrProtocol::prove(&schnorr_commitment_1, &exponents, &challenge);
-        // let is_commitment1_valid = SchnorrProtocol::verify(
-        //     &bases,
-        //     &public_commitment,
-        //     &schnorr_commitment_1,
-        //     &schnorr_responses_1,
-        //     &challenge,
-        // );
-        // assert!(is_commitment1_valid, "is commitment 1 valid, no!");
+        let schnorr_commitment_1 = SchnorrProtocol::commit(&bases, &mut rng);
+        let schnorr_responses_1 =
+            SchnorrProtocol::prove(&schnorr_commitment_1, &exponents, &challenge);
+        let is_commitment1_valid = SchnorrProtocol::verify(
+            &bases,
+            &public_commitment,
+            &schnorr_commitment_1,
+            &schnorr_responses_1,
+            &challenge,
+        );
+        assert!(is_commitment1_valid, "is commitment 1 valid, no!");
     }
 }

@@ -194,3 +194,9 @@ pub fn rand<'a, R: Rng + Send>(
 
     and add rayon to dependencies in dev and normal without optional and remove from features
     
+        let d = (b * r1) + (pk.h0 * r2.neg());
+
+        let d = (b * r1) + (pk.h0 * r2.inverse().unwrap()); -- this doesn't work!
+
+        .neg() works, why?
+        
