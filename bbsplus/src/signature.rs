@@ -25,32 +25,11 @@ pub struct RandomizedSignature<E: Pairing> {
     pub s_prime: E::ScalarField,
     pub r1: E::ScalarField,
     pub r2: E::ScalarField,
+    pub r3: E::ScalarField,
     pub d: E::G1Affine,
 }
 
-// pub struct User<E: Pairing>{
-//     pub m: Vec<E::G1Affine>,
-//     pub b:
-// }
-
-// pub struct Setup<E: Pairing> {
-//     pub m: Vec<E::G1Affine>,
-//     pub himi: E::G1Affine,
-//     pub b: E::G1Affine,
-// }
-
-// impl<E: Pairing> Setup<E> {
-//     pub fn new<R: Rng>(
-//         pk: &keygen::PublicKey<E>,
-//         messages: &[E::ScalarField],
-//         rng: &mut R,
-//     ) -> Self {
-//         let s =
-//     }
-// }
-
 impl<E: Pairing> Signature<E> {
-    // pub fn pok_messages
     pub fn blind_sign<R: Rng>(
         pk: &keygen::PublicKey<E>,
         sk: &keygen::SecretKey<E>,
@@ -134,6 +113,7 @@ impl<E: Pairing> Signature<E> {
             s_prime,
             r1,
             r2,
+            r3,
             d: d.into_affine(),
         }
     }
@@ -160,6 +140,7 @@ mod tests {
         Bls12_381, Config as Bls12_381Config, Fr, G1Affine, G1Projective, G2Affine,
     };
     use ark_std::test_rng;
+    use num::traits::ops::mul_add;
     use utils::helpers;
 
     #[test]
@@ -296,5 +277,73 @@ mod tests {
             &challenge,
         );
         assert!(is_commitment1_valid, "is commitment 1 valid, no!");
+
+        // Set up the equation Ābar/d = A'^-e · h0^r2
+        // Start SoK
+        // Verify g1 * \prod_{i \in D}h_i^m_i      =     d^r3 * h_0^{-s'} * \prod_{i \notin D} hi^-mi
+        let disclosed_indices: Vec<usize> = vec![0, 1];
+        let mut disclosed_messages: Vec<<Bls12_381 as Pairing>::ScalarField> = vec![];
+        let mut disclosed_bases: Vec<<Bls12_381 as Pairing>::G1Affine> = vec![];
+        let mut hidden_messages: Vec<<Bls12_381 as Pairing>::ScalarField> = vec![];
+        let mut hidden_bases: Vec<<Bls12_381 as Pairing>::G1Affine> = vec![];
+
+        for (i, m) in messages.iter().enumerate() {
+            if disclosed_indices.contains(&i) {
+                println!("disclosed: {}, {}", &i, *m);
+                disclosed_messages.push(*m);
+                disclosed_bases.push(pk.h_l[i]);
+            } else {
+                println!("hidden: {}, {}", &i, *m);
+                hidden_messages.push(*m);
+                hidden_bases.push(pk.h_l[i].neg()); // we negate each hidden base to comply with the PoK operation
+            }
+        }
+
+        let disclosed_lhs2: <Bls12_381 as Pairing>::G1 =
+            <Bls12_381 as Pairing>::G1::msm(&disclosed_bases, &disclosed_messages).unwrap();
+        let lhs2 = disclosed_lhs2.add(pk.g1);
+
+        // d^r3 * h_0^{-s'} * \prod_{i \notin D} hi^-mi
+        let dr3 = d.mul(randomized_signature.r3);
+        let h0sprimeneg = pk.h0.mul(randomized_signature.s_prime.neg());
+        let hidden_rhs2: <Bls12_381 as Pairing>::G1 =
+            <Bls12_381 as Pairing>::G1::msm(&hidden_bases, &hidden_messages).unwrap();
+
+        let rhs2 = dr3.add(h0sprimeneg).add(hidden_rhs2);
+        assert_eq!(
+            lhs2.into_affine(),
+            rhs2.into_affine(),
+            "Manual verification failed: g1 * prod_i in D h_i^m_i      =     d^r3 * h_0^-s' * prod_i notin D hi^-mi"
+        );
+
+        // Verify g1 * \prod_{i \in D}h_i^m_i      =     d^r3 * h_0^{-s'} * \prod_{i \notin D} hi^-mi
+        // Start SoK
+        // exponents = r3, -s, m_i \forall i \notin D
+        // bases = d, h_0, h_i \forall i \notin D
+
+        // Combine r3, -s, and hidden_messages into a single vector
+        let mut exponents2: Vec<<Bls12_381 as Pairing>::ScalarField> =
+            vec![randomized_signature.r3, randomized_signature.s_prime.neg()];
+        exponents2.extend(hidden_messages);
+
+        // Now you can use the exponents vector in your proof of knowledge
+        let mut bases2 = vec![d, pk.h0];
+        bases2.extend(hidden_bases);
+
+        let public_commitment2 = lhs2;
+        let challenge2 = Fr::rand(&mut rng);
+
+        let schnorr_commitment_2 = SchnorrProtocol::commit(&bases2, &mut rng);
+        let schnorr_responses_2 =
+            SchnorrProtocol::prove(&schnorr_commitment_2, &exponents2, &challenge2);
+        let is_commitment2_valid = SchnorrProtocol::verify(
+            &bases2,
+            &public_commitment2.into_affine(),
+            &schnorr_commitment_2,
+            &schnorr_responses_2,
+            &challenge2,
+        );
+
+        assert!(is_commitment2_valid, "is commitment 2 valid, no!");
     }
 }

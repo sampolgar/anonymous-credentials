@@ -206,26 +206,26 @@ impl PSProofs {
             &hidden_messages,
             &challenge,
         );
-        println!(
-            "responseslen: {}, baseslen: {}",
-            responses.0.len(),
-            bases_g1.len()
-        );
+        // println!(
+        //     "responseslen: {}, baseslen: {}",
+        //     responses.0.len(),
+        //     bases_g1.len()
+        // );
 
-        println!("Bases G1:");
-        for base in &bases_g1 {
-            println!("{:?}", base);
-        }
+        // println!("Bases G1:");
+        // for base in &bases_g1 {
+        //     println!("{:?}", base);
+        // }
 
-        println!("Hidden Bases G2:");
-        for base in &hidden_bases_g2 {
-            println!("{:?}", base);
-        }
+        // println!("Hidden Bases G2:");
+        // for base in &hidden_bases_g2 {
+        //     println!("{:?}", base);
+        // }
 
-        println!("Responses:");
-        for response in &responses.0 {
-            println!("{:?}", response);
-        }
+        // println!("Responses:");
+        // for response in &responses.0 {
+        //     println!("{:?}", response);
+        // }
 
         let is_valid = SchnorrProtocolPairing::verify(
             &schnorr_commitment_hidden_values.t_com,
@@ -299,20 +299,20 @@ impl PSProofs {
         );
 
         // Verify Schnorr proof. This should verify as a proof of knowledge of the hidden values
-        println!("Bases G1 mk2:");
-        for base in &bases_g1 {
-            println!("{:?}", base);
-        }
+        // println!("Bases G1 mk2:");
+        // for base in &bases_g1 {
+        //     println!("{:?}", base);
+        // }
 
-        println!("Hidden Bases G2 mk2:");
-        for base in &hidden_bases_g2 {
-            println!("{:?}", base);
-        }
+        // println!("Hidden Bases G2 mk2:");
+        // for base in &hidden_bases_g2 {
+        //     println!("{:?}", base);
+        // }
 
-        println!("Responses mk2:");
-        for response in &proof.responses {
-            println!("{:?}", response);
-        }
+        // println!("Responses mk2:");
+        // for response in &proof.responses {
+        //     println!("{:?}", response);
+        // }
 
         let is_schnorr_valid = SchnorrProtocolPairing::verify(
             &proof.schnorr_commitment,
@@ -539,7 +539,9 @@ impl PSProofs {
             &equality_responses.0,
         );
 
-        // Ok(equality_valid)
+        assert!(equality_valid, "equality not valid, equality proofs");
+        assert!(is_valid, "isvalid not valid, equality proofs");
+        // Ok(equality_valid);
         Ok(is_valid)
     }
 }
