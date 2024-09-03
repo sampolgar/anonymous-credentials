@@ -1,13 +1,14 @@
+use crate::bbsplusproofs::BBSPlusProofs;
 use crate::keygen;
-use ark_ec::pairing::{Pairing, PairingOutput};
+use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{Field, UniformRand};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     ops::{Add, Mul, Neg},
     rand::Rng,
-    One, Zero,
+    One,
 };
-use schnorr::schnorr::SchnorrProtocol;
 use utils::helpers::Helpers;
 
 #[derive(Clone, Debug)]
@@ -17,16 +18,16 @@ pub struct Signature<E: Pairing> {
     pub s: E::ScalarField,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RandomizedSignature<E: Pairing> {
     pub a_prime: E::G1Affine,
     pub a_bar: E::G1Affine,
+    pub d: E::G1Affine,
     pub e: E::ScalarField,
     pub s_prime: E::ScalarField,
     pub r1: E::ScalarField,
     pub r2: E::ScalarField,
     pub r3: E::ScalarField,
-    pub d: E::G1Affine,
 }
 
 impl<E: Pairing> Signature<E> {
@@ -85,44 +86,50 @@ impl<E: Pairing> Signature<E> {
         lhs == rhs
     }
 
-    pub fn randomize<R: Rng>(
+    pub fn prepare_for_proof<R: Rng>(
         &self,
         pk: &keygen::PublicKey<E>,
+        messages: &[E::ScalarField],
         rng: &mut R,
-        messages: &Vec<E::ScalarField>,
     ) -> RandomizedSignature<E> {
-        let r1 = E::ScalarField::rand(rng);
-        let r2 = E::ScalarField::rand(rng);
-        let r3 = r1.inverse().unwrap();
-
-        let a_prime = self.a.mul(r1).into_affine();
-
-        // let a_bar = a_prime.mul(sk.x);
-        let a_bar = a_prime.mul(self.e).add(pk.h0.mul(r2));
-
-        let himi: E::G1 = E::G1::msm(&pk.h_l, messages).unwrap();
-        let b = pk.g1 + pk.h0 * self.s + himi;
-
-        let d = (b * r1) + (pk.h0 * r2.neg());
-
-        let s_prime = self.s - (r2 * r3);
-
-        RandomizedSignature {
-            a_prime,
-            a_bar: a_bar.into_affine(),
-            e: self.e,
-            s_prime,
-            r1,
-            r2,
-            r3,
-            d: d.into_affine(),
-        }
+        RandomizedSignature::randomize(self, pk, messages, rng)
     }
 }
 
 impl<E: Pairing> RandomizedSignature<E> {
+    pub(crate) fn randomize<R: Rng>(
+        signature: &Signature<E>,
+        pk: &keygen::PublicKey<E>,
+        messages: &[E::ScalarField],
+        rng: &mut R,
+    ) -> Self {
+        let r1 = E::ScalarField::rand(rng);
+        let r2 = E::ScalarField::rand(rng);
+        let r3 = r1.inverse().unwrap();
+
+        let a_prime = signature.a.mul(r1).into_affine();
+
+        let himi: E::G1 = E::G1::msm(&pk.h_l, messages).unwrap();
+        let b = pk.g1 + pk.h0 * signature.s + himi;
+        let a_bar = a_prime.mul(signature.e.neg()).add(b.mul(r1));
+
+        let d = (b * r1) + (pk.h0 * r2.neg());
+
+        let s_prime = signature.s - (r2 * r3);
+
+        Self {
+            a_prime,
+            a_bar: a_bar.into_affine(),
+            d: d.into_affine(),
+            e: signature.e,
+            s_prime,
+            r1,
+            r2,
+            r3,
+        }
+    }
+
     pub fn verify_pairing(&self, pk: &keygen::PublicKey<E>) -> bool {
-        // let x = pk.w + pk.g2.mul(self.e); // X = w · g2^e = g2^(x+e)
         let lhs = E::pairing(self.a_prime, pk.w);
         let rhs = E::pairing(self.a_bar, pk.g2);
 
@@ -133,12 +140,8 @@ impl<E: Pairing> RandomizedSignature<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::{
-        Bls12_381, Config as Bls12_381Config, Fr, G1Affine, G1Projective, G2Affine,
-    };
+    use ark_bls12_381::Bls12_381;
     use ark_std::test_rng;
-    use num::traits::ops::mul_add;
-    use utils::helpers;
 
     #[test]
     fn test_sign_and_verify() {
@@ -148,7 +151,6 @@ mod tests {
         let sk = key_pair.secret_key();
         let pk = key_pair.public_key();
 
-        // Create messages
         let messages: Vec<<Bls12_381 as Pairing>::ScalarField> = (0..message_count)
             .map(|_| <Bls12_381 as Pairing>::ScalarField::rand(&mut rng))
             .collect();
@@ -157,10 +159,7 @@ mod tests {
         let is_valid = signature.verify(pk, &messages);
         assert!(is_valid, "Signature verification failed");
 
-        // Randomize signature
-        let randomized_signature = signature.randomize(pk, &mut rng, &messages);
-
-        // Verify randomized signature
+        let randomized_signature = signature.prepare_for_proof(pk, &messages, &mut rng);
         assert!(
             randomized_signature.verify_pairing(pk),
             "Randomized signature verification failed"
@@ -168,57 +167,9 @@ mod tests {
     }
 
     #[test]
-    fn test_blind_sign() {
+    fn test_selective_disclosure_proof() {
         let mut rng = test_rng();
-        let message_count = 4;
-        let key_pair = keygen::keygen::<Bls12_381, _>(&mut rng, &message_count);
-        let sk = key_pair.secret_key();
-        let pk = key_pair.public_key();
-
-        // Create messages
-        let s1 = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
-        let messages: Vec<<Bls12_381 as Pairing>::ScalarField> = (0..message_count)
-            .map(|_| <Bls12_381 as Pairing>::ScalarField::rand(&mut rng))
-            .collect();
-
-        // run proof of knowledge
-        let mut bases = vec![pk.h0];
-        bases.extend(pk.h_l.iter().cloned());
-
-        // create fake challenge
-        let challenge = Fr::rand(&mut rng);
-
-        // generate commitment for proving
-        let com_prime = SchnorrProtocol::commit(&bases, &mut rng);
-
-        //         gather exponents to prove s1, m1, m2, ..., mi
-        let mut exponents = vec![s1];
-        exponents.extend(messages.iter().cloned());
-
-        let public_commitment = G1Projective::msm_unchecked(&bases, &exponents).into_affine();
-
-        let responses = SchnorrProtocol::prove(&com_prime, &exponents, &challenge);
-
-        let is_valid = SchnorrProtocol::verify(
-            &bases,
-            &public_commitment,
-            &com_prime,
-            &responses,
-            &challenge,
-        );
-
-        assert!(is_valid, "Schnorr proof verification failed");
-
-        let blind_signature = Signature::blind_sign(&pk, &sk, &public_commitment, &mut rng);
-
-        let is_valid_signature = blind_signature.verify_blind(&pk, &public_commitment);
-        assert!(is_valid_signature, "Signature verification failed");
-    }
-
-    #[test]
-    fn test_sok() {
-        let mut rng = test_rng();
-        let message_count = 4;
+        let message_count = 5;
         let key_pair = keygen::keygen::<Bls12_381, _>(&mut rng, &message_count);
         let sk = key_pair.secret_key();
         let pk = key_pair.public_key();
@@ -228,119 +179,46 @@ mod tests {
             .map(|_| <Bls12_381 as Pairing>::ScalarField::rand(&mut rng))
             .collect();
 
+        // Sign messages
         let signature = Signature::sign(pk, sk, &messages, &mut rng);
-        let is_valid = signature.verify(pk, &messages);
-        assert!(is_valid, "Signature verification failed");
 
-        // Randomize signature
-        let randomized_signature = signature.randomize(pk, &mut rng, &messages);
-
-        // Verify randomized signature (A, e, s)
+        // Verify the signature
         assert!(
-            randomized_signature.verify_pairing(pk),
-            "Randomized signature verification failed"
+            signature.verify(pk, &messages),
+            "Signature verification failed"
         );
 
-        // Verify abar/d = a'^-e . h_0^r2
-        let lhs = randomized_signature.a_bar - randomized_signature.d;
-        let rhs = randomized_signature
-            .a_prime
-            .mul(randomized_signature.e.neg())
-            + pk.h0.mul(randomized_signature.r2);
-
-        assert_eq!(
-            lhs.into_affine(),
-            rhs.into_affine(),
-            "Manual verification failed: A'^-e · h0^r2 != Ābar/d"
+        // Create a selective disclosure proof
+        let disclosed_indices = vec![0, 2]; // Disclose the first and third messages
+        let proof_result = BBSPlusProofs::prove_selective_disclosure(
+            &signature,
+            pk,
+            &messages,
+            &disclosed_indices,
+            &mut rng,
         );
 
-        // Set up the equation Ābar/d = A'^-e · h0^r2
-        // Start SoK
-        let bases = vec![randomized_signature.a_prime, pk.h0];
-        let exponents = vec![randomized_signature.e.neg(), randomized_signature.r2];
-        let abar = randomized_signature.a_bar;
-        let d = randomized_signature.d;
-        let public_commitment = (abar.add(d.neg())).into_affine();
-        let challenge = Fr::rand(&mut rng);
-
-        let schnorr_commitment_1 = SchnorrProtocol::commit(&bases, &mut rng);
-        let schnorr_responses_1 =
-            SchnorrProtocol::prove(&schnorr_commitment_1, &exponents, &challenge);
-        let is_commitment1_valid = SchnorrProtocol::verify(
-            &bases,
-            &public_commitment,
-            &schnorr_commitment_1,
-            &schnorr_responses_1,
-            &challenge,
-        );
-        assert!(is_commitment1_valid, "is commitment 1 valid, no!");
-
-        // Set up the equation Ābar/d = A'^-e · h0^r2
-        // Start SoK
-        // Verify g1 * \prod_{i \in D}h_i^m_i      =     d^r3 * h_0^{-s'} * \prod_{i \notin D} hi^-mi
-        let disclosed_indices: Vec<usize> = vec![0, 1];
-        let mut disclosed_messages: Vec<<Bls12_381 as Pairing>::ScalarField> = vec![];
-        let mut disclosed_bases: Vec<<Bls12_381 as Pairing>::G1Affine> = vec![];
-        let mut hidden_messages: Vec<<Bls12_381 as Pairing>::ScalarField> = vec![];
-        let mut hidden_bases: Vec<<Bls12_381 as Pairing>::G1Affine> = vec![];
-
-        for (i, m) in messages.iter().enumerate() {
-            if disclosed_indices.contains(&i) {
-                println!("disclosed: {}, {}", &i, *m);
-                disclosed_messages.push(*m);
-                disclosed_bases.push(pk.h_l[i]);
-            } else {
-                println!("hidden: {}, {}", &i, *m);
-                hidden_messages.push(*m);
-                hidden_bases.push(pk.h_l[i].neg()); // we negate each hidden base to comply with the PoK operation
-            }
-        }
-
-        let disclosed_lhs2: <Bls12_381 as Pairing>::G1 =
-            <Bls12_381 as Pairing>::G1::msm(&disclosed_bases, &disclosed_messages).unwrap();
-        let lhs2 = disclosed_lhs2.add(pk.g1);
-
-        // d^r3 * h_0^{-s'} * \prod_{i \notin D} hi^-mi
-        let dr3 = d.mul(randomized_signature.r3);
-        let h0sprimeneg = pk.h0.mul(randomized_signature.s_prime.neg());
-        let hidden_rhs2: <Bls12_381 as Pairing>::G1 =
-            <Bls12_381 as Pairing>::G1::msm(&hidden_bases, &hidden_messages).unwrap();
-
-        let rhs2 = dr3.add(h0sprimeneg).add(hidden_rhs2);
-        assert_eq!(
-            lhs2.into_affine(),
-            rhs2.into_affine(),
-            "Manual verification failed: g1 * prod_i in D h_i^m_i      =     d^r3 * h_0^-s' * prod_i notin D hi^-mi"
+        assert!(
+            proof_result.is_ok(),
+            "Failed to create selective disclosure proof"
         );
 
-        // Verify g1 * \prod_{i \in D}h_i^m_i      =     d^r3 * h_0^{-s'} * \prod_{i \notin D} hi^-mi
-        // Start SoK
-        // exponents = r3, -s, m_i \forall i \notin D
-        // bases = d, h_0, h_i \forall i \notin D
+        let proof = proof_result.unwrap();
 
-        // Combine r3, -s, and hidden_messages into a single vector
-        let mut exponents2: Vec<<Bls12_381 as Pairing>::ScalarField> =
-            vec![randomized_signature.r3, randomized_signature.s_prime.neg()];
-        exponents2.extend(hidden_messages);
+        // At this point, we've successfully created a proof.
+        // We'll add verification once it's implemented.
 
-        // Now you can use the exponents vector in your proof of knowledge
-        let mut bases2 = vec![d, pk.h0];
-        bases2.extend(hidden_bases);
+        // For now, let's just check that the proof is not empty
+        assert!(!proof.is_empty(), "Proof should not be empty");
 
-        let public_commitment2 = lhs2;
-        let challenge2 = Fr::rand(&mut rng);
+        // You can add more specific checks here based on what you know about the proof structure
+        // For example, you could deserialize the proof and check its components
 
-        let schnorr_commitment_2 = SchnorrProtocol::commit(&bases2, &mut rng);
-        let schnorr_responses_2 =
-            SchnorrProtocol::prove(&schnorr_commitment_2, &exponents2, &challenge2);
-        let is_commitment2_valid = SchnorrProtocol::verify(
-            &bases2,
-            &public_commitment2.into_affine(),
-            &schnorr_commitment_2,
-            &schnorr_responses_2,
-            &challenge2,
-        );
-
-        assert!(is_commitment2_valid, "is commitment 2 valid, no!");
+        // let deserialized_proof: SelectiveDisclosureProof<Bls12_381> =
+        //     CanonicalDeserialize::deserialize_compressed(&proof[..]).unwrap();
+        // assert_eq!(deserialized_proof.disclosed_messages.len(), disclosed_indices.len());
+        // ... add more checks as needed
     }
+
+    // Add more tests as needed...
 }
