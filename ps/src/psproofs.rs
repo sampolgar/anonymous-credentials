@@ -180,6 +180,7 @@ impl PSProofs {
                 hidden_bases_g2.push(setup.pk.y_g2[i]);
             }
         }
+        // add t and g2 to the end of the vectors
         hidden_messages.push(t);
         hidden_bases_g2.push(setup.pk.g2);
 
