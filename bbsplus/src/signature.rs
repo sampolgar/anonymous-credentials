@@ -88,7 +88,6 @@ impl<E: Pairing> Signature<E> {
     pub fn randomize<R: Rng>(
         &self,
         pk: &keygen::PublicKey<E>,
-        sk: &keygen::SecretKey<E>,
         rng: &mut R,
         messages: &Vec<E::ScalarField>,
     ) -> RandomizedSignature<E> {
@@ -97,7 +96,9 @@ impl<E: Pairing> Signature<E> {
         let r3 = r1.inverse().unwrap();
 
         let a_prime = self.a.mul(r1).into_affine();
-        let a_bar = a_prime.mul(sk.x);
+
+        // let a_bar = a_prime.mul(sk.x);
+        let a_bar = a_prime.mul(self.e).add(pk.h0.mul(r2));
 
         let himi: E::G1 = E::G1::msm(&pk.h_l, messages).unwrap();
         let b = pk.g1 + pk.h0 * self.s + himi;
@@ -127,10 +128,6 @@ impl<E: Pairing> RandomizedSignature<E> {
 
         lhs == rhs
     }
-
-    // pub fn prove_spk() -> bool {}
-
-    // pub fn verify_spk() -> bool {}
 }
 
 #[cfg(test)]
@@ -161,7 +158,7 @@ mod tests {
         assert!(is_valid, "Signature verification failed");
 
         // Randomize signature
-        let randomized_signature = signature.randomize(pk, sk, &mut rng, &messages);
+        let randomized_signature = signature.randomize(pk, &mut rng, &messages);
 
         // Verify randomized signature
         assert!(
@@ -236,7 +233,7 @@ mod tests {
         assert!(is_valid, "Signature verification failed");
 
         // Randomize signature
-        let randomized_signature = signature.randomize(pk, sk, &mut rng, &messages);
+        let randomized_signature = signature.randomize(pk, &mut rng, &messages);
 
         // Verify randomized signature (A, e, s)
         assert!(

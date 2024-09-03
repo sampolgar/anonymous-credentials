@@ -22,7 +22,7 @@ pub fn create_bbs_plus_test_setup<E: Pairing>(message_count: usize) -> BBSPlusTe
         .map(|_| E::ScalarField::rand(&mut rng))
         .collect();
     let signature = Signature::<E>::sign(&pk, &sk, &messages, &mut rng);
-    let blind_signature = signature.randomize(&pk, &sk, &mut rng, &messages);
+    let blind_signature = signature.randomize(&pk, &mut rng, &messages);
 
     BBSPlusTestSetup {
         pk,
