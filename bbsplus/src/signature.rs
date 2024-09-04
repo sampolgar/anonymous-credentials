@@ -205,20 +205,12 @@ mod tests {
 
         let proof = proof_result.unwrap();
 
-        // At this point, we've successfully created a proof.
-        // We'll add verification once it's implemented.
-
         // For now, let's just check that the proof is not empty
         assert!(!proof.is_empty(), "Proof should not be empty");
-
-        // You can add more specific checks here based on what you know about the proof structure
-        // For example, you could deserialize the proof and check its components
 
         // let deserialized_proof: SelectiveDisclosureProof<Bls12_381> =
         //     CanonicalDeserialize::deserialize_compressed(&proof[..]).unwrap();
         // assert_eq!(deserialized_proof.disclosed_messages.len(), disclosed_indices.len());
         // ... add more checks as needed
     }
-
-    // Add more tests as needed...
 }
