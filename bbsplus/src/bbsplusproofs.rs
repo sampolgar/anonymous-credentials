@@ -27,27 +27,6 @@ pub enum ProofError {
     NoEqualityIndices,
 }
 
-// #[derive(CanonicalSerialize, CanonicalDeserialize)]
-// pub struct SelectiveDisclosureProof<E: Pairing> {
-//     pub randomized_signature: RandomizedSignature<E>,
-//     pub commitment: E::G1Affine,
-//     pub schnorr_commitment: E::G1Affine,
-//     pub challenge: E::ScalarField,
-//     pub responses: Vec<E::ScalarField>,
-//     pub disclosed_messages: Vec<(usize, E::ScalarField)>,
-// }
-
-// #[derive(CanonicalSerialize, CanonicalDeserialize)]
-// pub struct SelectiveDisclosureProof<E: Pairing> {
-//     pub randomized_signature: RandomizedSignature<E>,
-//     pub schnorr_commitment_1: SchnorrCommitment<G>,
-//     pub schnorr_responses_1: Vec<E::ScalarField>,
-//     pub schnorr_commitment_2: E::G1Affine,
-//     pub schnorr_responses_2: Vec<E::ScalarField>,
-//     pub challenge: E::ScalarField,
-//     pub disclosed_messages: Vec<(usize, E::ScalarField)>,
-// }
-
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
 pub struct SelectiveDisclosureProof<E: Pairing> {
     pub randomized_signature: RandomizedSignature<E>,
@@ -273,7 +252,7 @@ impl BBSPlusProofs {
 
         // Prepare bases for T1, T2, and T3
         let t1_bases = vec![randomized_sig.a_prime, pk.h0];
-        let mut t2_bases = vec![pk.g1, pk.h0.neg()];
+        let mut t2_bases = vec![pk.g1, pk.h0.into_group().neg().into_affine()];
         t2_bases.extend(pk.h_l.iter().cloned());
         let t3_bases: Vec<E::G1Affine> = equality_indices.iter().map(|&(i, _)| pk.h_l[i]).collect();
 
@@ -298,6 +277,23 @@ impl BBSPlusProofs {
         let t1_responses = SchnorrProtocol::prove(&t1_commitment, &t1_witnesses, &challenge);
         let t2_responses = SchnorrProtocol::prove(&t2_commitment, &t2_witnesses, &challenge);
         let t3_responses = SchnorrProtocol::prove(&t3_commitment, &t3_witnesses, &challenge);
+
+        //  let t1_statement =(proof.randomized_signature.a_bar.into_group() - proof.randomized_signature.d).neg();
+        let public_statement_1 = (randomized_sig
+            .a_bar
+            .add(randomized_sig.d.into_group().neg()))
+        .into_affine();
+
+        // let public_commitment = randomized_sig.a_bar.add()
+        let t1_valid = SchnorrProtocol::verify(
+            &t1_bases,
+            &public_statement_1,
+            &t1_commitment,
+            &t1_responses,
+            &challenge,
+        );
+
+        assert!(t1_valid, "t1 should first be valid!");
 
         // Construct the proof
         let proof = EqualityProof {
@@ -334,21 +330,37 @@ impl BBSPlusProofs {
 
         // Reconstruct bases
         let t1_bases = vec![proof.randomized_signature.a_prime, pk.h0];
-        let mut t2_bases = vec![pk.g1, pk.h0.neg()];
+        let mut t2_bases = vec![pk.g1, pk.h0.into_group().neg().into_affine()];
         t2_bases.extend(pk.h_l.iter().cloned());
         let t3_bases: Vec<E::G1Affine> =
             proof.equality_indices.iter().map(|&i| pk.h_l[i]).collect();
 
         // Compute public statements
-        let t1_statement = (proof.randomized_signature.a_bar - proof.randomized_signature.d).neg();
+        // This is wrong!!
+        let t1_statement = (proof
+            .randomized_signature
+            .a_bar
+            .add(proof.randomized_signature.d.into_group().neg()))
+        .into_affine();
+
+        // let t2_statement = proof
+        //     .randomized_signature
+        //     .d
+        //     .mul(proof.randomized_signature.r3)
+        //     .add(pk.h0.mul(proof.randomized_signature.s_prime.neg()));
+
         let t2_statement = proof
             .randomized_signature
             .d
             .mul(proof.randomized_signature.r3)
-            + pk.h0.mul(proof.randomized_signature.s_prime.neg());
+            .add(pk.h0.mul(proof.randomized_signature.s_prime))
+            .neg();
+
+        // assert_eq!(t2_statement, t2_statement2.neg(), "t2 isn't the same ");
+
         let t3_statement = E::G1::zero().into_affine();
 
-        // Verify Schnorr proofs
+        // let public_commitment = randomized_sig.a_bar.add()
         let t1_valid = SchnorrProtocol::verify(
             &t1_bases,
             &t1_statement,
@@ -357,13 +369,17 @@ impl BBSPlusProofs {
             &proof.challenge,
         );
 
+        assert!(t1_valid, "t1 -- should first be valid!");
+
         let t2_valid = SchnorrProtocol::verify(
             &t2_bases,
-            &t2_statement,
+            &t2_statement.into_affine(),
             &proof.t2_commitment,
             &proof.t2_responses,
             &proof.challenge,
         );
+
+        assert!(t2_valid, "t2 - should first be valid!");
 
         let t3_valid = SchnorrProtocol::verify(
             &t3_bases,
@@ -373,53 +389,9 @@ impl BBSPlusProofs {
             &proof.challenge,
         );
 
+        assert!(t3_valid, "t3 -- should first be valid!");
+
         Ok(t1_valid && t2_valid && t3_valid)
-    }
-    pub fn prove_equality<E: Pairing, R: Rng>(
-        signature: &Signature<E>,
-        pk: &keygen::PublicKey<E>,
-        messages: &[E::ScalarField],
-        equality_indices: &[(usize, E::ScalarField)],
-        rng: &mut R,
-    ) -> Result<Vec<u8>, ProofError> {
-        // Validate indices
-        if equality_indices.iter().any(|&(i, _)| i >= messages.len()) {
-            return Err(ProofError::InvalidEqualityIndex);
-        }
-        if equality_indices.is_empty() {
-            return Err(ProofError::NoEqualityIndices);
-        }
-
-        // Randomize the signature
-        let randomized_sig = signature.prepare_for_proof(pk, messages, rng);
-
-        // Prepare bases and exponents for the equality proof
-        let mut bases = vec![randomized_sig.a_prime];
-        let mut exponents = vec![randomized_sig.e.neg()];
-
-        for &(i, external_message) in equality_indices {
-            bases.push(pk.h_l[i]);
-            exponents.push(external_message - messages[i]);
-        }
-
-        // Create Schnorr proof
-        let challenge = E::ScalarField::rand(rng);
-        let schnorr_commitment = SchnorrProtocol::commit(&bases, rng);
-        let schnorr_responses = SchnorrProtocol::prove(&schnorr_commitment, &exponents, &challenge);
-
-        // Construct the proof
-        let proof = EqualityProof {
-            randomized_signature: randomized_sig,
-            schnorr_commitment: schnorr_commitment.com_t,
-            challenge,
-            responses: schnorr_responses.0,
-            equality_indices: equality_indices.iter().map(|&(i, _)| i).collect(),
-        };
-
-        let mut serialized_proof = Vec::new();
-        proof.serialize_compressed(&mut serialized_proof)?;
-
-        Ok(serialized_proof)
     }
 }
 
