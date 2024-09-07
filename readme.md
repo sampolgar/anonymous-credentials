@@ -9,3 +9,10 @@ Todo
 - [ ] Remove println and clean up
 - [ ] Update pairing to faster pairing function
 - [ ] Do Equality Proofs with multiple credentials
+
+Notes
+cargo bench
+
+Problems found
+
+- bbsplus has to be remade to support proving from multiple credentials as per https://github.com/sampolgar/dock-crypto/blob/main/bbs_plus/src/proof_23.rs
