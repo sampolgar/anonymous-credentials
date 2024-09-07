@@ -1,5 +1,5 @@
 // Inspired by Lovesh's work https://github.com/docknetwork/crypto/blob/main/schnorr_pok/src/lib.rs
-
+// TODO let proofs = SchnorrProtocol::new(generators, exponents, public_statement) this is what it should be!
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
