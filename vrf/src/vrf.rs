@@ -7,9 +7,13 @@ use ark_ec::{
 };
 // {AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{Field, PrimeField};
-use ark_std::{ops::Mul, rand::Rng, sync::Mutex, One, UniformRand, Zero};
+use ark_std::{
+    ops::{Add, Mul, Neg},
+    rand::Rng,
+    sync::Mutex,
+    test_rng, One, UniformRand, Zero,
+};
 // use itertools::Itertools;
-use ark_std::ops::{Add, Mul, Neg};
 use core::marker::PhantomData;
 use rayon::prelude::*;
 use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
@@ -82,7 +86,7 @@ impl<E: Pairing> VRF<E> {
 
         // Commit
         let t_commitment = SchnorrProtocol::commit(&[*g], rng);
-        let challenge = E::ScalarField::rand(&mut rng);
+        let challenge = E::ScalarField::rand(rng);
         // Prove
         let t_responses = SchnorrProtocol::prove(&t_commitment, &[z], &challenge);
 
@@ -104,11 +108,45 @@ impl<E: Pairing> VRF<E> {
             &proof.challenge,
         );
 
-        // Verify that e(y, g2) = e(g, pk * g^x)
+        // Verify that e(g, y) = e(pk * g^x, g2)
+        let g1 = E::G1Affine::generator();
         let g2 = E::G2Affine::generator();
         let lhs = E::pairing(proof.y, g2);
-        let rhs = E::pairing(pk.g, pk.pk.mul(*x).add(g2.into_group()).into_affine());
+        let rhs = E::pairing(pk.pk.mul(*x).add(g1).into_affine(), g2);
 
         is_proof_valid && (lhs == rhs)
     }
+}
+
+use ark_bls12_381::{Bls12_381, Fr, G1Affine};
+
+#[test]
+fn test_vrf() {
+    let mut rng = test_rng();
+
+    // Key generation
+    let (sk, pk) = VRF::<Bls12_381>::keygen(&mut rng);
+
+    // Create a random input
+    let x = Fr::rand(&mut rng);
+
+    // Evaluate VRF
+    let y = VRF::<Bls12_381>::evaluate(&sk, &x, &pk.g);
+
+    // Generate proof
+    let proof = VRF::<Bls12_381>::prove(&sk, &x, &pk.g, &mut rng);
+
+    // Verify proof
+    let is_valid = VRF::<Bls12_381>::verify(&proof, &x, &pk);
+
+    assert!(is_valid, "VRF proof verification failed");
+
+    // Verify that the y in the proof matches the evaluated y
+    assert_eq!(y, proof.y, "Evaluated y does not match proof y");
+
+    // Try to verify with incorrect x
+    let incorrect_x = Fr::rand(&mut rng);
+    let is_invalid = VRF::<Bls12_381>::verify(&proof, &incorrect_x, &pk);
+
+    assert!(!is_invalid, "VRF verification should fail with incorrect x");
 }
