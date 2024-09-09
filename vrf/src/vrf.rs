@@ -67,7 +67,10 @@ impl<E: Pairing> VRF<E> {
     }
 
     pub fn generate(&self, input: &VRFInput<E>) -> VRFOutput<E> {
-        let exponents = (input.x + input.sk).neg();
+        let exponents = (input.x + input.sk)
+            .inverse()
+            .expect("x + sk should not be zero");
+
         // pi = g^1/sk+x
         let pi_g1 = self.pp.g1.mul(exponents);
         let pi_g2 = self.pp.g2.mul(exponents);
@@ -135,9 +138,11 @@ impl<E: Pairing> VRF<E> {
         );
 
         assert!(is_valid, "Schnorr proof verification failed");
+        println!("-------------- isvalid passed");
 
         // Verify Pairing
-        let lhs1 = E::pairing(input.pk.mul(input.x), &output.pi_g2);
+        let lhs1 = E::pairing(self.pp.g1.mul(input.x).add(&input.pk), &output.pi_g2);
+        // g1 mul x . add pk
         let rhs1 = E::pairing(self.pp.g1, self.pp.g2);
         assert_eq!(lhs1, rhs1, "lhs1 neq rhs1");
 
@@ -186,7 +191,7 @@ mod tests {
         //     sk,
         //     x: incorrect_x,
         // };
-        // let is_invalid = vrf.verify(incorrect_input, output, proof);
+        // let is_invalid = vrf.verify(&incorrect_input, &output, &proof);
         // // let is_invalid = vrf.verify(incorrect_input, output, proof);
         // assert!(
         //     !is_invalid,
