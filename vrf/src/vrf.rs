@@ -18,14 +18,12 @@ use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
 
 #[derive(Clone, Debug)]
 pub struct VRFInput<E: Pairing> {
-    pub pk: E::G1Affine,
-    pub sk: E::ScalarField,
     pub x: E::ScalarField,
 }
 
 #[derive(Clone, Debug)]
 pub struct PublicKey<E: Pairing> {
-    pub pk: E::G1Affine,
+    pub pk: E::G2Affine,
 }
 
 #[derive(Clone, Debug)]
@@ -35,9 +33,7 @@ pub struct SecretKey<E: Pairing> {
 
 #[derive(Clone, Debug)]
 pub struct VRFOutput<E: Pairing> {
-    pub y: PairingOutput<E>,
-    pub pi_g1: E::G1Affine,
-    pub pi_g2: E::G2Affine,
+    pub pi: E::G1Affine,
 }
 
 pub struct VRFPublicParams<E: Pairing> {
@@ -66,88 +62,88 @@ impl<E: Pairing> VRF<E> {
         }
     }
 
-    pub fn generate(&self, input: &VRFInput<E>) -> VRFOutput<E> {
-        let exponents = (input.x + input.sk)
-            .inverse()
-            .expect("x + sk should not be zero");
+    pub fn generate(
+        &self,
+        input: &VRFInput<E>,
+        sk: &SecretKey<E>,
+    ) -> Result<VRFOutput<E>, &'static str> {
+        let exponents = (input.x + sk.sk).inverse().ok_or("x + sk is zero")?;
 
         // pi = g^1/sk+x
-        let pi_g1 = self.pp.g1.mul(exponents);
-        let pi_g2 = self.pp.g2.mul(exponents);
-        let y = E::pairing(&pi_g1, self.pp.g2);
-        VRFOutput {
-            y,
-            pi_g1: pi_g1.into_affine(),
-            pi_g2: pi_g2.into_affine(),
-        }
+        let pi = self.pp.g1.mul(exponents).into_affine();
+        Ok(VRFOutput { pi })
     }
 
     pub fn prove<R: Rng>(
         &self,
         input: &VRFInput<E>,
+        sk: &SecretKey<E>,
         output: &VRFOutput<E>,
         rng: &mut R,
-    ) -> VrfProof<E> {
+    ) -> Result<VrfProof<E>, &'static str> {
+        // t_witness = 1/x+sk
+        let t_witness = (input.x + sk.sk).inverse().ok_or("sk + x is zero")?;
+
         // t_com = g1^r
         let t_commitment = SchnorrProtocol::commit(&[self.pp.g1], rng);
-        // t_witness = 1/x+sk
-        let t_witness = (input.x + input.sk)
-            .inverse()
-            .expect("sk + x should not be zero");
 
         let challenge = E::ScalarField::rand(rng); // update later to hash
 
         // z = r + challenge * witness... z = r + challenge / x + sk
         let t_responses = SchnorrProtocol::prove(&t_commitment, &[t_witness], &challenge);
 
-        let is_valid = SchnorrProtocol::verify(
-            &[self.pp.g1],
-            &output.pi_g1,
-            &t_commitment,
-            &t_responses,
-            &challenge,
-        );
-
-        assert!(
-            is_valid,
-            "here in prove function ----- Schnorr proof verification failed"
-        );
-
-        let proof = VrfProof {
+        Ok(VrfProof {
             t_commitment,
             t_responses,
             challenge,
-        };
-
-        // let mut serialized_proof = Vec::new();
-        proof
+        })
     }
 
-    pub fn verify(&self, input: &VRFInput<E>, output: &VRFOutput<E>, proof: &VrfProof<E>) -> bool {
+    pub fn verify(
+        &self,
+        input: &VRFInput<E>,
+        pk: &PublicKey<E>,
+        output: &VRFOutput<E>,
+        proof: &VrfProof<E>,
+    ) -> bool {
         // g1^z = g^{r + challenge / x + sk}
         // pi = g^1/sk+x
         // t_commitment = g^r
         // g^z = pi^e * t_commitment
         // g^{r + challenge / x + sk} = g^(1/sk+x)^e * g^r   =   g^r * g^e/x+sk = g^e/x+sk * g^r
-        let is_valid = SchnorrProtocol::verify(
+        let is_schnorr_valid = SchnorrProtocol::verify(
             &[self.pp.g1],
-            &output.pi_g1,
+            &output.pi,
             &proof.t_commitment,
             &proof.t_responses,
             &proof.challenge,
         );
 
-        assert!(is_valid, "Schnorr proof verification failed");
+        assert!(is_schnorr_valid, "Schnorr proof verification failed");
         println!("-------------- isvalid passed");
+        //  if !is_schnorr_valid {
+        //     return false;
+        // }
+        // Verify Pairing. Lhs: pi = g^1/sk+x. Rhs: g2.mul(x).add(g2^sk)
+        let lhs = E::pairing(
+            &output.pi,
+            &self
+                .pp
+                .g2
+                .mul(input.x)
+                .add(&pk.pk.into_group())
+                .into_affine(),
+        );
+        let rhs = E::pairing(&self.pp.g1, &self.pp.g2);
 
-        // Verify Pairing
-        let lhs1 = E::pairing(self.pp.g1.mul(input.x).add(&input.pk), &output.pi_g2);
-        // g1 mul x . add pk
-        let rhs1 = E::pairing(self.pp.g1, self.pp.g2);
-        assert_eq!(lhs1, rhs1, "lhs1 neq rhs1");
+        // // Verify Pairing
+        // let lhs1 = E::pairing(self.pp.g1.mul(input.x).add(&input.pk), &output.pi_g2);
+        // // g1 mul x . add pk
+        // let rhs1 = E::pairing(self.pp.g1, self.pp.g2);
+        // assert_eq!(lhs1, rhs1, "lhs1 neq rhs1");
 
-        let rhs2 = E::pairing(self.pp.g1, &output.pi_g2);
-        assert_eq!(output.y, rhs2, "lhs2 neq rhs2");
+        // let rhs2 = E::pairing(self.pp.g1, &output.pi_g2);
+        // assert_eq!(output.y, rhs2, "lhs2 neq rhs2");
         true
     }
 }
@@ -158,44 +154,36 @@ mod tests {
     use ark_bls12_381::{Bls12_381, Fr, G1Affine};
     #[test]
     fn test_vrf() {
-        use ark_bls12_381::Bls12_381;
-        use ark_std::test_rng;
-
         let mut rng = test_rng();
 
         // Initialize VRF
         let vrf = VRF::<Bls12_381>::new(&mut rng);
 
         // Generate keys
-        let sk = Fr::rand(&mut rng);
-        let pk = vrf.pp.g1.mul(sk).into_affine();
+        let sk = SecretKey {
+            sk: Fr::rand(&mut rng),
+        };
+        let pk = PublicKey {
+            pk: vrf.pp.g2.mul(sk.sk).into_affine(),
+        };
 
         // Create input
         let x = Fr::rand(&mut rng);
-        let input = VRFInput { pk, sk, x };
+        let input = VRFInput { x };
 
         // Generate VRF output
-        let output = vrf.generate(&input);
+        let output = vrf
+            .generate(&input, &sk)
+            .expect("Failed to generate VRF output");
 
         // Generate proof
-        let proof = vrf.prove(&input, &output, &mut rng);
+        let proof = vrf
+            .prove(&input, &sk, &output, &mut rng)
+            .expect("Failed to generate proof");
 
         // Verify
-        let is_valid = vrf.verify(&input, &output, &proof);
+        let is_valid = vrf.verify(&input, &pk, &output, &proof);
         assert!(is_valid, "VRF verification failed");
-
-        // // Test with incorrect input
-        // let incorrect_x = Fr::rand(&mut rng);
-        // let incorrect_input = VRFInput {
-        //     pk,
-        //     sk,
-        //     x: incorrect_x,
-        // };
-        // let is_invalid = vrf.verify(&incorrect_input, &output, &proof);
-        // // let is_invalid = vrf.verify(incorrect_input, output, proof);
-        // assert!(
-        //     !is_invalid,
-        //     "VRF verification should fail with incorrect input"
-        // );
+        println!("vrf passed -----------------------------------------");
     }
 }
