@@ -33,6 +33,7 @@ pub struct SecretKey<E: Pairing> {
 
 #[derive(Clone, Debug)]
 pub struct VRFOutput<E: Pairing> {
+    pub y: E::TargetField,
     pub pi: E::G1Affine,
 }
 
@@ -62,18 +63,26 @@ impl<E: Pairing> VRF<E> {
         }
     }
 
+    pub fn generate_keys<R: Rng>(&self, rng: &mut R) -> (SecretKey<E>, PublicKey<E>) {
+        let sk = E::ScalarField::rand(rng);
+        let pk = self.pp.g2.mul(sk).into_affine();
+        (SecretKey { sk }, PublicKey { pk })
+    }
+
     pub fn generate(
         &self,
         input: &VRFInput<E>,
         sk: &SecretKey<E>,
     ) -> Result<VRFOutput<E>, &'static str> {
-        let exponents = (input.x + sk.sk).inverse().ok_or("x + sk is zero")?;
+        let exponent = (input.x + sk.sk).inverse().ok_or("x + sk is zero")?;
 
-        // pi = g^1/sk+x
-        let pi = self.pp.g1.mul(exponents).into_affine();
-        Ok(VRFOutput { pi })
+        let pi = self.pp.g1.mul(exponent).into_affine();
+        let y = E::pairing(pi, self.pp.g2).0;
+
+        Ok(VRFOutput { y, pi })
     }
 
+    // prove knowledge of sk such that pi_sk(x) = g^1/sk+x(proof of correctness)
     pub fn prove<R: Rng>(
         &self,
         input: &VRFInput<E>,
@@ -106,11 +115,6 @@ impl<E: Pairing> VRF<E> {
         output: &VRFOutput<E>,
         proof: &VrfProof<E>,
     ) -> bool {
-        // g1^z = g^{r + challenge / x + sk}
-        // pi = g^1/sk+x
-        // t_commitment = g^r
-        // g^z = pi^e * t_commitment
-        // g^{r + challenge / x + sk} = g^(1/sk+x)^e * g^r   =   g^r * g^e/x+sk = g^e/x+sk * g^r
         let is_schnorr_valid = SchnorrProtocol::verify(
             &[self.pp.g1],
             &output.pi,
@@ -119,31 +123,26 @@ impl<E: Pairing> VRF<E> {
             &proof.challenge,
         );
 
-        assert!(is_schnorr_valid, "Schnorr proof verification failed");
-        println!("-------------- isvalid passed");
-        //  if !is_schnorr_valid {
-        //     return false;
-        // }
-        // Verify Pairing. Lhs: pi = g^1/sk+x. Rhs: g2.mul(x).add(g2^sk)
-        let lhs = E::pairing(
-            &output.pi,
-            &self
-                .pp
-                .g2
-                .mul(input.x)
-                .add(&pk.pk.into_group())
-                .into_affine(),
-        );
-        let rhs = E::pairing(&self.pp.g1, &self.pp.g2);
+        if !is_schnorr_valid {
+            return false;
+        }
 
-        // // Verify Pairing
-        // let lhs1 = E::pairing(self.pp.g1.mul(input.x).add(&input.pk), &output.pi_g2);
-        // // g1 mul x . add pk
-        // let rhs1 = E::pairing(self.pp.g1, self.pp.g2);
-        // assert_eq!(lhs1, rhs1, "lhs1 neq rhs1");
+        println!("-------------- schnorr passed");
 
-        // let rhs2 = E::pairing(self.pp.g1, &output.pi_g2);
-        // assert_eq!(output.y, rhs2, "lhs2 neq rhs2");
+        // e(pi, g2^x * PK) = e(g1,g2)
+        // y = (pi, g2)
+        let lhs1 = E::pairing(&output.pi, self.pp.g2.mul(input.x).add(&pk.pk));
+        let rhs1 = E::pairing(self.pp.g1, self.pp.g2);
+
+        let rhs2 = E::pairing(&output.pi, self.pp.g2);
+
+        let is_valid_pairing = lhs1 == rhs1 && output.y == rhs2.0;
+
+        if !is_valid_pairing {
+            print!("in not valid pairing");
+            return false;
+        }
+        println!("-------------- pairing passed");
         true
     }
 }
