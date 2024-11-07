@@ -1,11 +1,7 @@
-// https://github.com/docknetwork/crypto/blob/main/syra/src/vrf.rs#L84
-// asymettric vrf
-
 use ark_ec::{
     pairing::{MillerLoopOutput, Pairing, PairingOutput},
     AffineRepr, CurveGroup,
 };
-// {AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{Field, PrimeField};
 use ark_std::{
     ops::{Add, Mul, Neg},
@@ -13,7 +9,6 @@ use ark_std::{
     sync::Mutex,
     test_rng, One, UniformRand, Zero,
 };
-// use itertools::Itertools;
 use core::marker::PhantomData;
 use rayon::prelude::*;
 use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
