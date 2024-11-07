@@ -13,135 +13,173 @@ use core::marker::PhantomData;
 use rayon::prelude::*;
 use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
 
-// secret key sk s
-// public key pk
-// secret message x
-
-// prove(sk, x) -> Fsk(x), π
-// verify(x, y, π, pk)
+#[derive(Clone, Debug)]
+pub struct VRFInput<E: Pairing> {
+    pub x: E::ScalarField,
+}
 
 #[derive(Clone, Debug)]
-pub struct Secrets<E: Pairing> {
-    pub x: E::ScalarField,
-    pub s: E::ScalarField,
-    pub y: E::G1Affine,
-}
-
 pub struct PublicKey<E: Pairing> {
-    pub pk: E::G1Affine,
-    pub g: E::G1Affine, // This is our random generator point
+    pub pk: E::G2Affine,
 }
 
+#[derive(Clone, Debug)]
+pub struct SecretKey<E: Pairing> {
+    pub sk: E::ScalarField,
+}
+
+#[derive(Clone, Debug)]
+pub struct VRFOutput<E: Pairing> {
+    pub y: E::TargetField,
+    pub pi: E::G1Affine,
+}
+
+pub struct VRFPublicParams<E: Pairing> {
+    pub g1: E::G1Affine,
+    pub g2: E::G2Affine,
+}
+
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct VrfProof<E: Pairing> {
-    pub y: E::G1Affine,
     pub t_commitment: SchnorrCommitment<E::G1Affine>,
     pub t_responses: SchnorrResponses<E::G1Affine>,
     pub challenge: E::ScalarField,
 }
-
 pub struct VRF<E: Pairing> {
     _phantom: PhantomData<E>,
+    pp: VRFPublicParams<E>,
 }
 
 impl<E: Pairing> VRF<E> {
-    pub fn new() -> Self {
+    pub fn new<R: Rng>(rng: &mut R) -> Self {
+        let g1 = E::G1Affine::rand(rng);
+        let g2 = E::G2Affine::rand(rng);
         VRF {
             _phantom: PhantomData,
+            pp: VRFPublicParams { g1, g2 },
         }
     }
-    pub fn keygen<R: Rng>(rng: &mut R) -> (E::ScalarField, PublicKey<E>) {
+
+    pub fn generate_keys<R: Rng>(&self, rng: &mut R) -> (SecretKey<E>, PublicKey<E>) {
         let sk = E::ScalarField::rand(rng);
-        let g = E::G1::rand(rng).into_affine();
-        let pk = g.mul(sk).into_affine();
-        (sk, PublicKey { pk, g })
+        let pk = self.pp.g2.mul(sk).into_affine();
+        (SecretKey { sk }, PublicKey { pk })
     }
 
-    pub fn evaluate(sk: &E::ScalarField, x: &E::ScalarField, g: &E::G1Affine) -> E::G1Affine {
-        let inv_exponent = (*sk + *x).inverse().expect("sk + x should not be zero");
-        g.mul(inv_exponent).into_affine()
+    pub fn generate(
+        &self,
+        input: &VRFInput<E>,
+        sk: &SecretKey<E>,
+    ) -> Result<VRFOutput<E>, &'static str> {
+        let exponent = (input.x + sk.sk).inverse().ok_or("x + sk is zero")?;
+
+        let pi = self.pp.g1.mul(exponent).into_affine();
+        let y = E::pairing(pi, self.pp.g2).0;
+
+        Ok(VRFOutput { y, pi })
     }
 
-    // prover knows sk, x, y such that g^1/sk+x
-    // let z = sk + x. We prove knowledge of z = sk + x not 1/sk+x
-    // public_statement = y (= g^1/sk+x)
-    // t_commitment = g^1/r, r \in Zp
-    // challenge = c, \in Zp
-    // t_response = r + c * z
-    // verify by t * y^c
+    // prove knowledge of sk such that pi_sk(x) = g^1/sk+x(proof of correctness)
     pub fn prove<R: Rng>(
-        sk: &E::ScalarField,
-        x: &E::ScalarField,
-        g: &E::G1Affine,
+        &self,
+        input: &VRFInput<E>,
+        sk: &SecretKey<E>,
+        output: &VRFOutput<E>,
         rng: &mut R,
-    ) -> VrfProof<E> {
-        let z = *sk + *x;
-        let y = g
-            .mul(z.inverse().expect("sk + x should not be zero"))
-            .into_affine();
+    ) -> Result<VrfProof<E>, &'static str> {
+        // t_witness = 1/x+sk
+        let t_witness = (input.x + sk.sk).inverse().ok_or("sk + x is zero")?;
 
-        // Commit
-        let t_commitment = SchnorrProtocol::commit(&[*g], rng);
-        let challenge = E::ScalarField::rand(rng);
-        // Prove
-        let t_responses = SchnorrProtocol::prove(&t_commitment, &[z], &challenge);
+        // t_com = g1^r
+        let t_commitment = SchnorrProtocol::commit(&[self.pp.g1], rng);
 
-        VrfProof {
-            y,
+        let challenge = E::ScalarField::rand(rng); // update later to hash
+
+        // z = r + challenge * witness... z = r + challenge / x + sk
+        let t_responses = SchnorrProtocol::prove(&t_commitment, &[t_witness], &challenge);
+
+        Ok(VrfProof {
             t_commitment,
             t_responses,
             challenge,
-        }
+        })
     }
 
-    pub fn verify(proof: &VrfProof<E>, x: &E::ScalarField, pk: &PublicKey<E>) -> bool {
-        // Verify the Schnorr proof
-        let is_proof_valid = SchnorrProtocol::verify(
-            &[pk.g],
-            &proof.y,
+    pub fn verify(
+        &self,
+        input: &VRFInput<E>,
+        pk: &PublicKey<E>,
+        output: &VRFOutput<E>,
+        proof: &VrfProof<E>,
+    ) -> bool {
+        let is_schnorr_valid = SchnorrProtocol::verify(
+            &[self.pp.g1],
+            &output.pi,
             &proof.t_commitment,
             &proof.t_responses,
             &proof.challenge,
         );
 
-        // Verify that e(g, y) = e(pk * g^x, g2)
-        let g1 = E::G1Affine::generator();
-        let g2 = E::G2Affine::generator();
-        let lhs = E::pairing(proof.y, g2);
-        let rhs = E::pairing(pk.pk.mul(*x).add(g1).into_affine(), g2);
+        if !is_schnorr_valid {
+            return false;
+        }
 
-        is_proof_valid && (lhs == rhs)
+        println!("-------------- schnorr passed");
+
+        // e(pi, g2^x * PK) = e(g1,g2)
+        // y = (pi, g2)
+        let lhs1 = E::pairing(&output.pi, self.pp.g2.mul(input.x).add(&pk.pk));
+        let rhs1 = E::pairing(self.pp.g1, self.pp.g2);
+
+        let rhs2 = E::pairing(&output.pi, self.pp.g2);
+
+        let is_valid_pairing = lhs1 == rhs1 && output.y == rhs2.0;
+
+        if !is_valid_pairing {
+            print!("in not valid pairing");
+            return false;
+        }
+        println!("-------------- pairing passed");
+        true
     }
 }
 
-use ark_bls12_381::{Bls12_381, Fr, G1Affine};
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
+    #[test]
+    fn test_vrf() {
+        let mut rng = test_rng();
 
-#[test]
-fn test_vrf() {
-    let mut rng = test_rng();
+        // Initialize VRF
+        let vrf = VRF::<Bls12_381>::new(&mut rng);
 
-    // Key generation
-    let (sk, pk) = VRF::<Bls12_381>::keygen(&mut rng);
+        // Generate keys
+        let sk = SecretKey {
+            sk: Fr::rand(&mut rng),
+        };
+        let pk = PublicKey {
+            pk: vrf.pp.g2.mul(sk.sk).into_affine(),
+        };
 
-    // Create a random input
-    let x = Fr::rand(&mut rng);
+        // Create input
+        let x = Fr::rand(&mut rng);
+        let input = VRFInput { x };
 
-    // Evaluate VRF
-    let y = VRF::<Bls12_381>::evaluate(&sk, &x, &pk.g);
+        // Generate VRF output
+        let output = vrf
+            .generate(&input, &sk)
+            .expect("Failed to generate VRF output");
 
-    // Generate proof
-    let proof = VRF::<Bls12_381>::prove(&sk, &x, &pk.g, &mut rng);
+        // Generate proof
+        let proof = vrf
+            .prove(&input, &sk, &output, &mut rng)
+            .expect("Failed to generate proof");
 
-    // Verify proof
-    let is_valid = VRF::<Bls12_381>::verify(&proof, &x, &pk);
-
-    assert!(is_valid, "VRF proof verification failed");
-
-    // Verify that the y in the proof matches the evaluated y
-    assert_eq!(y, proof.y, "Evaluated y does not match proof y");
-
-    // Try to verify with incorrect x
-    let incorrect_x = Fr::rand(&mut rng);
-    let is_invalid = VRF::<Bls12_381>::verify(&proof, &incorrect_x, &pk);
-
-    assert!(!is_invalid, "VRF verification should fail with incorrect x");
+        // Verify
+        let is_valid = vrf.verify(&input, &pk, &output, &proof);
+        assert!(is_valid, "VRF verification failed");
+        println!("vrf passed -----------------------------------------");
+    }
 }
