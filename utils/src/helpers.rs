@@ -174,6 +174,7 @@ impl Helpers {
     ) -> E::G2Affine {
         Self::compute_commitment::<E, E::G2>(additional_scalar, additional_point, scalars, points)
     }
+
     /// Computes a vector of scaled points for generic curve groups.
     ///
     /// # Arguments
@@ -428,6 +429,49 @@ impl Helpers {
         let mut all_elements = vec![*additional_element];
         all_elements.extend_from_slice(elements);
         all_elements
+    }
+
+    // new helpers, simplified
+    pub fn commit_g1<E: Pairing>(
+        r: &E::ScalarField,
+        m: &[E::ScalarField],
+        ck_elements: &[E::G1Affine],
+        ck_last: &E::G1Affine,
+    ) -> E::G1Affine {
+        assert_eq!(
+            m.len() + 1,
+            ck_elements.len() + 1,
+            "Mismatch between message and commitment key lengths"
+        );
+
+        let mut scalars = m.to_vec();
+        scalars.push(*r);
+
+        let mut ck = ck_elements.to_vec();
+        ck.push(*ck_last);
+
+        E::G1::msm_unchecked(&ck, &scalars).into_affine()
+    }
+
+    pub fn commit_g2<E: Pairing>(
+        r: &E::ScalarField,
+        m: &[E::ScalarField],
+        ck_elements: &[E::G2Affine],
+        ck_last: &E::G2Affine,
+    ) -> E::G2Affine {
+        assert_eq!(
+            m.len() + 1,
+            ck_elements.len() + 1,
+            "Mismatch between message and commitment key lengths"
+        );
+
+        let mut scalars = m.to_vec();
+        scalars.push(*r);
+
+        let mut ck = ck_elements.to_vec();
+        ck.push(*ck_last);
+
+        E::G2::msm_unchecked(&ck, &scalars).into_affine()
     }
 }
 

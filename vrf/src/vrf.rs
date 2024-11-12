@@ -3,6 +3,7 @@ use ark_ec::{
     AffineRepr, CurveGroup,
 };
 use ark_ff::{Field, PrimeField};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     ops::{Add, Mul, Neg},
     rand::Rng,
