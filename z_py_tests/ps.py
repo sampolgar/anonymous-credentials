@@ -1,8 +1,6 @@
 from py_ecc.optimized_bls12_381 import G1, G2, G12, FQ, pairing, final_exponentiate, multiply, neg, add, curve_order
 import random
 
-# start with datastructures or functions?
-
 
 # org pp = schemepublicparameters(secparam, n) = (p, secparam, n, g1, g2, e, ..)
 # ck = CM.Setup(pp) -> (g1, g1y[i], g2, g2y[i])
@@ -15,11 +13,50 @@ class PublicParameters:
         self.g1 = g1
         self.g2 = g2
 
+
 class Commitment:
-    def __init__(self, ck, mi, r):
-        self.ck = ck
+    def __init__(self, pp, ck, mi, r):
+        self.pp = pp
+        self.ckg1 = ck.ckg1
+        self.ckg2 = ck.ckg2
         self.mi = mi
         self.r = r
+        self.cmg1, self.cmg2 = self.commit()
+
+    def commit(self):
+
+        cmg1 = multiply(self.ckg1[0], self.mi[0])
+        cmg2 = multiply(self.ckg2[0], self.mi[0])
+
+        # Add remaining terms
+        for i in range(1, self.pp.n):
+            cmg1 = add(cmg1, multiply(self.ckg1[i], self.mi[i]))
+            cmg2 = add(cmg2, multiply(self.ckg2[i], self.mi[i]))
+
+        # Add randomness term
+        cmg1 = add(cmg1, multiply(self.pp.g1, self.r))
+        cmg2 = add(cmg2, multiply(self.pp.g2, self.r))
+
+        # test
+        if pairing(self.pp.g2, cmg1) == pairing(cmg2, self.pp.g1):
+            print("cm_commit pairings are equal!")
+        else:
+            print("cm_commit pairings aren't equal!")
+
+        return (cmg1, cmg2)
+
+    def cm_rerand(self, r_delta):
+        cmg1_r_delta = add(multiply(self.pp.g1, r_delta), self.cmg1)
+        cmg2_r_delta = add(multiply(self.pp.g2, r_delta), self.cmg2)
+
+        if pairing(self.pp.g2, cmg1_r_delta) == pairing(cmg2_r_delta, self.pp.g1):
+            print("cm_rerand pairing ok")
+        else:
+            print("cm_rerand pairing not ok")
+        self.cmg1 = cmg1_r_delta
+        self.cmg2 = cmg2_r_delta
+        self.r = self.r + r_delta % curve_order
+
 
 class CommitmentKey:
     def __init__(self, ckg1, ckg2):
@@ -27,18 +64,20 @@ class CommitmentKey:
         self.ckg2 = ckg2
 
 def genrandom():
-    return random.randrange(curve_order -1)
+    return random.randrange(curve_order - 1)
+
 
 def pp_setup(n):
     g1 = multiply(G1, genrandom())
     g2 = multiply(G2, genrandom())
     return PublicParameters(n, g1, g2)
 
+
 def cm_setup(pp):
     yi = []
     ckg1 = []
     ckg2 = []
-    
+
     for i in range(pp.n):
         yi.append(genrandom())
 
@@ -48,30 +87,6 @@ def cm_setup(pp):
 
     return CommitmentKey(ckg1, ckg2)
 
-def cm_commit(pp, ck, mi, r):
-    ckg1 = ck.ckg1
-    ckg2 = ck.ckg2
-    cmg1 = G1
-    cmg2 = G2
-    print("here1")
-    test = multiply(ckg1[0], mi[0])
-    print("here2")
-    for i in range(len(ck.ckg1)):
-        cmg1 = add(cmg1, multiply(ckg1[i], mi[i]))
-        cmg2 = add(cmg2, multiply(ckg2[i], mi[i]))
-    
-    cmg1 = add(cmg1, multiply(pp.g1, r))
-    cmg2 = add(cmg2, multiply(pp.g2, r))
-
-    # test
-    if pairing(pp.g2, cmg1) ==  pairing(cmg2, pp.g1):
-        print("pairings are equal!")
-    else:
-        print("pairings aren't equal!")
-    
-
-
-
 
 def ps_keygen(pp):
     x = genrandom()
@@ -79,7 +94,8 @@ def ps_keygen(pp):
     x2 = multiply(pp.g2, x)
     return (x1, x2)
 
-def test_ck(ck,pp):
+
+def test_ck(ck, pp):
     g1Y = ck[0][0]
     g2Y = ck[1][0]
 
@@ -93,6 +109,7 @@ def test_ck(ck,pp):
     else:
         print("pairing not ok")
 
+
 def main():
     # org key gen
     n = 4
@@ -100,14 +117,27 @@ def main():
     ck = cm_setup(pp)
     (sk, vk) = ps_keygen(pp)
 
-    mi = []  
+    # gen messages in signature as integers
+    mi = []
     for i in range(n):
-        mi.append(FQ(genrandom()))
+        mi.append(genrandom())
 
-    r = FQ(genrandom())
-    cm_commit(pp, ck, mi, r)
+    # gen commitment
+    r = genrandom()
+    cm = Commitment(pp, ck, mi, r)
 
+    # test rerandomizing it
+    r_delta = genrandom()
+    cm_rerand = cm.cm_rerand(r_delta)
+
+    # test signing it / obtain & issue
+    # 1. prove knowledge of the opening of the commitment
+
+    # 2. request signature over commitment, prove knowledge of the attributes
+    # pi = pok_cm_open(cm, blinding_factors)
+    # pi = cm: G1, cm':G1, [z_1, z_2,...], e for NIZK
     
+
 
 
 main()
