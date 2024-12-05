@@ -21,30 +21,55 @@ class Commitment:
         self.mi = mi
         self.r = r
 
+class CommitmentKey:
+    def __init__(self, ckg1, ckg2):
+        self.ckg1 = ckg1
+        self.ckg2 = ckg2
+
 def genrandom():
     return random.randrange(curve_order -1)
 
 def pp_setup(n):
     g1 = multiply(G1, genrandom())
     g2 = multiply(G2, genrandom())
-    print(g1, g2)
     return PublicParameters(n, g1, g2)
 
 def cm_setup(pp):
     yi = []
-    g1yi = []
-    g2yi = []
+    ckg1 = []
+    ckg2 = []
     
     for i in range(pp.n):
         yi.append(genrandom())
 
     for i in range(pp.n):
-        g1yi.append(multiply(pp.g1, yi[i]))
-        g2yi.append(multiply(pp.g2, yi[i]))
+        ckg1.append(multiply(pp.g1, yi[i]))
+        ckg2.append(multiply(pp.g2, yi[i]))
 
-    return (g1yi, g2yi)
+    return CommitmentKey(ckg1, ckg2)
 
-# def cm_com(ck, mi, r):
+def cm_commit(pp, ck, mi, r):
+    ckg1 = ck.ckg1
+    ckg2 = ck.ckg2
+    cmg1 = G1
+    cmg2 = G2
+    print("here1")
+    test = multiply(ckg1[0], mi[0])
+    print("here2")
+    for i in range(len(ck.ckg1)):
+        cmg1 = add(cmg1, multiply(ckg1[i], mi[i]))
+        cmg2 = add(cmg2, multiply(ckg2[i], mi[i]))
+    
+    cmg1 = add(cmg1, multiply(pp.g1, r))
+    cmg2 = add(cmg2, multiply(pp.g2, r))
+
+    # test
+    if pairing(pp.g2, cmg1) ==  pairing(cmg2, pp.g1):
+        print("pairings are equal!")
+    else:
+        print("pairings aren't equal!")
+    
+
 
 
 
@@ -54,23 +79,19 @@ def ps_keygen(pp):
     x2 = multiply(pp.g2, x)
     return (x1, x2)
 
-
-# def org_keygen(n):
-
-
 def test_ck(ck,pp):
     g1Y = ck[0][0]
     g2Y = ck[1][0]
+
     for i in range(1, pp.n):
         g1Y = add(g1Y, ck[0][i])
         g2Y = add(g2Y, ck[1][i])
+        print(g2Y)
 
-    if pairing(pp.g1, g2Y) == pairing(g1Y, pp.g2):
+    if pairing(g2Y, pp.g1) == pairing(pp.g2, g1Y):
         print("pairing ok")
     else:
         print("pairing not ok")
-
-
 
 def main():
     # org key gen
@@ -79,26 +100,12 @@ def main():
     ck = cm_setup(pp)
     (sk, vk) = ps_keygen(pp)
 
-    # obtain
-    m = []
+    mi = []  
     for i in range(n):
-        m.append(FQ(genrandom()))
-    
-    test_ck(ck, pp)
-    
+        mi.append(FQ(genrandom()))
 
-
-
-    
-
-
-    # parse opk = ck, pp, vk
-    # Compute (cm1, cm2) = CM.Com(ck, mi, r)
-
-
-
-
-    # Run picm = zkp.comopen()
+    r = FQ(genrandom())
+    cm_commit(pp, ck, mi, r)
 
     
 
