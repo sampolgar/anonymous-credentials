@@ -20,18 +20,58 @@ class ProofOfKnowledge:
         self.cm = cm
         self.blinding_factors = blinding_factors
         self.blinding_commitment = None
+        self.challenge = None
         self.responses = []
 
+    def prove(self):
+        """
+        generate pi = zkpok of the opening of the commitment
+        """
+        self.blinding_commitment = self.blinding_commit()
+        self.challenge = self.fiat_shamir()
+        self.responses = self.compute_responses()
+        return (self.blinding_commitment, self.challenge, self.responses)
+
     def blinding_commit(self):
+        if self.cm.ckg1[0] is None:
+            raise ValueError("ck is not initialized")
         point = multiply(self.cm.ckg1[0], self.blinding_factors[0])
         for i in range(1, self.pp.n):
             point = add(point, multiply(
                 self.cm.ckg1[i], self.blinding_factors[i]))
+        return point
 
     def fiat_shamir(self):
+        """
+        simple insecure fiat shamir, hash cmg1 + blinding commitment
+        """
         message = str(self.cm.cmg1[0]).encode() + \
             str(self.blinding_commitment[0]).encode()
         return simple_hash_to_field(message)
+
+    def compute_responses(self):
+        """
+        z_i  = a + e \cdot m forall i
+        """
+        responses = []
+        for i in range(self.pp.n):
+            response = (
+                self.blinding_factors[i] + self.challenge * self.cm.mi[i]) % curve_order
+            responses.append(response)
+        return responses
+
+    def verify_proof(self):
+        if not all([self.blinding_commitment, self.challenge, self.responses]):
+            return False
+
+        lhs = multiply(self.cm.ckg1[0], self.responses[0])
+        for i in range(1, self.pp.n):
+            lhs = add(lhs, multiply(self.ck.ckg1[i], self.responses[i]))
+
+        rhs = add(self.blinding_commitment, multiply(
+            self.cm.cmg1, self.challenge))
+
+        return lhs == rhs
 
 
 class Commitment:
@@ -66,16 +106,28 @@ class Commitment:
         return (cmg1, cmg2)
 
     def cm_rerand(self, r_delta):
+        """Creates a new commitment with rerandomized values"""
         cmg1_r_delta = add(multiply(self.pp.g1, r_delta), self.cmg1)
         cmg2_r_delta = add(multiply(self.pp.g2, r_delta), self.cmg2)
+
+        self.cmg1 = cmg1_r_delta
+        self.cmg2 = cmg2_r_delta
+        self.r = self.r + r_delta % curve_order
 
         if pairing(self.pp.g2, cmg1_r_delta) == pairing(cmg2_r_delta, self.pp.g1):
             print("cm_rerand pairing ok")
         else:
             print("cm_rerand pairing not ok")
-        self.cmg1 = cmg1_r_delta
-        self.cmg2 = cmg2_r_delta
-        self.r = self.r + r_delta % curve_order
+
+        new_r = (self.r + r_delta) % curve_order
+        new_commitment = Commitment(self.pp, CommitmentKey(
+            self.ckg1, self.ckg2), self.mi, new_r)
+
+        # Verify the commitments match
+        assert new_commitment.cmg1 == cmg1_r_delta
+        assert new_commitment.cmg2 == cmg2_r_delta
+
+        return new_commitment
 
 
 class CommitmentKey:
@@ -86,7 +138,6 @@ class CommitmentKey:
 
 def genrandom():
     return random.randrange(curve_order-1)
-    # return GF(random.randrange(curve_order))
 
 
 def pp_setup(n):
@@ -141,8 +192,6 @@ def simple_hash_to_field(message: bytes) -> FQ:
     # Convert hash to integer and reduce mod field modulus
     return FQ(int.from_bytes(h, 'big') % FQ.field_modulus)
 
-# Test it
-
 
 def test_hash():
     h1 = simple_hash_to_field(b"test message")
@@ -178,15 +227,25 @@ def main():
     r_delta = genrandom()
     cm_rerand = cm.cm_rerand(r_delta)
 
+    # Now we have both the original and rerandomized commitment
+    print("Original commitment r:", cm.r)
+    print("Rerandomized commitment r:", cm_rerand.r)
+
     # test signing it / obtain & issue
     # 1. prove knowledge of the opening of the commitment
-
-    # 2. request signature over commitment, prove knowledge of the attributes
-    # pi = pok_cm_open(cm, blinding_factors)
-    # pi = cm: G1, cm':G1, [z_1, z_2,...], e for NIZK
     blinding_factors = []
     for i in range(n):
         blinding_factors.append(genrandom())
+
+    # 2. request signature over commitment, prove knowledge of the attributes
+    pi = ProofOfKnowledge(
+        pp, cm_rerand, blinding_factors
+    )
+    print(cm_rerand.cm.ckg1[0])
+    # proof = pi.prove()
+    # is_valid = pi.verify()
+
+    # print(f"Proof verification: {'succeeded' if is_valid else 'failed'}")
 
 
 main()
