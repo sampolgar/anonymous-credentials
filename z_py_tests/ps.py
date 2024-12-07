@@ -1,17 +1,37 @@
-from py_ecc.optimized_bls12_381 import G1, G2, G12, FQ, pairing, final_exponentiate, multiply, neg, add, curve_order
+from hashlib import sha256
+from py_ecc.fields.field_elements import FQ
+from py_ecc.optimized_bls12_381 import G1, G2, G12, FQ, pairing, final_exponentiate, multiply, neg, add, curve_order, is_on_curve
 import random
 
 
-# org pp = schemepublicparameters(secparam, n) = (p, secparam, n, g1, g2, e, ..)
-# ck = CM.Setup(pp) -> (g1, g1y[i], g2, g2y[i])
-# sk, vk = PS.KeyGen(pp, ck). sk = X1, vk = X2
-# osk = (g, X), opk = (ck, X2, BG)
+# import galois
+# GF = galois.GF(curve_order)
+
 
 class PublicParameters:
     def __init__(self, n, g1, g2):
         self.n = n
         self.g1 = g1
         self.g2 = g2
+
+
+class ProofOfKnowledge:
+    def __init__(self, pp, cm, blinding_factors):
+        self.cm = cm
+        self.blinding_factors = blinding_factors
+        self.blinding_commitment = None
+        self.responses = []
+
+    def blinding_commit(self):
+        point = multiply(self.cm.ckg1[0], self.blinding_factors[0])
+        for i in range(1, self.pp.n):
+            point = add(point, multiply(
+                self.cm.ckg1[i], self.blinding_factors[i]))
+
+    def fiat_shamir(self):
+        message = str(self.cm.cmg1[0]).encode() + \
+            str(self.blinding_commitment[0]).encode()
+        return simple_hash_to_field(message)
 
 
 class Commitment:
@@ -63,8 +83,10 @@ class CommitmentKey:
         self.ckg1 = ckg1
         self.ckg2 = ckg2
 
+
 def genrandom():
-    return random.randrange(curve_order - 1)
+    return random.randrange(curve_order-1)
+    # return GF(random.randrange(curve_order))
 
 
 def pp_setup(n):
@@ -110,6 +132,32 @@ def test_ck(ck, pp):
         print("pairing not ok")
 
 
+def simple_hash_to_field(message: bytes) -> FQ:
+    """
+    Simple hash to field - takes bytes, returns an FQ element.
+    Good enough for testing/research but not production.
+    """
+    h = sha256(message).digest()
+    # Convert hash to integer and reduce mod field modulus
+    return FQ(int.from_bytes(h, 'big') % FQ.field_modulus)
+
+# Test it
+
+
+def test_hash():
+    h1 = simple_hash_to_field(b"test message")
+    h2 = simple_hash_to_field(b"test message")
+    h3 = simple_hash_to_field(b"different message")
+
+    print(f"Is deterministic: {h1 == h2}")
+    print(f"Different inputs give different outputs: {h1 != h3}")
+    print(f"Example output: {h1}")
+
+
+if __name__ == "__main__":
+    test_hash()
+
+
 def main():
     # org key gen
     n = 4
@@ -136,8 +184,9 @@ def main():
     # 2. request signature over commitment, prove knowledge of the attributes
     # pi = pok_cm_open(cm, blinding_factors)
     # pi = cm: G1, cm':G1, [z_1, z_2,...], e for NIZK
-    
-
+    blinding_factors = []
+    for i in range(n):
+        blinding_factors.append(genrandom())
 
 
 main()
