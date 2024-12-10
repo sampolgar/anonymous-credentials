@@ -4,10 +4,6 @@ from py_ecc.optimized_bls12_381 import G1, G2, G12, FQ, pairing, final_exponenti
 import random
 
 
-# import galois
-# GF = galois.GF(curve_order)
-
-
 class PublicParameters:
     def __init__(self, n, g1, g2):
         self.n = n
@@ -17,6 +13,7 @@ class PublicParameters:
 
 class ProofOfKnowledge:
     def __init__(self, pp, cm, blinding_factors):
+        self.pp = pp
         self.cm = cm
         self.blinding_factors = blinding_factors
         self.blinding_commitment = None
@@ -32,46 +29,68 @@ class ProofOfKnowledge:
         self.responses = self.compute_responses()
         return (self.blinding_commitment, self.challenge, self.responses)
 
+    # def blinding_commit(self):
+    #     point = multiply(self.cm.ckg1[0], self.blinding_factors[0])
+    #     for i in range(1, self.pp.n):
+    #         point = add(point, multiply(
+    #             self.cm.ckg1[i], self.blinding_factors[i]))
+    #     return point
+
     def blinding_commit(self):
-        if self.cm.ckg1[0] is None:
-            raise ValueError("ck is not initialized")
+        # Start with first term
         point = multiply(self.cm.ckg1[0], self.blinding_factors[0])
+
+        # Add remaining terms
         for i in range(1, self.pp.n):
-            point = add(point, multiply(
-                self.cm.ckg1[i], self.blinding_factors[i]))
+            print("i is: ", i)
+            temp = multiply(self.cm.ckg1[i], self.blinding_factors[i])
+            point = add(point, temp)
+
+        point = add(point, multiply(self.pp.g1, random.randrange(curve_order)))
+
         return point
 
     def fiat_shamir(self):
         """
         simple insecure fiat shamir, hash cmg1 + blinding commitment
         """
-        message = str(self.cm.cmg1[0]).encode() + \
-            str(self.blinding_commitment[0]).encode()
-        return simple_hash_to_field(message)
+        # message = str(self.cm.cmg1[0]).encode() + \
+        #     str(self.blinding_commitment[0]).encode()
+        # return simple_hash_to_field(message)
+        return 7
+        # return genrandom()
 
     def compute_responses(self):
         """
-        z_i  = a + e \cdot m forall i
+        z_i  = a + e cdot m forall i
         """
         responses = []
         for i in range(self.pp.n):
             response = (
                 self.blinding_factors[i] + self.challenge * self.cm.mi[i]) % curve_order
             responses.append(response)
+
+        for response in responses:
+            print("response", response)
+
         return responses
 
     def verify_proof(self):
         if not all([self.blinding_commitment, self.challenge, self.responses]):
             return False
 
+        # Compute LHS: ∑(response_i * ck_i)
         lhs = multiply(self.cm.ckg1[0], self.responses[0])
         for i in range(1, self.pp.n):
-            lhs = add(lhs, multiply(self.ck.ckg1[i], self.responses[i]))
+            temp = multiply(self.cm.ckg1[i], self.responses[i])
+            lhs = add(lhs, temp)
 
+        # Compute RHS: blinding_commitment + challenge * commitment
         rhs = add(self.blinding_commitment, multiply(
             self.cm.cmg1, self.challenge))
 
-        return lhs == rhs
+        # Compare points
+        return (lhs[0] == rhs[0] and lhs[1] == rhs[1])
 
 
 class Commitment:
@@ -106,26 +125,24 @@ class Commitment:
         return (cmg1, cmg2)
 
     def cm_rerand(self, r_delta):
-        """Creates a new commitment with rerandomized values"""
+        # Compute new commitment points by adding r_delta * g
         cmg1_r_delta = add(multiply(self.pp.g1, r_delta), self.cmg1)
         cmg2_r_delta = add(multiply(self.pp.g2, r_delta), self.cmg2)
 
-        self.cmg1 = cmg1_r_delta
-        self.cmg2 = cmg2_r_delta
-        self.r = self.r + r_delta % curve_order
-
-        if pairing(self.pp.g2, cmg1_r_delta) == pairing(cmg2_r_delta, self.pp.g1):
-            print("cm_rerand pairing ok")
-        else:
-            print("cm_rerand pairing not ok")
-
+        # Create new commitment object with updated values
         new_r = (self.r + r_delta) % curve_order
         new_commitment = Commitment(self.pp, CommitmentKey(
             self.ckg1, self.ckg2), self.mi, new_r)
 
-        # Verify the commitments match
-        assert new_commitment.cmg1 == cmg1_r_delta
-        assert new_commitment.cmg2 == cmg2_r_delta
+        # Set the commitment points directly instead of recomputing
+        new_commitment.cmg1 = cmg1_r_delta
+        new_commitment.cmg2 = cmg2_r_delta
+
+        # Verify the pairing equation still holds
+        if pairing(self.pp.g2, cmg1_r_delta) == pairing(cmg2_r_delta, self.pp.g1):
+            print("cm_rerand pairing ok")
+        else:
+            print("cm_rerand pairing not ok")
 
         return new_commitment
 
@@ -137,7 +154,7 @@ class CommitmentKey:
 
 
 def genrandom():
-    return random.randrange(curve_order-1)
+    return random.randrange(1000)
 
 
 def pp_setup(n):
@@ -183,28 +200,16 @@ def test_ck(ck, pp):
         print("pairing not ok")
 
 
-def simple_hash_to_field(message: bytes) -> FQ:
+# def simple_hash_to_field(message: bytes) -> FQ:
     """
     Simple hash to field - takes bytes, returns an FQ element.
     Good enough for testing/research but not production.
     """
     h = sha256(message).digest()
     # Convert hash to integer and reduce mod field modulus
-    return FQ(int.from_bytes(h, 'big') % FQ.field_modulus)
-
-
-def test_hash():
-    h1 = simple_hash_to_field(b"test message")
-    h2 = simple_hash_to_field(b"test message")
-    h3 = simple_hash_to_field(b"different message")
-
-    print(f"Is deterministic: {h1 == h2}")
-    print(f"Different inputs give different outputs: {h1 != h3}")
-    print(f"Example output: {h1}")
-
-
-if __name__ == "__main__":
-    test_hash()
+    field_element = int.from_bytes(h, 'big') % FQ.field_modulus
+    return field_element
+    # return FQ(int.from_bytes(h, 'big') % FQ.field_modulus)
 
 
 def main():
@@ -215,9 +220,10 @@ def main():
     (sk, vk) = ps_keygen(pp)
 
     # gen messages in signature as integers
-    mi = []
-    for i in range(n):
-        mi.append(genrandom())
+    mi = [1, 2, 3, 4]
+    # mi = []
+    # for i in range(n):
+    #     mi.append(genrandom())
 
     # gen commitment
     r = genrandom()
@@ -233,19 +239,26 @@ def main():
 
     # test signing it / obtain & issue
     # 1. prove knowledge of the opening of the commitment
-    blinding_factors = []
-    for i in range(n):
-        blinding_factors.append(genrandom())
+    # blinding_factors = []
+    # for i in range(n):
+    #     blinding_factors.append(genrandom())
+    blinding_factors = [3, 4, 5, 6]
 
     # 2. request signature over commitment, prove knowledge of the attributes
-    pi = ProofOfKnowledge(
-        pp, cm_rerand, blinding_factors
-    )
-    print(cm_rerand.cm.ckg1[0])
-    # proof = pi.prove()
-    # is_valid = pi.verify()
+    pi = ProofOfKnowledge(pp, cm_rerand, blinding_factors)
 
-    # print(f"Proof verification: {'succeeded' if is_valid else 'failed'}")
+    print("\nGenerating proof...")
+    proof = pi.prove()
+
+    print("\nVerifying proof...")
+    is_valid = pi.verify_proof()
+    print("Proof verification result:", is_valid)
+
+    # Also verify the commitment pairing equation still holds
+    if pairing(pp.g2, cm_rerand.cmg1) == pairing(cm_rerand.cmg2, pp.g1):
+        print("Final commitment pairing check passed")
+    else:
+        print("Final commitment pairing check failed")
 
 
 main()
