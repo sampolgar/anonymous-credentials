@@ -4,6 +4,7 @@ use ark_ff::UniformRand;
 use ark_std::ops::Mul;
 use ark_std::rand::RngCore;
 
+#[derive(Clone)]
 pub struct PublicParams<E: Pairing> {
     pub n: usize,
     pub g1: E::G1Affine,
