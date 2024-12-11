@@ -1,8 +1,9 @@
+use ark_bls12_381::G1Affine;
 use ark_ec::pairing::Pairing;
 use ark_ec::CurveGroup;
 use ark_ff::UniformRand;
 use ark_std::ops::Mul;
-use ark_std::rand::RngCore;
+use ark_std::rand::Rng;
 
 #[derive(Clone)]
 pub struct PublicParams<E: Pairing> {
@@ -14,7 +15,7 @@ pub struct PublicParams<E: Pairing> {
 }
 
 impl<E: Pairing> PublicParams<E> {
-    pub fn new(n: &usize, rng: &mut impl RngCore) -> Self {
+    pub fn new(n: &usize, rng: &mut impl Rng) -> Self {
         let g1 = E::G1Affine::rand(rng);
         let g2 = E::G2Affine::rand(rng);
 
@@ -33,6 +34,20 @@ impl<E: Pairing> PublicParams<E> {
             ckg1,
             ckg2,
         }
+    }
+
+    pub fn get_g1_bases(&self) -> Vec<E::G1Affine> {
+        // add g1 to end of ckg1
+        let mut g1_bases = self.ckg1.clone();
+        g1_bases.push(self.g1.clone());
+        g1_bases
+    }
+
+    pub fn get_g2_bases(&self) -> Vec<E::G2Affine> {
+        // add g2 to end of ckg2
+        let mut g2_bases = self.ckg2.clone();
+        g2_bases.push(self.g2.clone());
+        g2_bases
     }
 }
 

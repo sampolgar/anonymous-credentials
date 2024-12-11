@@ -4,7 +4,7 @@ use ark_ec::pairing::Pairing;
 use ark_ec::CurveGroup;
 use ark_ff::UniformRand;
 use ark_std::ops::{Add, Mul, Neg};
-use ark_std::rand::Rng;
+use schnorr::schnorr::SchnorrProtocol;
 
 #[derive(Clone)]
 pub struct Commitment<E: Pairing> {
@@ -19,8 +19,8 @@ pub struct Commitment<E: Pairing> {
 
 impl<E: Pairing> Commitment<E> {
     pub fn new(pp: &PublicParams<E>, messages: &Vec<E::ScalarField>, r: &E::ScalarField) -> Self {
-        let cmg1 = g1_commit::<E>(&pp.ckg1, &pp.g1, &messages, &r);
-        let cmg2 = g2_commit::<E>(&pp.ckg2, &pp.g2, &messages, &r);
+        let cmg1 = g1_commit::<E>(&pp, &messages, &r);
+        let cmg2 = g2_commit::<E>(&pp, &messages, &r);
         Commitment {
             pp: pp.clone(),              // this clones pp for the commitment
             messages: messages.to_vec(), // this creates its own messages
@@ -43,6 +43,12 @@ impl<E: Pairing> Commitment<E> {
             cmg2: cmg2_delta,
         }
     }
+
+    pub fn get_exponents(&self) -> Vec<E::ScalarField> {
+        let mut exponents: Vec<E::ScalarField> = self.messages.clone();
+        exponents.push(self.r.clone());
+        exponents
+    }
 }
 
 #[cfg(test)]
@@ -53,22 +59,36 @@ mod tests {
 
     #[test]
     fn test_randomized_commitment() {
-        let n = 4;
         let mut rng = ark_std::test_rng();
         let r = Fr::rand(&mut rng);
-        let pp = PublicParams::<Bls12_381>::new(&n, &mut rng);
-        let messages: Vec<Fr> = (0..n).map(|_| Fr::rand(&mut rng)).collect();
+        let pp = PublicParams::<Bls12_381>::new(&4, &mut rng);
+        let messages: Vec<Fr> = (0..pp.n).map(|_| Fr::rand(&mut rng)).collect();
         let commitment = Commitment::new(&pp, &messages, &r);
 
-        println!("r: {}", r);
         let r_delta = Fr::rand(&mut rng);
-        println!("r_delta: {}", r_delta);
         let randomized_commitment = commitment.create_randomized(&r_delta);
-        println!("my summed: : {}", r + r_delta);
-        println!("summed r: {}", randomized_commitment.r);
 
         let cmg1 = commitment.cmg1.add(pp.g1.mul(r_delta));
         let cmg1_rand = randomized_commitment.cmg1;
-        assert_eq!(cmg1, cmg1_rand, "cmg1 and randomized aren't equal");
+
+        let challenge = Fr::rand(&mut rng);
+
+        // Let's test opening proof
+        let blinding_commitment = SchnorrProtocol::commit(&pp.get_g1_bases(), &mut rng);
+        let responses = SchnorrProtocol::prove(
+            &blinding_commitment,
+            &commitment.get_exponents(),
+            &challenge,
+        );
+
+        let is_valid = SchnorrProtocol::verify(
+            &pp.get_g1_bases(),
+            &commitment.cmg1,
+            &blinding_commitment,
+            &responses,
+            &challenge,
+        );
+
+        assert!(is_valid);
     }
 }

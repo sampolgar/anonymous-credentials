@@ -36,7 +36,7 @@ impl<E: Pairing> Signature<E> {
             sigma2: (self.sigma2.into_group() - self.sigma1.mul(*t)).into_affine(),
         }
     }
-
+    
     // rerandomize signature by scalar
     pub fn rerandomize(&self, t: &E::ScalarField) -> Self {
         Self {

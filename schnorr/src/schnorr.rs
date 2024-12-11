@@ -54,15 +54,15 @@ impl SchnorrProtocol {
     // y = g1^m1 * g2^m2 * h^r the public commitment
     pub fn verify<G: AffineRepr>(
         public_generators: &[G],
-        y: &G,
-        commitment: &SchnorrCommitment<G>,
+        commitment: &G,
+        blinding_commitment: &SchnorrCommitment<G>,
         schnorr_responses: &SchnorrResponses<G>,
         challenge: &G::ScalarField,
     ) -> bool {
         //e.g.  LHS = g1^(t1 + e*m1) * g2^(t2 + e*m2) * h^(t3 + e*r)
         let lhs = G::Group::msm_unchecked(public_generators, &schnorr_responses.0).into_affine();
         // com^e + com
-        let rhs = (commitment.com_t + y.mul(*challenge)).into_affine();
+        let rhs = (blinding_commitment.com_t + commitment.mul(*challenge)).into_affine();
         lhs == rhs
     }
 
