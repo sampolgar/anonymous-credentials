@@ -1,4 +1,5 @@
 use crate::commitment::Commitment;
+use crate::keygen::KeyPair;
 use crate::publicparams::PublicParams;
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup};
@@ -16,14 +17,21 @@ pub struct PSSignature<E: Pairing> {
     pub sigma2: E::G1Affine,
 }
 
-pub struct VerificationKey<E: Pairing> {
-    pub vk: E::G1Affine,
-}
-
-struct SecretKey<E: Pairing> {
-    sk: E::G1Affine,
-}
-
 impl<E: Pairing> PSSignature<E> {
-    
+    pub fn blind_sign<R: Rng>(
+        pp: &PublicParams<E>,
+        keypair: &KeyPair<E>,
+        commitment: &Commitment<E>,
+        rng: &mut impl Rng,
+    ) -> Self {
+        let u = E::ScalarField::rand(rng);
+        let sigma1 = pp.g1.mul(u).into_affine();
+        let sigma2 = (commitment.cmg1.add(keypair.sk)).mul(u).into_affine();
+        Self { sigma1, sigma2 }
+    }
+
+    pub fn rerandomize<R: Rng>(
+        pp: &PublicParams<E>,
+        
+    )
 }

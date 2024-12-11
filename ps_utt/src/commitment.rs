@@ -8,11 +8,11 @@ use schnorr::schnorr::SchnorrProtocol;
 
 #[derive(Clone)]
 pub struct Commitment<E: Pairing> {
-    pp: PublicParams<E>,
+    pub pp: PublicParams<E>,
     messages: Vec<E::ScalarField>,
     r: E::ScalarField,
-    cmg1: E::G1Affine,
-    cmg2: E::G2Affine,
+    pub cmg1: E::G1Affine,
+    pub cmg2: E::G2Affine,
 }
 
 // takes in pp, messages, r. creates cmg1, cmg2 by 1. exponentiate each pp.ckg1 with mi and pp.g1 with r, msm together
@@ -55,7 +55,6 @@ impl<E: Pairing> Commitment<E> {
 mod tests {
     use super::*;
     use ark_bls12_381::{Bls12_381, Fr};
-    use ark_std::test_rng;
 
     #[test]
     fn test_randomized_commitment() {

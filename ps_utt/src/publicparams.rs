@@ -1,4 +1,3 @@
-use ark_bls12_381::G1Affine;
 use ark_ec::pairing::Pairing;
 use ark_ec::CurveGroup;
 use ark_ff::UniformRand;
@@ -55,7 +54,6 @@ impl<E: Pairing> PublicParams<E> {
 mod test {
     use super::*;
     use ark_bls12_381::Bls12_381;
-    use ark_std::test_rng;
     #[test]
     fn test_pp_gen() {
         let n = 4;
