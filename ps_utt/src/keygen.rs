@@ -11,7 +11,7 @@ pub struct KeyPair<E: Pairing> {
 }
 
 impl<E: Pairing> KeyPair<E> {
-    pub fn keygen(pp: &PublicParams<E>, rng: &mut impl Rng) -> Self {
+    pub fn new(pp: &PublicParams<E>, rng: &mut impl Rng) -> Self {
         // Generate random scalar x
         let x = E::ScalarField::rand(rng);
 
@@ -37,7 +37,7 @@ mod test {
         let n = 4;
         let mut rng = ark_std::test_rng();
         let pp = PublicParams::<Bls12_381>::new(&n, &mut rng);
-        let keypair = KeyPair::keygen(&pp, &mut rng);
+        let keypair = KeyPair::new(&pp, &mut rng);
 
         let p1 = Bls12_381::pairing(pp.g1, keypair.vk);
         let p2 = Bls12_381::pairing(keypair.sk, pp.g2);
