@@ -1,0 +1,43 @@
+[package]
+name = "encryption"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ark-serialize.workspace = true
+ark-ff.workspace = true
+ark-ec.workspace = true
+ark-std.workspace = true
+ark-crypto-primitives.workspace = true
+ark-groth16.workspace = true
+ark-relations.workspace = true
+rayon = {workspace = true, optional = true}
+digest.workspace = true
+serde.workspace = true
+serde_with.workspace = true
+zeroize.workspace = true
+thiserror.workspace = true
+schnorr = {default-features = false, path = "../schnorr" }
+utils = {default-features = false, path = "../utils" }
+ark-bls12-381.workspace = true
+ark-r1cs-std.workspace = true
+itertools.workspace = true
+ark-poly.workspace = true
+rand = { version = "0.8" }
+rand_core = { version = "^0.6" }
+sha2 = { version = "^0.10" }
+anyhow = { version = "1.0", default-features = false }
+
+
+[dev-dependencies]
+criterion = "0.5"
+num = "0.4"
+subtle = "2"
+
+
+[features]
+default = ["parallel"]
+std = ["ark-ff/std", "ark-ec/std", "ark-poly/std", "ark-groth16/std", "ark-relations/std", "ark-crypto-primitives/std", "ark-std/std" ]
+parallel = ["std", "ark-ff/parallel", "ark-poly/parallel", "ark-ec/parallel", "ark-crypto-primitives/parallel", "ark-std/parallel", "rayon"]

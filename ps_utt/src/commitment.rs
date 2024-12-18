@@ -9,8 +9,8 @@ use schnorr::schnorr::SchnorrProtocol;
 #[derive(Clone)]
 pub struct Commitment<E: Pairing> {
     pub pp: PublicParams<E>,
-    messages: Vec<E::ScalarField>,
-    r: E::ScalarField,
+    pub messages: Vec<E::ScalarField>,
+    pub r: E::ScalarField,
     pub cmg1: E::G1Affine,
     pub cmg2: E::G2Affine,
 }

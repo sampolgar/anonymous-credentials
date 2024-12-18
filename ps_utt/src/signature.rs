@@ -63,16 +63,10 @@ impl<E: Pairing> PSSignature<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
+    use ark_bls12_381::{Bls12_381, Fr};
 
     #[test]
     fn test_randomized_signature() {
-        // create pp
-        // create keypair
-        // create commitment
-        // create signature
-        // randomize
-        // verify
         let mut rng = ark_std::test_rng();
         let pp = PublicParams::<Bls12_381>::new(&4, &mut rng);
         let keypair = KeyPair::new(&pp, &mut rng);

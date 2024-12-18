@@ -36,6 +36,30 @@ impl SchnorrProtocol {
         }
     }
 
+    // commit takes in public_generators and exponents
+    pub fn commit_equality<G: AffineRepr, R: Rng>(
+        public_generators: &[G],
+        rng: &mut R,
+        equal_blindness: &G::ScalarField,
+        index: usize, //hard code index to 0
+    ) -> SchnorrCommitment<G> {
+        // random_blindings hide the exponent like a pedersen commitment e.g. g^m h^r
+
+        let mut random_blindings: Vec<G::ScalarField> = (1..public_generators.len())
+            .map(|_| G::ScalarField::rand(rng))
+            .collect();
+
+        // Insert equal_blindness at the front of the vector
+        random_blindings.insert(0, *equal_blindness);
+        // Compute t = public_generators[0] * random_blindings[0] + ... + public_generators[i] * random_blindings[i]
+        // multi-scalar multiplication - efficient
+        let com_t: G = G::Group::msm_unchecked(public_generators, &random_blindings).into_affine();
+        SchnorrCommitment {
+            random_blindings,
+            com_t,
+        }
+    }
+
     pub fn prove<G: AffineRepr>(
         commitment: &SchnorrCommitment<G>, //schnorr commitment
         witnesses: &[G::ScalarField],
@@ -54,7 +78,7 @@ impl SchnorrProtocol {
     // y = g1^m1 * g2^m2 * h^r the public commitment
     pub fn verify<G: AffineRepr>(
         public_generators: &[G],
-        commitment: &G,
+        y: &G,
         blinding_commitment: &SchnorrCommitment<G>,
         schnorr_responses: &SchnorrResponses<G>,
         challenge: &G::ScalarField,
@@ -62,7 +86,7 @@ impl SchnorrProtocol {
         //e.g.  LHS = g1^(t1 + e*m1) * g2^(t2 + e*m2) * h^(t3 + e*r)
         let lhs = G::Group::msm_unchecked(public_generators, &schnorr_responses.0).into_affine();
         // com^e + com
-        let rhs = (blinding_commitment.com_t + commitment.mul(*challenge)).into_affine();
+        let rhs = (blinding_commitment.com_t + y.mul(*challenge)).into_affine();
         lhs == rhs
     }
 
@@ -196,3 +220,7 @@ mod tests {
         assert!(is_valid, "Schnorr proof verification failed");
     }
 }
+
+// Previous imports remain the same...
+
+// Tests remain the same...
