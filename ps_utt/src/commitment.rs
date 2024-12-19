@@ -4,6 +4,7 @@ use ark_ec::pairing::Pairing;
 use ark_ec::CurveGroup;
 use ark_ff::UniformRand;
 use ark_std::ops::{Add, Mul, Neg};
+use ark_std::rand::Rng;
 use schnorr::schnorr::SchnorrProtocol;
 
 #[derive(Clone)]
