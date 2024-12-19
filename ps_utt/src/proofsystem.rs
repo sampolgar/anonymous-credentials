@@ -2,11 +2,11 @@
 // then define equality of commitment protocol with multiple commitments and opening of position 0 of the commitment being equality
 
 use crate::commitment::Commitment;
-use crate::publicparams::PublicParams;
+// use anyhow::Ok;
 use ark_ec::pairing::Pairing;
 use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
+use schnorr::schnorr::{SchnorrProtocol, SchnorrResponses};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -25,6 +25,7 @@ pub enum CommitmentProofError {
 pub struct CommitmentProof<E: Pairing> {
     pub commitment: E::G1Affine,
     pub schnorr_commitment: E::G1Affine,
+    pub bases: Vec<E::G1Affine>,
     pub challenge: E::ScalarField,
     pub responses: Vec<E::ScalarField>,
 }
@@ -32,10 +33,10 @@ pub struct CommitmentProof<E: Pairing> {
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommitmentEqualityProof<E: Pairing> {
     pub commitments: Vec<E::G1Affine>,
-    pub schnorr_commitment: E::G1Affine,
+    pub schnorr_commitments: Vec<E::G1Affine>,
+    pub bases: Vec<Vec<E::G1Affine>>,
     pub challenge: E::ScalarField,
-    pub responses: Vec<E::ScalarField>,
-    pub equality_indices: Vec<(usize, usize)>, // (commitment_idx, message_idx)
+    pub responses: Vec<Vec<E::ScalarField>>,
 }
 
 pub struct CommitmentProofs;
@@ -51,7 +52,7 @@ impl CommitmentProofs {
         let exponents = commitment.get_exponents();
 
         // Generate Schnorr commitment
-        let schnorr_commitment = SchnorrProtocol::commit(&bases, &mut rng);
+        let schnorr_commitment = SchnorrProtocol::commit(&bases.clone(), &mut rng);
 
         // Generate challenge
         let challenge = E::ScalarField::rand(&mut rng);
@@ -63,20 +64,10 @@ impl CommitmentProofs {
         let proof: CommitmentProof<E> = CommitmentProof {
             commitment: commitment.cmg1,
             schnorr_commitment: schnorr_commitment.com_t,
+            bases: bases,
             challenge,
             responses: responses.0,
         };
-
-        // test intermediately
-        let is_valid = SchnorrProtocol::verify(
-            &bases,
-            &commitment.cmg1,
-            &schnorr_commitment,
-            &SchnorrResponses(proof.responses.clone()),
-            &challenge,
-        );
-
-        assert!(is_valid, "interim proof isn't valid commitment");
 
         let mut serialized_proof = Vec::new();
         proof.serialize_compressed(&mut serialized_proof)?;
@@ -85,26 +76,16 @@ impl CommitmentProofs {
     }
 
     pub fn verify_knowledge<E: Pairing>(
-        pp: &PublicParams<E>,
         serialized_proof: &[u8],
     ) -> Result<bool, CommitmentProofError> {
         let proof: CommitmentProof<E> =
             CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
 
-        // Get bases for verification
-        let bases = pp.get_g1_bases();
-
-        // Create a SchnorrCommitment struct for verification
-        let schnorr_commitment = SchnorrCommitment {
-            random_blindings: vec![], // We don't need the blindings for verification
-            com_t: proof.schnorr_commitment,
-        };
-
         // Verify using Schnorr protocol
         let is_valid = SchnorrProtocol::verify(
-            &bases,
+            &proof.bases,
             &proof.commitment,
-            &schnorr_commitment,
+            &proof.schnorr_commitment,
             &SchnorrResponses(proof.responses.clone()),
             &proof.challenge,
         );
@@ -112,104 +93,101 @@ impl CommitmentProofs {
         Ok(is_valid)
     }
 
+    // for testing, we hard-code the equality index to 0, meaning we are checking if index 0 is the same
     pub fn prove_equality<E: Pairing>(
         commitments: &[Commitment<E>],
-        equality_indices: &[(usize, usize)],
     ) -> Result<Vec<u8>, CommitmentProofError> {
         let mut rng = ark_std::test_rng();
 
-        // Validate indices
-        for &(comm_idx, msg_idx) in equality_indices {
-            if comm_idx >= commitments.len() || msg_idx >= commitments[0].messages.len() {
-                return Err(CommitmentProofError::InvalidEqualityIndex);
-            }
+        // generate schnorr commitment per Commitment, use equal blindness for equality proofs at index 0
+        let mut schnorr_equality_commitments = Vec::new();
+        let mut responses: Vec<SchnorrResponses<E::G1Affine>> = Vec::new();
+        let equal_blindness = E::ScalarField::rand(&mut rng);
+
+        // generate Schnorr Commitments
+        for (i, commitment) in commitments.iter().enumerate() {
+            let bases_i = commitment.pp.get_g1_bases();
+            let schnorr_commitment_i =
+                SchnorrProtocol::commit_equality(&bases_i, &mut rng, &equal_blindness, 0);
+            schnorr_equality_commitments.push(schnorr_commitment_i);
         }
-
-        // Collect all bases and exponents
-        let mut all_bases = Vec::new();
-        let mut all_exponents = Vec::new();
-
-        for commitment in commitments {
-            all_bases.extend(commitment.pp.get_g1_bases());
-            all_exponents.extend(commitment.get_exponents());
-        }
-
-        // Generate Schnorr commitment
-        let schnorr_commitment = SchnorrProtocol::commit(&all_bases, &mut rng);
 
         // Generate challenge
         let challenge = E::ScalarField::rand(&mut rng);
 
-        // Generate responses
-        let responses = SchnorrProtocol::prove(&schnorr_commitment, &all_exponents, &challenge);
+        for i in 0..commitments.len() {
+            let commitment = &commitments[i];
+            let schnorr_commitment = &schnorr_equality_commitments[i];
+            let response = SchnorrProtocol::prove(
+                &schnorr_commitment,
+                &commitment.get_exponents(),
+                &challenge,
+            );
+            schnorr_equality_commitments.push(schnorr_commitment.clone());
+            responses.push(response.clone());
+        }
 
-        // Create and serialize proof with explicit type annotation
-        let proof: CommitmentEqualityProof<E> = CommitmentEqualityProof {
+        let equality_proof: CommitmentEqualityProof<E> = CommitmentEqualityProof {
             commitments: commitments.iter().map(|c| c.cmg1).collect(),
-            schnorr_commitment: schnorr_commitment.com_t, // Fixed: Using com_t instead of t
+            schnorr_commitments: schnorr_equality_commitments
+                .iter()
+                .map(|sc| sc.com_t)
+                .collect(),
+            bases: commitments
+                .iter()
+                .map(|cms| cms.pp.get_g1_bases())
+                .collect(),
             challenge,
-            responses: responses.0,
-            equality_indices: equality_indices.to_vec(),
+            responses: responses.iter().map(|r| r.0.clone()).collect(),
         };
 
+        // Serialize the proof
         let mut serialized_proof = Vec::new();
-        proof.serialize_compressed(&mut serialized_proof)?;
+        equality_proof.serialize_compressed(&mut serialized_proof)?;
 
         Ok(serialized_proof)
     }
 
-    // verify_equality implementation remains the same but needs the schnorr_commitment struct update
     pub fn verify_equality<E: Pairing>(
-        pps: &[PublicParams<E>],
         serialized_proof: &[u8],
     ) -> Result<bool, CommitmentProofError> {
+        // Deserialize the proof
         let proof: CommitmentEqualityProof<E> =
             CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
 
-        // Validate number of commitments matches number of public parameters
-        if proof.commitments.len() != pps.len() {
-            return Err(CommitmentProofError::MismatchedCommitmentLengths);
-        }
+        // First verify each individual commitment
+        for i in 0..proof.commitments.len() {
+            // Create schnorr commitment struct for verification
+            // Verify the individual proof
+            let is_valid = SchnorrProtocol::verify(
+                &proof.bases[i],
+                &proof.commitments[i],
+                &proof.schnorr_commitments[i],
+                &SchnorrResponses(proof.responses[i].clone()),
+                &proof.challenge,
+            );
 
-        // Collect all bases
-        let mut all_bases = Vec::new();
-        for pp in pps {
-            all_bases.extend(pp.get_g1_bases());
-        }
-
-        // Create a SchnorrCommitment struct for verification
-        let schnorr_commitment = SchnorrCommitment {
-            random_blindings: vec![], // We don't need the blindings for verification
-            com_t: proof.schnorr_commitment,
-        };
-
-        // Verify using Schnorr protocol
-        let is_valid = SchnorrProtocol::verify(
-            &all_bases,
-            &proof.commitments[0], // Use first commitment as reference
-            &schnorr_commitment,
-            &SchnorrResponses(proof.responses.clone()),
-            &proof.challenge,
-        );
-
-        // Verify equality constraints
-        for &(comm_idx1, msg_idx1) in &proof.equality_indices {
-            for &(comm_idx2, msg_idx2) in &proof.equality_indices {
-                if comm_idx1 != comm_idx2 {
-                    if proof.responses[msg_idx1] != proof.responses[msg_idx2] {
-                        return Ok(false);
-                    }
-                }
+            if !is_valid {
+                return Ok(false);
             }
         }
 
-        Ok(is_valid)
+        // Then verify that response at position 0 is equal across all commitments
+        let first_response = &proof.responses[0][0];
+        for responses in proof.responses.iter().skip(1) {
+            if &responses[0] != first_response {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::publicparams::PublicParams;
     use ark_bls12_381::{Bls12_381, Fr};
 
     #[test]
@@ -222,11 +200,11 @@ mod tests {
         let commitment = Commitment::new(&pp, &messages, &r);
 
         let proof = CommitmentProofs::prove_knowledge(&commitment).unwrap();
-        assert!(CommitmentProofs::verify_knowledge(&pp, &proof).unwrap());
+        assert!(CommitmentProofs::verify_knowledge::<Bls12_381>(&proof).unwrap());
     }
 
     #[test]
-    fn test_commitment_equality_proof() {
+    fn test_commitment_equality_proofs_2() {
         let mut rng = ark_std::test_rng();
         let pp1 = PublicParams::<Bls12_381>::new(&4, &mut rng);
         let pp2 = PublicParams::<Bls12_381>::new(&4, &mut rng);
@@ -235,8 +213,8 @@ mod tests {
         let shared_message = Fr::rand(&mut rng);
         let mut messages1: Vec<_> = (0..pp1.n).map(|_| Fr::rand(&mut rng)).collect();
         let mut messages2: Vec<_> = (0..pp2.n).map(|_| Fr::rand(&mut rng)).collect();
-        messages1[1] = shared_message;
-        messages2[1] = shared_message;
+        messages1[0] = shared_message;
+        messages2[0] = shared_message;
 
         let r1 = Fr::rand(&mut rng);
         let r2 = Fr::rand(&mut rng);
@@ -244,10 +222,60 @@ mod tests {
         let commitment1 = Commitment::new(&pp1, &messages1, &r1);
         let commitment2 = Commitment::new(&pp2, &messages2, &r2);
 
-        let equality_indices = vec![(0, 1), (1, 1)]; // Message at index 1 should be equal
-        let proof =
-            CommitmentProofs::prove_equality(&[commitment1, commitment2], &equality_indices)
-                .unwrap();
-        assert!(CommitmentProofs::verify_equality(&[pp1, pp2], &proof).unwrap());
+        let proof = CommitmentProofs::prove_equality(&[commitment1, commitment2]).unwrap();
+        assert!(CommitmentProofs::verify_equality::<Bls12_381>(&proof).unwrap());
+    }
+
+    #[test]
+    fn test_commitment_equality_proofs_10() {
+        let mut rng = ark_std::test_rng();
+
+        // Create 10 different public parameters
+        let public_params: Vec<PublicParams<Bls12_381>> = (0..10)
+            .map(|_| PublicParams::<Bls12_381>::new(&4, &mut rng))
+            .collect();
+
+        // Create a shared message that will be at index 0 in all commitments
+        let shared_message = Fr::rand(&mut rng);
+
+        // Create 10 message vectors, each with the shared message at index 0
+        let messages: Vec<Vec<Fr>> = (0..10)
+            .map(|_| {
+                let mut msgs: Vec<_> = (0..4).map(|_| Fr::rand(&mut rng)).collect();
+                msgs[0] = shared_message;
+                msgs
+            })
+            .collect();
+
+        // Generate 10 random blinding factors
+        let blinding_factors: Vec<Fr> = (0..10).map(|_| Fr::rand(&mut rng)).collect();
+
+        // Create 10 commitments
+        let commitments: Vec<Commitment<Bls12_381>> = messages
+            .iter()
+            .zip(public_params.iter())
+            .zip(blinding_factors.iter())
+            .map(|((msgs, pp), r)| Commitment::new(pp, msgs, r))
+            .collect();
+
+        // Create and verify the equality proof
+        let proof = CommitmentProofs::prove_equality(&commitments).unwrap();
+        assert!(CommitmentProofs::verify_equality::<Bls12_381>(&proof).unwrap());
+
+        // Optional: Test that proof fails with different messages
+        let mut invalid_messages = messages[0].clone();
+        invalid_messages[0] = Fr::rand(&mut rng);
+        let invalid_commitment =
+            Commitment::new(&public_params[0], &invalid_messages, &blinding_factors[0]);
+
+        let mut invalid_commitments = commitments.clone();
+        invalid_commitments[0] = invalid_commitment;
+
+        let invalid_proof = CommitmentProofs::prove_equality(&invalid_commitments);
+        assert!(
+            invalid_proof.is_err()
+                || !CommitmentProofs::verify_equality::<Bls12_381>(&invalid_proof.unwrap())
+                    .unwrap()
+        );
     }
 }

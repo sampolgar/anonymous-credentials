@@ -79,14 +79,15 @@ impl SchnorrProtocol {
     pub fn verify<G: AffineRepr>(
         public_generators: &[G],
         y: &G,
-        blinding_commitment: &SchnorrCommitment<G>,
+        // blinding_commitment: &SchnorrCommitment<G>,
+        blinding_commitment: &G,
         schnorr_responses: &SchnorrResponses<G>,
         challenge: &G::ScalarField,
     ) -> bool {
         //e.g.  LHS = g1^(t1 + e*m1) * g2^(t2 + e*m2) * h^(t3 + e*r)
         let lhs = G::Group::msm_unchecked(public_generators, &schnorr_responses.0).into_affine();
         // com^e + com
-        let rhs = (blinding_commitment.com_t + y.mul(*challenge)).into_affine();
+        let rhs = (*blinding_commitment + y.mul(*challenge)).into_affine();
         lhs == rhs
     }
 
@@ -134,7 +135,7 @@ mod tests {
             assert!(SchnorrProtocol::verify(
                 &[base],
                 &public_statement,
-                &commitment,
+                &commitment.com_t,
                 &schnorr_responses,
                 &challenge
             ));
@@ -178,7 +179,7 @@ mod tests {
             assert!(SchnorrProtocol::verify(
                 &[base1, base2],
                 &public_statement,
-                &commitment,
+                &commitment.com_t,
                 &schnorr_responses,
                 &challenge
             ));
@@ -212,7 +213,7 @@ mod tests {
         let is_valid = SchnorrProtocol::verify(
             &public_generators,
             &public_statement,
-            &commitment,
+            &commitment.com_t,
             &schnorr_responses,
             &challenge,
         );

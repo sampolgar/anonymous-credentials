@@ -44,6 +44,7 @@ impl<E: Pairing> Commitment<E> {
         }
     }
 
+    // get all exponents of the commitment, C([m_1,...,m_n],r)
     pub fn get_exponents(&self) -> Vec<E::ScalarField> {
         let mut exponents: Vec<E::ScalarField> = self.messages.clone();
         exponents.push(self.r.clone());
@@ -83,7 +84,7 @@ mod tests {
         let is_valid = SchnorrProtocol::verify(
             &pp.get_g1_bases(),
             &commitment.cmg1,
-            &blinding_commitment,
+            &blinding_commitment.com_t,
             &responses,
             &challenge,
         );
