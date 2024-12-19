@@ -29,14 +29,15 @@ impl<E: Pairing> KeyPair<E> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use ark_bls12_381::Bls12_381;
+    use ark_bls12_381::{Bls12_381, Fr};
     use ark_ec::pairing::PairingOutput;
 
     #[test]
     fn test_keygen() {
         let n = 4;
         let mut rng = ark_std::test_rng();
-        let pp = PublicParams::<Bls12_381>::new(&n, &mut rng);
+        let context = Fr::rand(&mut rng);
+        let pp = PublicParams::<Bls12_381>::new(&n, &context, &mut rng);
         let keypair = KeyPair::new(&pp, &mut rng);
 
         let p1 = Bls12_381::pairing(pp.g1, keypair.vk);

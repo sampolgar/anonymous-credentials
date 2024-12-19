@@ -2,7 +2,6 @@
 // then define equality of commitment protocol with multiple commitments and opening of position 0 of the commitment being equality
 
 use crate::commitment::Commitment;
-// use anyhow::Ok;
 use ark_ec::pairing::Pairing;
 use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -193,7 +192,9 @@ mod tests {
     #[test]
     fn test_commitment_knowledge_proof() {
         let mut rng = ark_std::test_rng();
-        let pp = PublicParams::<Bls12_381>::new(&4, &mut rng);
+        let context = Fr::rand(&mut rng);
+
+        let pp = PublicParams::<Bls12_381>::new(&4, &context, &mut rng);
         let messages: Vec<_> = (0..pp.n).map(|_| Fr::rand(&mut rng)).collect();
         let r = Fr::rand(&mut rng);
 
@@ -206,8 +207,9 @@ mod tests {
     #[test]
     fn test_commitment_equality_proofs_2() {
         let mut rng = ark_std::test_rng();
-        let pp1 = PublicParams::<Bls12_381>::new(&4, &mut rng);
-        let pp2 = PublicParams::<Bls12_381>::new(&4, &mut rng);
+        let context = Fr::rand(&mut rng);
+        let pp1 = PublicParams::<Bls12_381>::new(&4, &context, &mut rng);
+        let pp2 = PublicParams::<Bls12_381>::new(&4, &context, &mut rng);
 
         // Create two commitments with same message at index 1
         let shared_message = Fr::rand(&mut rng);
@@ -231,8 +233,9 @@ mod tests {
         let mut rng = ark_std::test_rng();
 
         // Create 10 different public parameters
+        let context = Fr::rand(&mut rng);
         let public_params: Vec<PublicParams<Bls12_381>> = (0..10)
-            .map(|_| PublicParams::<Bls12_381>::new(&4, &mut rng))
+            .map(|_| PublicParams::<Bls12_381>::new(&4, &context, &mut rng))
             .collect();
 
         // Create a shared message that will be at index 0 in all commitments

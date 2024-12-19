@@ -6,6 +6,7 @@ use ark_std::rand::Rng;
 
 #[derive(Clone)]
 pub struct PublicParams<E: Pairing> {
+    pub context: E::ScalarField, //e.g. Hash to Field(dmv)
     pub n: usize,
     pub g1: E::G1Affine,
     pub g2: E::G2Affine,
@@ -14,7 +15,7 @@ pub struct PublicParams<E: Pairing> {
 }
 
 impl<E: Pairing> PublicParams<E> {
-    pub fn new(n: &usize, rng: &mut impl Rng) -> Self {
+    pub fn new(n: &usize, context: &E::ScalarField, rng: &mut impl Rng) -> Self {
         let g1 = E::G1Affine::rand(rng);
         let g2 = E::G2Affine::rand(rng);
 
@@ -27,6 +28,7 @@ impl<E: Pairing> PublicParams<E> {
         let ckg2 = yi.iter().map(|yi| g2.mul(*yi)).collect::<Vec<_>>();
         let ckg2 = E::G2::normalize_batch(&ckg2);
         PublicParams {
+            context: *context,
             n: *n,
             g1,
             g2,
@@ -55,11 +57,12 @@ impl<E: Pairing> PublicParams<E> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use ark_bls12_381::Bls12_381;
+    use ark_bls12_381::{Bls12_381, Fr};
     #[test]
     fn test_pp_gen() {
         let n = 4;
         let mut rng = ark_std::test_rng();
-        let pp = PublicParams::<Bls12_381>::new(&n, &mut rng);
+        let context = Fr::rand(&mut rng);
+        let pp = PublicParams::<Bls12_381>::new(&n, &context, &mut rng);
     }
 }

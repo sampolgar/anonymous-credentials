@@ -62,7 +62,8 @@ mod test {
         let n = 5;
         let messages: Vec<Fr> = (0..n).map(|_| Fr::rand(&mut rng)).collect();
         let r = Fr::rand(&mut rng);
-        let pp = PublicParams::<Bls12_381>::new(&n, &mut rng);
+        let context = Fr::rand(&mut rng);
+        let pp = PublicParams::<Bls12_381>::new(&n, &context, &mut rng);
         let g1_comm = g1_commit::<Bls12_381>(&pp, &messages, &r);
         assert!(g1_comm.is_on_curve());
 

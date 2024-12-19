@@ -19,8 +19,6 @@ serde.workspace = true
 serde_with.workspace = true
 zeroize.workspace = true
 thiserror.workspace = true
-schnorr = {default-features = false, path = "../schnorr" }
-utils = {default-features = false, path = "../utils" }
 ark-bls12-381.workspace = true
 ark-r1cs-std.workspace = true
 itertools.workspace = true
@@ -28,7 +26,9 @@ ark-poly.workspace = true
 rand = { version = "0.8" }
 rand_core = { version = "^0.6" }
 sha2 = { version = "^0.10" }
-anyhow = { version = "1.0", default-features = false }
+schnorr = {default-features = false, path = "../schnorr" }
+utils = {default-features = false, path = "../utils" }
+ps_utt = {default-features = false, path = "../ps_utt" }
 
 
 [dev-dependencies]

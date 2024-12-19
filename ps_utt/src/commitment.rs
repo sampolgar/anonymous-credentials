@@ -61,7 +61,8 @@ mod tests {
     fn test_randomized_commitment() {
         let mut rng = ark_std::test_rng();
         let r = Fr::rand(&mut rng);
-        let pp = PublicParams::<Bls12_381>::new(&4, &mut rng);
+        let context = Fr::rand(&mut rng);
+        let pp = PublicParams::<Bls12_381>::new(&4, &context, &mut rng);
         let messages: Vec<Fr> = (0..pp.n).map(|_| Fr::rand(&mut rng)).collect();
         let commitment = Commitment::new(&pp, &messages, &r);
 
