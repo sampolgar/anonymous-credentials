@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+
+    <body>
+        <pre class="mermaid">
+    sequenceDiagram
+        participant U as User
+        participant GO as Gov Oracle
+        participant A as Auditors
+        participant CO as Context Oracle
+        participant V as Verifier
+
+        Note over U,A: Master Credential Issuance
+        U->>GO: Prove identity
+        U->>GO: Commit(s, k), TPKE.Enc(k)
+        GO->>A: Verify encryption of k
+        A-->>GO: Confirm valid encryption
+        GO->>U: Sign master credential
+
+        Note over U,CO: Context Credential Issuance
+        U->>CO: Prove valid master credential
+        U->>CO: nullifier = VRF(k, context)
+        U->>CO: ZKP(nullifier correctness)
+        CO->>U: Sign context credential
+
+        Note over U,V: Credential Verification
+        U->>V: Prove credential attributes
+        U->>V: ZKP(master valid + unrevoked)
+        V-->>U: Accept/Reject
+
+        Note over GO,A: Revocation Flow
+        GO->>A: Request decrypt(TPKE.Enc(k))
+        A->>A: Add VRF(k, context) to RL
+    </pre>
+        <script type="module">
+            import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+        </script>
+    </body>
+
+</html>

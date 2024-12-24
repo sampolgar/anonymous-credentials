@@ -62,8 +62,8 @@ impl SingleIssuerProtocol {
         com: Commitment<E>,
         proof: Vec<u8>,
     ) -> Credential<E> {
-        // issuer verifiers proof of opening
         // TODO check the context is OK s.t. ctx in keypair = ctx in pp = ctx in commitment
+        // issuer verifiers proof of opening
         // signs over commitment
         // returns credential
         // First verify the proof of knowledge
@@ -85,7 +85,7 @@ impl SingleIssuerProtocol {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
+    use ark_bls12_381::{Bls12_381, Fr};
 
     #[test]
     fn test_one_cred() {
@@ -108,6 +108,3 @@ mod tests {
             .verify(&pp, &keypair, &credential.commitment));
     }
 }
-
-// assert_eq!(commitment.verify_opening(&messages, &r), true);
-// (assuming you have a verify_opening method)
