@@ -5,7 +5,7 @@ use crate::commitment::Commitment;
 use ark_ec::pairing::Pairing;
 use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use schnorr::schnorr::{SchnorrProtocol, SchnorrResponses};
+use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -180,6 +180,23 @@ impl CommitmentProofs {
         }
 
         Ok(true)
+    }
+
+    pub fn prove_zero<E: Pairing>(
+        commitment: &Commitment<E>,
+    ) -> Result<Vec<u8>, CommitmentProofError> {
+        let mut rng = ark_std::test_rng();
+        // take in a commitment C = g1^mg2h^r, generate T = g1^a g2 h^rho
+        let bases = commitment.pp.get_g1_bases();
+        let exponents = commitment.get_exponents();
+        let schnorr_commitment = SchnorrProtocol::commit(&bases, &mut rng);
+        let challenge = E::ScalarField::rand(&mut rng);
+        let responses = SchnorrProtocol::prove(&schnorr_commitment, &exponents, &challenge);
+        let proof = CommitmentProof<E>(
+            commitment: commitment.cmg1,
+            
+        )
+
     }
 }
 
