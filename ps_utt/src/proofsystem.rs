@@ -5,6 +5,7 @@ use crate::commitment::Commitment;
 use ark_ec::pairing::Pairing;
 use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::ops::{Add, Mul, Neg};
 use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
 use thiserror::Error;
 
@@ -192,11 +193,20 @@ impl CommitmentProofs {
         let schnorr_commitment = SchnorrProtocol::commit(&bases, &mut rng);
         let challenge = E::ScalarField::rand(&mut rng);
         let responses = SchnorrProtocol::prove(&schnorr_commitment, &exponents, &challenge);
-        let proof = CommitmentProof<E>(
-            commitment: commitment.cmg1,
-            
-        )
 
+        // Create and serialize proof with explicit type annotation
+        let proof: CommitmentProof<E> = CommitmentProof {
+            commitment: commitment.cmg1,
+            schnorr_commitment: schnorr_commitment.com_t,
+            bases: bases,
+            challenge,
+            responses: responses.0,
+        };
+
+        let mut serialized_proof = Vec::new();
+        proof.serialize_compressed(&mut serialized_proof)?;
+
+        Ok(serialized_proof)
     }
 }
 
@@ -205,6 +215,7 @@ mod tests {
     use super::*;
     use crate::publicparams::PublicParams;
     use ark_bls12_381::{Bls12_381, Fr};
+    use ark_std::{One, Zero};
 
     #[test]
     fn test_commitment_knowledge_proof() {
@@ -297,5 +308,25 @@ mod tests {
                 || !CommitmentProofs::verify_equality::<Bls12_381>(&invalid_proof.unwrap())
                     .unwrap()
         );
+    }
+
+    #[test]
+    pub fn test_multiplicative_inv() {
+        let mut rng = ark_std::test_rng();
+
+        let m1 = Fr::rand(&mut rng);
+        let m2 = m1.neg();
+        assert!((m1 + m2).is_zero(), "m1 + m2 not zero");
+
+        // let pp1 = PublicParams::<Bls12_381>::new(&4, &context_master, &mut rng);
+        // let pp2 = PublicParams::<Bls12_381>::new(&4, &context_dmv, &mut rng);
+
+        // create cm1 = Com([s, master, m3, m4], r1)
+        //
+        // create cm2 = Com([s, dmv, m3, m4], r2)
+
+        // generate VRF, use get_delta to output
+
+        // prove cm1 has s+master, cm2 has
     }
 }
