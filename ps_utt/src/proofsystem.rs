@@ -313,16 +313,23 @@ mod tests {
     #[test]
     pub fn test_multiplicative_inv() {
         let mut rng = ark_std::test_rng();
+        let k = Fr::rand(&mut rng);
+        let context_master = Fr::rand(&mut rng);
+        let context_dmv = Fr::rand(&mut rng);
 
         let m1 = Fr::rand(&mut rng);
         let m2 = m1.neg();
         assert!((m1 + m2).is_zero(), "m1 + m2 not zero");
 
-        // let pp1 = PublicParams::<Bls12_381>::new(&4, &context_master, &mut rng);
-        // let pp2 = PublicParams::<Bls12_381>::new(&4, &context_dmv, &mut rng);
+        let s = Fr::rand(&mut rng);
+        let delta = k + context_dmv;
 
-        // create cm1 = Com([s, master, m3, m4], r1)
-        //
+        // create commitments
+        let pp1 = PublicParams::<Bls12_381>::new(&4, &context_master, &mut rng);
+        let pp2 = PublicParams::<Bls12_381>::new(&4, &context_dmv, &mut rng);
+
+        let 
+        // create cm1 = Com([m1, master, m3, m4], r1)
         // create cm2 = Com([s, dmv, m3, m4], r2)
 
         // generate VRF, use get_delta to output
