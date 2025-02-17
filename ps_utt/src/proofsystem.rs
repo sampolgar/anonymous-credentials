@@ -5,7 +5,8 @@ use crate::commitment::Commitment;
 use ark_ec::pairing::Pairing;
 use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use schnorr::schnorr::{SchnorrProtocol, SchnorrResponses};
+use ark_std::ops::{Add, Mul, Neg};
+use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -181,6 +182,32 @@ impl CommitmentProofs {
 
         Ok(true)
     }
+
+    pub fn prove_zero<E: Pairing>(
+        commitment: &Commitment<E>,
+    ) -> Result<Vec<u8>, CommitmentProofError> {
+        let mut rng = ark_std::test_rng();
+        // take in a commitment C = g1^mg2h^r, generate T = g1^a g2 h^rho
+        let bases = commitment.pp.get_g1_bases();
+        let exponents = commitment.get_exponents();
+        let schnorr_commitment = SchnorrProtocol::commit(&bases, &mut rng);
+        let challenge = E::ScalarField::rand(&mut rng);
+        let responses = SchnorrProtocol::prove(&schnorr_commitment, &exponents, &challenge);
+
+        // Create and serialize proof with explicit type annotation
+        let proof: CommitmentProof<E> = CommitmentProof {
+            commitment: commitment.cmg1,
+            schnorr_commitment: schnorr_commitment.com_t,
+            bases: bases,
+            challenge,
+            responses: responses.0,
+        };
+
+        let mut serialized_proof = Vec::new();
+        proof.serialize_compressed(&mut serialized_proof)?;
+
+        Ok(serialized_proof)
+    }
 }
 
 #[cfg(test)]
@@ -188,6 +215,7 @@ mod tests {
     use super::*;
     use crate::publicparams::PublicParams;
     use ark_bls12_381::{Bls12_381, Fr};
+    use ark_std::{One, Zero};
 
     #[test]
     fn test_commitment_knowledge_proof() {
@@ -280,5 +308,32 @@ mod tests {
                 || !CommitmentProofs::verify_equality::<Bls12_381>(&invalid_proof.unwrap())
                     .unwrap()
         );
+    }
+
+    #[test]
+    pub fn test_multiplicative_inv() {
+        let mut rng = ark_std::test_rng();
+        let k = Fr::rand(&mut rng);
+        let context_master = Fr::rand(&mut rng);
+        let context_dmv = Fr::rand(&mut rng);
+
+        let m1 = Fr::rand(&mut rng);
+        let m2 = m1.neg();
+        assert!((m1 + m2).is_zero(), "m1 + m2 not zero");
+
+        let s = Fr::rand(&mut rng);
+        let delta = k + context_dmv;
+
+        // create commitments
+        let pp1 = PublicParams::<Bls12_381>::new(&4, &context_master, &mut rng);
+        let pp2 = PublicParams::<Bls12_381>::new(&4, &context_dmv, &mut rng);
+
+        let 
+        // create cm1 = Com([m1, master, m3, m4], r1)
+        // create cm2 = Com([s, dmv, m3, m4], r2)
+
+        // generate VRF, use get_delta to output
+
+        // prove cm1 has s+master, cm2 has
     }
 }

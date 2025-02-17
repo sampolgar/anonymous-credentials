@@ -20,8 +20,8 @@ pub struct Commitment<E: Pairing> {
 
 impl<E: Pairing> Commitment<E> {
     pub fn new(pp: &PublicParams<E>, messages: &Vec<E::ScalarField>, r: &E::ScalarField) -> Self {
-        let cmg1 = g1_commit::<E>(&pp, &messages, &r);
-        let cmg2 = g2_commit::<E>(&pp, &messages, &r);
+        let cmg1 = g1_commit::<E>(pp, messages, r);
+        let cmg2 = g2_commit::<E>(pp, messages, r);
         Commitment {
             pp: pp.clone(),              // this clones pp for the commitment
             messages: messages.to_vec(), // this creates its own messages
