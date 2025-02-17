@@ -1,7 +1,7 @@
 use ark_bls12_381::Bls12_381;
 use criterion::{criterion_group, criterion_main, Criterion};
 use ps::psproofs::PSProofs;
-use ps::test_helpers::create_ps_test_setup;
+use ps::test_helpers::{create_ps_test_setup, create_ps_with_userid};
 
 fn benchmark_multi_attribute(c: &mut Criterion) {
     println!("Starting multi_attribute benchmark");

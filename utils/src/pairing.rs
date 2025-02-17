@@ -4,6 +4,7 @@ use ark_ec::{
 };
 // {AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{Field, PrimeField};
+// use ark_std::{ops::Mul, rand::Rng,  sync::Mutex, One, UniformRand, Zero};
 use ark_std::{ops::Mul, rand::Rng, sync::Mutex, One, UniformRand, Zero};
 // use itertools::Itertools;
 use rayon::prelude::*;

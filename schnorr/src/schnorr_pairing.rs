@@ -74,6 +74,32 @@ impl SchnorrProtocolPairing {
         SchnorrCommitmentPairing { blindings, t_com }
     }
 
+    // takes in bases in g1, g2, and prepared blindness
+    pub fn commit_with_prepared_blindness2<E: Pairing>(
+        bases_g1: &[E::G1Affine],
+        bases_g2: &[E::G2Affine],
+        prepared_blindness: &[E::ScalarField],
+    ) -> SchnorrCommitmentPairing<E> {
+        assert!(
+            bases_g1.len() == bases_g2.len() && bases_g1.len() == prepared_blindness.len(),
+            "lengths of bases {}, {} and prepared blindness {} must match",
+            bases_g1.len(),
+            bases_g2.len(),
+            prepared_blindness.len()
+        );
+
+        // scale one side of the pairing eqn by blinding. e(blinding * sigma1, y1)..
+        let scaled_g1bases_by_blindings =
+            Helpers::compute_scaled_points_g1::<E>(None, None, &prepared_blindness, &bases_g1);
+
+        let t_com = Helpers::compute_gt::<E>(&scaled_g1bases_by_blindings, &bases_g2);
+
+        SchnorrCommitmentPairing {
+            blindings: prepared_blindness.to_vec(),
+            t_com,
+        }
+    }
+
     pub fn prove<E: Pairing>(
         schnorr_commitment: &SchnorrCommitmentPairing<E>,
         witnesses: &[E::ScalarField],

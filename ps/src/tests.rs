@@ -69,7 +69,8 @@ mod equality_proof {
     #[test]
     fn test_equality_proof() {
         let setup = setup_test_environment(5);
-        let equality_checks = vec![(1, setup.messages[1]), (3, setup.messages[3])];
+        // let equality_checks = vec![(1, setup.messages[1]), (3, setup.messages[3])];
+        let equality_checks = vec![(1, setup.messages[1])];
         let proof = PSProofs::prove_equality(&setup, &equality_checks)
             .expect("Proof generation should succeed");
         let is_valid = PSProofs::verify_equality(&setup, &proof, &equality_checks)

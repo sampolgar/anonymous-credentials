@@ -23,6 +23,6 @@ criterion = "0.5"
 ark-serialize = { version = "^0.4.1", default-features = false, features = [ "derive" ] }
 
 [[bench]]
-name = "ps_signature"
-path = "benches/ps_signature.rs"
+name = "ps_equality"
+path = "benches/ps_equality.rs"
 harness = false

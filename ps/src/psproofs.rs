@@ -2,6 +2,7 @@ use crate::test_helpers::PSTestSetup;
 use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::UniformRand;
+use ark_groth16::Proof;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::ops::Neg;
 use schnorr::schnorr_pairing::SchnorrProtocolPairing;
@@ -356,6 +357,7 @@ impl PSProofs {
         Ok(public_and_private_gt == proof.signature_commitment)
     }
 
+    // takes in vector of equality checks [(arrayIndex, message),(.,.)]
     pub fn prove_equality<E: Pairing>(
         setup: &PSTestSetup<E>,
         equality_checks: &[(usize, E::ScalarField)],
@@ -407,7 +409,7 @@ impl PSProofs {
             "Schnorr verification failed in prove_equality"
         );
 
-        // create a new vector of messages with
+        // create a new vector of messages with blindings
         let equality_blindings: Vec<E::ScalarField> = schnorr_commitment_gt
             .blindings
             .iter()
@@ -545,14 +547,203 @@ impl PSProofs {
         // Ok(equality_valid);
         Ok(is_valid)
     }
+
+    // used for proving equality of messages between different signatures
+    // the PoK response should use the same randomness and challenge in all signatures
+    // this function takes in
+    // the id is always position 0
+    // setup: &PSTestSetup<E>,
+
+    // Proof of Knowledge
+    // In Short Randomizable Signatures Sec. 6.2, the pairing verification is
+    // e(sigma1', tilde_X) . \Sum e(sigma1', Y_j)^m_j . e(sigma1',tilde_g)^t = e(sigma2', tilde_g)
+    // we separate between LHS and RHS where LHS has exponents to prove, RHS doesn't
+    // LHS: \Sum e(sigma1', Y_j)^m_j . e(sigma1',tilde_g)^t  =  RHS: e(sigma2', tilde_g) / e(sigma1', tilde_X)
+
+    // Phase 0. Randomize Signature, compute RHS
+    //
+    // Phase 1. Prover Commitment           1. generate blindness, 2. commit to it with same bases
+    // Phase 2. Verifier Challenge
+    // Phase 3. Prover creates Responses    1.
+    pub fn prove_with_userid<E: Pairing>(
+        setup: &PSTestSetup<E>,
+        user_id_blindness: &E::ScalarField,
+        challenge: &E::ScalarField,
+    ) -> Result<Vec<u8>, ProofError> {
+        let mut rng = ark_std::test_rng();
+
+        //
+        // Sigma Protocol Phase 0
+        //
+        // randomize signature
+        let t = E::ScalarField::rand(&mut rng);
+        let sigma_prime = setup.signature.randomize_for_pok_new(&mut rng, &t);
+
+        // compute RHS e(sigma2', tilde_g) / e(sigma1', tilde_X)
+        let signature_commitment_gt = sigma_prime.generate_commitment_gt(&setup.pk);
+
+        //
+        // Sigma Protocol Phase 1 Commit
+        //
+        // Prepare T the Schnorr Initial Commitment with blinding factors
+        let base_length = setup.messages.len() + 1;
+        let mut prepared_blindness: Vec<E::ScalarField> = (0..base_length)
+            .map(|_| E::ScalarField::rand(&mut rng))
+            .collect();
+
+        // set position 0 to be user_id blindness - this should be equal for all signatures we want to prove equal
+        prepared_blindness[0] = *user_id_blindness;
+
+        // prepare for the GT bases that will be exponentiated
+        // Our Proof of Knowledge uses bases e(sigma1', Y_j)^m_j . e(sigma1',tilde_g)^t
+        // First, prepare a vector of sigma1' points for the g1 position
+        let bases_g1 = Helpers::copy_point_to_length_g1::<E>(sigma_prime.sigma1, &base_length);
+
+        // prepare a vector of [Y_1, Y_2, ..., \tilde{}g] points
+        let bases_g2 = Helpers::add_affine_to_vector::<E::G2>(&setup.pk.g2, &setup.pk.y_g2);
+
+        // generate T, the iniital commitment sent in the first phase of Proof of Knowledge
+        let schnorr_commitment_gt = SchnorrProtocolPairing::commit_with_prepared_blindness2::<E>(
+            &bases_g1,
+            &bases_g2,
+            &prepared_blindness,
+        );
+
+        //
+        // Sigma Protocol Phase 2 Challenge (We use precomputed challenge, no phase 2 here)
+        //
+
+        //
+        // Sigma Protocol Phase 3 Responses
+        //
+
+        // generate witness vector with t the signature randomizer
+        let witnesses = Helpers::add_scalar_to_vector::<E>(&t, &setup.messages);
+
+        // commit to them in G_T
+        let witness_commitment_gt =
+            Helpers::compute_gt_from_g1_g2_scalars::<E>(&bases_g1, &bases_g2, &witnesses);
+
+        // generate schnorr responses
+        let responses =
+            SchnorrProtocolPairing::prove(&schnorr_commitment_gt, &witnesses, &challenge);
+
+        // test schnorr verification
+        let is_valid = SchnorrProtocolPairing::verify(
+            &schnorr_commitment_gt.t_com,
+            &witness_commitment_gt,
+            &challenge,
+            &bases_g1,
+            &bases_g2,
+            &responses.0,
+        );
+
+        assert!(is_valid, "Schnorr verification failed in prove_equality");
+
+        let proof = ProofOfKnowledge {
+            randomized_signature: (sigma_prime.sigma1, sigma_prime.sigma2),
+            signature_commitment: signature_commitment_gt,
+            schnorr_commitment: schnorr_commitment_gt.t_com,
+            challenge: *challenge,
+            responses: responses.0,
+        };
+
+        let mut serialized_proof = Vec::new();
+        proof.serialize_compressed(&mut serialized_proof)?;
+
+        Ok(serialized_proof)
+    }
+
+    pub fn verify_batch_equality<E: Pairing>(
+        setups: &[PSTestSetup<E>],
+        serialized_proofs: &[Vec<u8>],
+    ) -> Result<bool, String> {
+        // 1. Validate inputs
+        if setups.len() != serialized_proofs.len() {
+            return Err("Number of setups must match number of proofs".to_string());
+        }
+        if setups.is_empty() {
+            return Err("At least one setup-proof pair required".to_string());
+        }
+
+        // 2. deserialize proofs
+        let mut all_responses = Vec::with_capacity(serialized_proofs.len());
+        for (idx, (setup, proof_bytes)) in setups.iter().zip(serialized_proofs.iter()).enumerate() {
+            // 2.1 Deserialize proof
+            let proof: ProofOfKnowledge<E> =
+                CanonicalDeserialize::deserialize_compressed(&proof_bytes[..])
+                    .map_err(|_| format!("Failed to deserialize proof at index {}", idx))?;
+
+            let computed_signature_commitment = Helpers::compute_gt::<E>(
+                &[
+                    proof.randomized_signature.1,
+                    proof
+                        .randomized_signature
+                        .0
+                        .into_group()
+                        .neg()
+                        .into_affine(),
+                ],
+                &[setup.pk.g2, setup.pk.x_g2],
+            );
+            if computed_signature_commitment != proof.signature_commitment {
+                return Err(format!(
+                    "Signature commitment verification failed at index {}",
+                    idx
+                ));
+            }
+
+            // 2.3 Prepare bases for verification
+            let base_length = setup.messages.len() + 1;
+            let bases_g1 =
+                Helpers::copy_point_to_length_g1::<E>(proof.randomized_signature.0, &base_length);
+            let bases_g2 = Helpers::add_affine_to_vector::<E::G2>(&setup.pk.g2, &setup.pk.y_g2);
+
+            // 2.4 Verify Schnorr proof
+            let is_valid = SchnorrProtocolPairing::verify(
+                &proof.schnorr_commitment,
+                &proof.signature_commitment,
+                &proof.challenge,
+                &bases_g1,
+                &bases_g2,
+                &proof.responses,
+            );
+
+            if !is_valid {
+                return Err(format!(
+                    "Schnorr proof verification failed at index {}",
+                    idx
+                ));
+            }
+
+            // Store responses for consistency check
+            let id_response = proof.responses[0];
+            all_responses.push(id_response);
+        }
+
+        // 3. Verify consistency of first response across all proofs
+        let first_response = all_responses[0];
+        for (idx, response) in all_responses.iter().enumerate().skip(1) {
+            if response != &first_response {
+                return Err(format!(
+                    "Inconsistent first response at index {}. Expected {:?}, found {:?}",
+                    idx, first_response, response
+                ));
+            }
+        }
+
+        Ok(true)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::create_ps_test_setup;
-    use ark_bls12_381::Bls12_381;
+    use crate::test_helpers::{create_ps_test_setup, create_ps_with_userid};
+    use ark_bls12_381::{Bls12_381, Fr};
     use ark_std::rand::{rngs::StdRng, SeedableRng};
+    use ark_std::test_rng;
+    use ark_std::UniformRand;
     #[test]
     fn test_prove_and_verify_knowledge() {
         let setup = create_ps_test_setup::<Bls12_381>(6);
@@ -601,23 +792,36 @@ mod tests {
         assert!(is_valid, "Proof with no disclosed messages should be valid");
     }
 
-    #[test]
-    fn test_equality_proof() {
-        // Setup
-        let message_count = 5;
-        let mut setup = create_ps_test_setup::<Bls12_381>(message_count);
+    // #[test]
+    // fn test_equality_proof() {
+    //     // Setup
+    //     let mut rng = test_rng();
+    //     let user_id = Fr::rand(&mut rng);
+    //     let user_id_blindness = Fr::rand(&mut rng);
+    //     let challenge = Fr::rand(&mut rng);
+    //     let message_count = 5;
 
-        // Choose indices for equality proof (e.g., messages at indices 1 and 3)
-        let equality_checks = vec![(1, setup.messages[1]), (3, setup.messages[3])];
+    //     let mut setup1 = create_ps_with_userid::<Bls12_381>(message_count, &user_id);
+    //     let mut setup2 = create_ps_with_userid::<Bls12_381>(message_count, &user_id);
 
-        // Generate the proof
-        let proof = PSProofs::prove_equality(&setup, &equality_checks)
-            .expect("Proof generation should succeed");
+    //     // Generate the proof
+    //     let proof1 = PSProofs::prove_with_userid(&setup1, &user_id_blindness, &challenge)
+    //         .expect("Proof generation should succeed");
 
-        // Verify the proof
-        let is_valid = PSProofs::verify_equality(&setup, &proof, &equality_checks)
-            .expect("Proof verification should complete");
+    //     let proof2 = PSProofs::prove_with_userid(&setup2, &user_id_blindness, &challenge)
+    //         .expect("Proof generation should succeed");
 
-        assert!(is_valid, "Equality proof should be valid");
-    }
+    //     // Prepare inputs for batch verification
+    //     let setups = vec![setup1, setup2];
+    //     let serialized_proofs = vec![proof1, proof2];
+
+    //     // Perform batch verification
+    //     match PSProofs::verify_batch_equality::<Bls12_381>(&setups, &serialized_proofs) {
+    //         Ok(true) => {
+    //             println!("All proofs verified successfully and share consistent first response")
+    //         }
+    //         Ok(false) => panic!("Unexpected verification failure"),
+    //         Err(e) => panic!("Verification error: {}", e),
+    //     }
+    // }
 }

@@ -45,7 +45,6 @@ impl<E: Pairing> Signature<E> {
         }
     }
 
-    //
     pub fn randomize_for_pok(&self, r: &E::ScalarField, t: &E::ScalarField) -> Self {
         let sigma1_temp = self.sigma1;
         Self {
@@ -68,6 +67,11 @@ impl<E: Pairing> Signature<E> {
         }
     }
 
+    // In Short Randomizable Signatures the pairing verification is 
+    // e(sigma1', tilde_X) . \Sum e(sigma1', Y_j)^m_j . e(sigma1',tilde_g)^t = e(sigma2', tilde_g)
+    // we simplify by taking left most pairing over to rhs
+    // \Sum e(sigma1', Y_j)^m_j . e(sigma1',tilde_g)^t  =  e(sigma2', tilde_g) / e(sigma1', tilde_X)
+    // to do this, we compute the GT point at the end: e(sigma2', tilde_g) / e(sigma1', tilde_X)
     pub fn generate_commitment_gt(&self, pk: &keygen::PublicKey<E>) -> PairingOutput<E> {
         let signature_commitment_gt = Helpers::compute_gt::<E>(
             &[self.sigma2, self.sigma1.into_group().neg().into_affine()],
