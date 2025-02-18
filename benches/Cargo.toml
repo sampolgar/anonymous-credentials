@@ -16,6 +16,7 @@ blake2 = { version = "0.10", default-features = false }
 schnorr = {default-features = false, path = "../schnorr" }
 utils = {default-features = false, path = "../utils" }
 ps = {default-features = false, path = "../ps" }
+ps_utt = {default-features = false, path = "../ps_utt" }
 
 
 [dev-dependencies]
@@ -25,4 +26,9 @@ ark-serialize = { version = "^0.4.1", default-features = false, features = [ "de
 [[bench]]
 name = "ps_equality"
 path = "benches/ps_equality.rs"
+harness = false
+
+[[bench]]
+name = "psutt_equality_split"
+path = "benches/psutt_equality_split.rs"
 harness = false

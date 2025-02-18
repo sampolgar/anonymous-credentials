@@ -75,43 +75,6 @@ pub fn create_ps_with_userid<E: Pairing>(
     }
 }
 
-//
-//
-// In test_helpers.rs
-
-// pub struct BenchmarkSetup<E: Pairing> {
-//     credentials_count: usize,
-//     message_count: usize,
-//     user_id: E::ScalarField,
-//     user_id_blindness: E::ScalarField,
-//     challenge: E::ScalarField,
-//     setups: Vec<PSTestSetup<E>>,
-// }
-
-// impl<E: Pairing> BenchmarkSetup<E> {
-//     fn new(credentials_count: usize, message_count: usize) -> Self {
-//         let mut rng = ark_std::test_rng();
-//         let user_id = E::ScalarField::rand(&mut rng);
-//         let user_id_blindness = E::ScalarField::rand(&mut rng);
-//         let challenge = E::ScalarField::rand(&mut rng);
-
-//         // Create setups for each credential
-//         let setups = (0..credentials_count)
-//             .map(|_| create_ps_with_userid::<E>(message_count, &user_id))
-//             .collect();
-
-//         Self {
-//             credentials_count,
-//             message_count,
-//             user_id,
-//             user_id_blindness,
-//             challenge,
-//             setups,
-//         }
-//     }
-// }
-
-// In test_helpers.rs
 pub struct BenchmarkSetup<E: Pairing> {
     pub credentials_count: usize,
     pub message_count: usize,

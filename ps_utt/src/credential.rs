@@ -14,6 +14,8 @@ pub struct Credential<E: Pairing> {
 // core functionality for a credential
 impl<E: Pairing> Credential<E> {
     //
-    // pub fn verify(&self) -> bool { ... }
-    // pub fn randomize(&self) -> Self { ... }
+    // prove
+    // verify
+    // prove equality
+    // verify
 }

@@ -1,7 +1,12 @@
+use crate::commitment::Commitment;
+use crate::keygen::KeyPair;
 use crate::publicparams::PublicParams;
+use crate::signature::PSSignature;
 use ark_ec::pairing::Pairing;
 use ark_ec::{CurveGroup, VariableBaseMSM};
+use ark_ff::UniformRand;
 use ark_std::ops::{Add, Mul};
+use ark_std::rand::Rng; // Import the Rng trait
 
 pub fn g1_commit<E: Pairing>(
     pp: &PublicParams<E>,
@@ -49,6 +54,78 @@ pub fn g2_commit_schnorr<E: Pairing>(
     com
 }
 
+// Test Setup is a credential with pk, sk, messages, signature
+// During Setup, we generate public parameters, secret key, messages, signature
+// for our equality tests, we need to set the userid to position 0 of the message vector
+pub struct PSUttTestSetup<E: Pairing> {
+    pub pp: PublicParams<E>,
+    pub keypair: KeyPair<E>,
+    pub commitment: Commitment<E>,
+    pub signature: PSSignature<E>,
+}
+
+impl<E: Pairing> PSUttTestSetup<E> {
+    pub fn new(msg_count: usize, user_id: &E::ScalarField) -> Self {
+        let mut rng = ark_std::test_rng();
+        let context = E::ScalarField::rand(&mut rng);
+
+        let mut messages: Vec<_> = (0..msg_count)
+            .map(|_| E::ScalarField::rand(&mut rng))
+            .collect();
+        messages[0] = *user_id;
+
+        let r = E::ScalarField::rand(&mut rng);
+
+        let pp = PublicParams::<E>::new(&msg_count, &context, &mut rng);
+        let keypair = KeyPair::<E>::new(&pp, &mut rng);
+        let commitment = Commitment::new(&pp, &messages, &r);
+        let signature = PSSignature::sign(&pp, &keypair, &commitment, &mut rng);
+
+        assert!(
+            signature.verify(&pp, &keypair, &commitment),
+            "sig isn't valid"
+        );
+
+        Self {
+            pp,
+            keypair,
+            commitment,
+            signature,
+        }
+    }
+}
+
+pub struct BenchmarkSetup<E: Pairing> {
+    pub credentials_count: usize,
+    pub message_count: usize,
+    pub user_id: E::ScalarField,
+    pub user_id_blindness: E::ScalarField,
+    pub challenge: E::ScalarField,
+    pub psutt_setups: Vec<PSUttTestSetup<E>>,
+}
+
+impl<E: Pairing> BenchmarkSetup<E> {
+    pub fn new(credentials_count: usize, message_count: usize) -> Self {
+        let mut rng = ark_std::test_rng();
+        let user_id = E::ScalarField::rand(&mut rng);
+        let user_id_blindness = E::ScalarField::rand(&mut rng);
+        let challenge = E::ScalarField::rand(&mut rng);
+
+        let psutt_setups = (0..credentials_count)
+            .map(|_| PSUttTestSetup::new(message_count, &user_id))
+            .collect();
+
+        Self {
+            credentials_count,
+            message_count,
+            user_id,
+            user_id_blindness,
+            challenge,
+            psutt_setups,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -75,5 +152,14 @@ mod test {
         let p1 = Bls12_381::pairing(pp.g1, g2_comm);
         let p2 = Bls12_381::pairing(g1_comm, pp.g2);
         assert_eq!(p1, p2, "p1 not eq p2 pairing");
+    }
+
+    #[test]
+    fn test_setup() {
+        let mut rng = ark_std::test_rng();
+        let msg_count: usize = 10;
+        let user_id = Fr::rand(&mut rng);
+        let test_setup = PSUttTestSetup::<Bls12_381>::new(msg_count, &user_id);
+        
     }
 }

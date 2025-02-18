@@ -45,7 +45,7 @@ impl<E: Pairing> PublicParams<E> {
         g1_bases
     }
 
-    // gets all g2 bases, g_1,...,g_n,h
+    // gets all g2 bases, g_1,...,g_n,g
     pub fn get_g2_bases(&self) -> Vec<E::G2Affine> {
         // add g2 to end of ckg2
         let mut g2_bases = self.ckg2.clone();
