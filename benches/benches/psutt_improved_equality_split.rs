@@ -4,12 +4,14 @@ use ark_std::UniformRand;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use ps_utt::commitment::Commitment;
 use ps_utt::proofsystem::CommitmentProofs;
-use ps_utt::ps_helpers::{BenchmarkSetup, PSUttTestSetup};
+use ps_utt::ps_helpers::{
+    BenchmarkSetup, BenchmarkSetupImproved, PSUttImprovedTestSetup, PSUttTestSetup,
+};
 use std::time::Duration;
 
 fn benchmark_psutt_split(c: &mut Criterion) {
-    let mut group = c.benchmark_group("psutt_split");
-    println!("Starting PSUtt split benchmarks");
+    let mut group = c.benchmark_group("psutt_improved_split");
+    println!("Starting PSUTT Improved split benchmarks");
 
     group
         .sample_size(10)
@@ -23,7 +25,7 @@ fn benchmark_psutt_split(c: &mut Criterion) {
 
     for cred_count in CREDENTIAL_COUNTS {
         // Setup phase (done once per credential count)
-        let setup = BenchmarkSetup::<Bls12_381>::new(cred_count, MSG_COUNT);
+        let setup = BenchmarkSetupImproved::<Bls12_381>::new(cred_count, MSG_COUNT);
 
         // Pre-generate random values to use in both proving and verification
         let mut rng = ark_std::test_rng();

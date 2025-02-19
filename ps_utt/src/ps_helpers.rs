@@ -1,12 +1,12 @@
 use crate::commitment::Commitment;
-use crate::keygen::KeyPair;
+use crate::keygen::{KeyPair, KeyPairImproved};
 use crate::publicparams::PublicParams;
-use crate::signature::PSSignature;
+use crate::signature::{PSSignature, PSUTTSignatureImproved};
 use ark_ec::pairing::Pairing;
 use ark_ec::{CurveGroup, VariableBaseMSM};
 use ark_ff::UniformRand;
 use ark_std::ops::{Add, Mul};
-use ark_std::rand::Rng; // Import the Rng trait
+use ark_std::rand::Rng;
 
 pub fn g1_commit<E: Pairing>(
     pp: &PublicParams<E>,
@@ -126,6 +126,75 @@ impl<E: Pairing> BenchmarkSetup<E> {
     }
 }
 
+pub struct PSUttImprovedTestSetup<E: Pairing> {
+    pub pp: PublicParams<E>,
+    pub keypair: KeyPairImproved<E>,
+    pub commitment: Commitment<E>,
+    pub signature: PSUTTSignatureImproved<E>,
+}
+
+impl<E: Pairing> PSUttImprovedTestSetup<E> {
+    pub fn new(msg_count: usize, user_id: &E::ScalarField) -> Self {
+        let mut rng = ark_std::test_rng();
+        let context = E::ScalarField::rand(&mut rng);
+
+        let mut messages: Vec<_> = (0..msg_count)
+            .map(|_| E::ScalarField::rand(&mut rng))
+            .collect();
+        messages[0] = *user_id;
+
+        let r = E::ScalarField::rand(&mut rng);
+
+        let pp = PublicParams::<E>::new(&msg_count, &context, &mut rng);
+        let keypair = KeyPairImproved::<E>::new(&pp, &mut rng);
+        let commitment = Commitment::new(&pp, &messages, &r);
+        let signature = PSUTTSignatureImproved::sign(&pp, &keypair, &commitment, &mut rng);
+
+        assert!(
+            signature.verify(&pp, &keypair, &commitment),
+            "sig isn't valid"
+        );
+
+        Self {
+            pp,
+            keypair,
+            commitment,
+            signature,
+        }
+    }
+}
+
+pub struct BenchmarkSetupImproved<E: Pairing> {
+    pub credentials_count: usize,
+    pub message_count: usize,
+    pub user_id: E::ScalarField,
+    pub user_id_blindness: E::ScalarField,
+    pub challenge: E::ScalarField,
+    pub psutt_setups: Vec<PSUttImprovedTestSetup<E>>,
+}
+
+impl<E: Pairing> BenchmarkSetupImproved<E> {
+    pub fn new(credentials_count: usize, message_count: usize) -> Self {
+        let mut rng = ark_std::test_rng();
+        let user_id = E::ScalarField::rand(&mut rng);
+        let user_id_blindness = E::ScalarField::rand(&mut rng);
+        let challenge = E::ScalarField::rand(&mut rng);
+
+        let psutt_setups = (0..credentials_count)
+            .map(|_| PSUttImprovedTestSetup::new(message_count, &user_id))
+            .collect();
+
+        Self {
+            credentials_count,
+            message_count,
+            user_id,
+            user_id_blindness,
+            challenge,
+            psutt_setups,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -160,6 +229,13 @@ mod test {
         let msg_count: usize = 10;
         let user_id = Fr::rand(&mut rng);
         let test_setup = PSUttTestSetup::<Bls12_381>::new(msg_count, &user_id);
-        
+    }
+
+    #[test]
+    fn test_setup_improved() {
+        let mut rng = ark_std::test_rng();
+        let msg_count: usize = 10;
+        let user_id = Fr::rand(&mut rng);
+        let test_setup = PSUttImprovedTestSetup::<Bls12_381>::new(msg_count, &user_id);
     }
 }
