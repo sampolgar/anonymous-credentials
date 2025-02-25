@@ -10,7 +10,7 @@ use ps_utt::ps_helpers::{
 use std::time::Duration;
 
 fn benchmark_psutt_split(c: &mut Criterion) {
-    let mut group = c.benchmark_group("psutt_improved_split");
+    let mut group = c.benchmark_group("psutt_improved_equality_split");
     println!("Starting PSUTT Improved split benchmarks");
 
     group
@@ -97,7 +97,7 @@ fn benchmark_psutt_split(c: &mut Criterion) {
 
                 // Verify signatures
                 for i in 0..cred_count {
-                    let sig_valid = randomized_sigs[i].verify_with_pairing_checker(
+                    let sig_valid = randomized_sigs[i].verify_with_pairing_checker_improved(
                         &setup.psutt_setups[i].pp,
                         &setup.psutt_setups[i].keypair,
                         &randomized_commitments[i],

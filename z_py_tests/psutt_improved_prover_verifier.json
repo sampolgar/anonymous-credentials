@@ -1,0 +1,42 @@
+[
+  {
+    "Credentials":2,
+    "Prove Time (ms)":4.0593776628,
+    "Prove Std Dev":0.0129507374,
+    "Verify Time (ms)":4.8609681425,
+    "Verify Std Dev":0.0054126818,
+    "Total Time (ms)":8.9203458053
+  },
+  {
+    "Credentials":5,
+    "Prove Time (ms)":9.9428900118,
+    "Prove Std Dev":0.0334765427,
+    "Verify Time (ms)":12.1595765193,
+    "Verify Std Dev":0.0427261382,
+    "Total Time (ms)":22.1024665311
+  },
+  {
+    "Credentials":10,
+    "Prove Time (ms)":19.7282543429,
+    "Prove Std Dev":0.0207359291,
+    "Verify Time (ms)":24.3201252216,
+    "Verify Std Dev":0.0374477936,
+    "Total Time (ms)":44.0483795645
+  },
+  {
+    "Credentials":20,
+    "Prove Time (ms)":39.4174061677,
+    "Prove Std Dev":0.0822550037,
+    "Verify Time (ms)":48.1584111675,
+    "Verify Std Dev":0.1067186436,
+    "Total Time (ms)":87.5758173352
+  },
+  {
+    "Credentials":30,
+    "Prove Time (ms)":59.2990836586,
+    "Prove Std Dev":0.0890860321,
+    "Verify Time (ms)":72.0160013322,
+    "Verify Std Dev":0.0734022247,
+    "Total Time (ms)":131.3150849907
+  }
+]

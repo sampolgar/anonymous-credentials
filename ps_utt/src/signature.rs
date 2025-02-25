@@ -178,7 +178,7 @@ impl<E: Pairing> PSUTTSignatureImproved<E> {
     // e(cmg1, g2) * e(g1, cmg2)^-1 = 1
     // and merge
     // e(sigma2, g2) * e(sigma1, vk + cmg2)^-1 * e(cmg1, g2) * e(g1, cmg2)^-1 = 1
-    pub fn verify_with_pairing_checker(
+    pub fn verify_with_pairing_checker_improved(
         &self,
         pp: &PublicParams<E>,
         keypair: &KeyPairImproved<E>,
@@ -290,7 +290,11 @@ mod tests {
         let randomized_commitment = commitment.create_randomized(&r_delta);
         let randomized_sig = sig.rerandomize(&pp, &r_delta, &u_delta);
 
-        let is_randomized_valid = randomized_sig.verify(&pp, &keypair, &randomized_commitment);
+        let is_randomized_valid = randomized_sig.verify_with_pairing_checker_improved(
+            &pp,
+            &keypair,
+            &randomized_commitment,
+        );
         assert!(is_randomized_valid, "randomized sig verification failed");
     }
 }

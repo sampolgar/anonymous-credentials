@@ -32,3 +32,8 @@ harness = false
 name = "psutt_equality_split"
 path = "benches/psutt_equality_split.rs"
 harness = false
+
+[[bench]]
+name = "psutt_improved_equality_split"
+path = "benches/psutt_improved_equality_split.rs"
+harness = false
