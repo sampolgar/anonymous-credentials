@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "ps", "schnorr", "utils", "benches", "vrf", "ps_utt", "system", "bbsplus"]
+    "ps", "schnorr", "utils", "benches", "vrf", "ps_utt", "system", "bbs_plus"]
 
 [workspace.dependencies]
 ark-ff = { version = "^0.4.1", default-features = false }

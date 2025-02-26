@@ -50,7 +50,6 @@ impl<E: Pairing> KeyPairImproved<E> {
 mod test {
     use super::*;
     use ark_bls12_381::{Bls12_381, Fr};
-    use ark_ec::pairing::PairingOutput;
 
     #[test]
     fn test_keygen() {
