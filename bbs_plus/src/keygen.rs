@@ -33,17 +33,14 @@ pub fn gen_keys<E: Pairing>(
     (sk, pk)
 }
 
-// impl<E: Pairing> PublicKey<E> {
-//     pub fn get_h0(&self) -> E::G1Affine {
-//         let h0 = self.hig1[0];
-//         h0
-//     }
+impl<E: Pairing> PublicKey<E> {
+    pub fn get_all_h(&self) -> Vec<E::G1Affine> {
+        let mut all_h = vec![self.h0];
+        all_h.extend(self.h1hL.iter().cloned());
+        all_h
+    }
+}
 
-//     pub fn get_h1_to_hL(&self) -> Vec<E::G1Affine> {
-//         let mut points = self.hig1.clone();
-//         points.split_off(1)
-//     }
-// }
 #[cfg(test)]
 mod test {
     use super::*;

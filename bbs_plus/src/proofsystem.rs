@@ -2,9 +2,8 @@ use crate::keygen::{self, PublicKey};
 use crate::publicparams::PublicParams;
 use crate::signature::{BBSPlusRandomizedSignature, BBSPlusSignature};
 use ark_ec::pairing::Pairing;
-use ark_ec::{AffineRepr, CurveGroup};
+use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{Field, UniformRand};
-use ark_groth16::Proof;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::Rng;
 use ark_std::{
@@ -19,12 +18,14 @@ use utils::helpers::Helpers;
 pub enum ProofError {
     #[error("Serialization error: {0}")]
     SerializationError(#[from] ark_serialize::SerializationError),
-    #[error("Placeholder error: {0}")]
-    PlaceholderError(String),
+    #[error("Invalid proof")]
+    InvalidProof,
+    #[error("Verification failed")]
+    VerificationFailed,
 }
 
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
-pub struct ProofOfKnowledge<E: Pairing> {
+pub struct BBSPlusProofOfKnowledge<E: Pairing> {
     pub randomized_sig: BBSPlusRandomizedSignature<E>,
     pub schnorr_commitment_1: SchnorrCommitment<E::G1Affine>,
     pub schnorr_responses_1: SchnorrResponses<E::G1Affine>,
@@ -32,12 +33,18 @@ pub struct ProofOfKnowledge<E: Pairing> {
     pub schnorr_responses_2: SchnorrResponses<E::G1Affine>,
     pub challenge: E::ScalarField,
 }
+/// Pedersen commitment with proof of knowledge
+#[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
+pub struct CommitmentWithProof<E: Pairing> {
+    pub commitment: E::G1Affine,
+    pub proof: Vec<u8>,
+}
 
 pub struct ProofSystem;
 
 impl ProofSystem {
     // Proves Knowledge of a BBS+ Signature
-    pub fn prove<E: Pairing, R: Rng>(
+    pub fn bbs_plus_prove<E: Pairing, R: Rng>(
         pp: &PublicParams<E>,
         randomized_sig: &BBSPlusRandomizedSignature<E>,
         pk: &PublicKey<E>,
@@ -94,7 +101,7 @@ impl ProofSystem {
         );
         assert!(proof_2_valid, "Proof 2 is not valid!");
 
-        let proof = ProofOfKnowledge {
+        let proof = BBSPlusProofOfKnowledge {
             randomized_sig: randomized_sig.clone(),
             schnorr_commitment_1,
             schnorr_responses_1,
@@ -109,13 +116,13 @@ impl ProofSystem {
     }
 
     // Verifies knowledge of a BBS+ Signature Proof
-    pub fn verify_proof<E: Pairing>(
+    pub fn bbs_plus_verify_proof<E: Pairing>(
         pp: &PublicParams<E>,
         pk: &PublicKey<E>,
         serialized_proof: &[u8],
     ) -> Result<bool, ProofError> {
         // Deserialize the proof
-        let proof: ProofOfKnowledge<E> =
+        let proof: BBSPlusProofOfKnowledge<E> =
             CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
 
         // 1. Verify the randomized signature for sanity
@@ -161,6 +168,76 @@ impl ProofSystem {
 
         Ok(true)
     }
+
+    // pub fn commitment_prove<E: Pairing, R: Rng>()
+    // pub fn commitment_verify
+    /// Creates a Pedersen commitment to messages and a proof of knowledge
+    pub fn create_commitment_proof<E: Pairing, R: Rng>(
+        pp: &PublicParams<E>,
+        pk: &PublicKey<E>,
+        messages: &[E::ScalarField],
+        s_prime: &E::ScalarField,
+        rng: &mut R,
+    ) -> Result<CommitmentWithProof<E>, ProofError> {
+        assert_eq!(messages.len(), pk.h1hL.len(), "Invalid number of messages");
+        // Create Pedersen commitment: Cm = h_0^sprime h_1^m1 ... hL^mL
+        let mut exponents = vec![*s_prime];
+        exponents.extend(messages.iter().cloned());
+
+        let bases = pk.get_all_h();
+
+        // cm = h_0^s' h_1^m_1 ... h_L^m_L
+        let commitment: E::G1 = E::G1::msm(&bases, &exponents).unwrap();
+        let challenge = E::ScalarField::rand(rng);
+        let schnorr_commitment = SchnorrProtocol::commit(&bases, rng);
+        let schnorr_responses = SchnorrProtocol::prove(&schnorr_commitment, &exponents, &challenge);
+        let is_valid = SchnorrProtocol::verify(
+            &bases,
+            &commitment.into_affine(),
+            &schnorr_commitment,
+            &schnorr_responses,
+            &challenge,
+        );
+        assert!(is_valid, "Generated proof is not valid!");
+
+        // Create proof structure
+        let proof = (schnorr_commitment, schnorr_responses, challenge);
+        let mut serialized_proof = Vec::new();
+        proof.serialize_compressed(&mut serialized_proof)?;
+
+        Ok(CommitmentWithProof {
+            commitment: commitment.into_affine(),
+            proof: serialized_proof,
+        })
+    }
+
+    /// Verifies a Pedersen commitment proof
+    pub fn verify_commitment_proof<E: Pairing>(
+        pp: &PublicParams<E>,
+        pk: &PublicKey<E>,
+        commitment_proof: &CommitmentWithProof<E>,
+    ) -> Result<bool, ProofError> {
+        // Deserialize the proof
+        let (schnorr_commitment, schnorr_responses, challenge): (
+            SchnorrCommitment<E::G1Affine>,
+            SchnorrResponses<E::G1Affine>,
+            E::ScalarField,
+        ) = CanonicalDeserialize::deserialize_compressed(&commitment_proof.proof[..])?;
+
+        // Setup for verification
+        let bases = pk.get_all_h();
+
+        // Verify the proof
+        let is_valid = SchnorrProtocol::verify(
+            &bases,
+            &commitment_proof.commitment,
+            &schnorr_commitment,
+            &schnorr_responses,
+            &challenge,
+        );
+
+        Ok(is_valid)
+    }
 }
 
 #[cfg(test)]
@@ -188,28 +265,47 @@ mod tests {
             randomized_signature.verify_pairing(&setup.pp, &setup.pk),
             "Randomized signature verification failed"
         );
-
-        let proof = ProofSystem::prove(
+        let proof = ProofSystem::bbs_plus_prove(
             &setup.pp,
             &randomized_signature,
             &setup.pk,
             &setup.messages,
             &mut rng,
-        );
+        )
+        .expect("Failed to generate proof");
 
-        assert!(
-            proof.is_ok(),
-            "Expected the prove function to succeed, but it failed"
-        );
-        // If the prove function succeeds, verify the proof
-        if let Ok(serialized_proof) = proof {
-            let verification_result =
-                ProofSystem::verify_proof(&setup.pp, &setup.pk, &serialized_proof);
+        // Verify the proof
+        let verification_result = ProofSystem::bbs_plus_verify_proof(&setup.pp, &setup.pk, &proof)
+            .expect("Failed to verify proof");
 
-            assert!(
-                verification_result.unwrap_or(false),
-                "Proof verification failed"
-            );
-        }
+        assert!(verification_result, "Proof verification failed");
+    }
+
+    #[test]
+    fn test_commitment_proof_simple() {
+        // Create test setup
+        let mut rng = test_rng();
+        let setup = TestSetup::<Bls12_381>::new(&mut rng, 3);
+
+        // Generate random s_prime
+        let s_prime = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
+
+        // Create commitment and proof
+        let commitment_proof = ProofSystem::create_commitment_proof(
+            &setup.pp,
+            &setup.pk,
+            &setup.messages,
+            &s_prime,
+            &mut rng,
+        )
+        .expect("Failed to create commitment proof");
+
+        // Verify the proof
+        let is_valid =
+            ProofSystem::verify_commitment_proof(&setup.pp, &setup.pk, &commitment_proof)
+                .expect("Failed to verify commitment proof");
+
+        // Assert that verification succeeds
+        assert!(is_valid, "Commitment proof verification failed");
     }
 }

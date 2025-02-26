@@ -75,6 +75,22 @@ impl<E: Pairing> BBSPlusSignature<E> {
 
         lhs == rhs
     }
+
+    pub fn verify_blind(
+        &self,
+        pp: &PublicParams<E>,
+        pk: &keygen::PublicKey<E>,
+        commitment: &E::G1Affine,
+    ) -> bool {
+        // let b = commitment;
+        let b = pp.g1 + commitment;
+        // let b = pp.g1 + pk.h0 * self.s + commitment;
+
+        let lhs = E::pairing(self.A, pk.w + pp.g2.mul(self.e));
+        let rhs = E::pairing(b.into_affine(), pp.g2);
+
+        lhs == rhs
+    }
 }
 
 impl<E: Pairing> BBSPlusRandomizedSignature<E> {
