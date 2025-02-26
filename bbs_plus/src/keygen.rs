@@ -14,13 +14,8 @@ pub struct SecretKey<E: Pairing> {
 
 pub struct PublicKey<E: Pairing> {
     pub w: E::G2Affine,
-    pub hig1: Vec<E::G1Affine>,
-}
-
-pub struct KeyPair<E: Pairing> {
-    pub sk: E::ScalarField,
-    pub w: E::G2Affine,
-    pub hig1: Vec<E::G1Affine>,
+    pub h0: E::G1Affine,
+    pub h1hL: Vec<E::G1Affine>,
 }
 
 pub fn gen_keys<E: Pairing>(
@@ -29,25 +24,26 @@ pub fn gen_keys<E: Pairing>(
 ) -> (SecretKey<E>, PublicKey<E>) {
     let x = E::ScalarField::rand(rng);
     let w = pp.g2.mul(x).into_affine();
-    let hig1 = (0..pp.L + 1)
+    let h0 = E::G1Affine::rand(rng);
+    let h1hL = (0..pp.L)
         .map(|_| E::G1Affine::rand(rng))
         .collect::<Vec<_>>();
     let sk = SecretKey { x };
-    let pk = PublicKey { w, hig1 };
+    let pk = PublicKey { w, h0, h1hL };
     (sk, pk)
 }
 
-impl<E: Pairing> PublicKey<E> {
-    pub fn get_h0(&self) -> E::G1Affine {
-        let h0 = self.hig1[0];
-        h0
-    }
+// impl<E: Pairing> PublicKey<E> {
+//     pub fn get_h0(&self) -> E::G1Affine {
+//         let h0 = self.hig1[0];
+//         h0
+//     }
 
-    pub fn get_h1_to_hL(&self) -> Vec<E::G1Affine> {
-        let mut points = self.hig1.clone();
-        points.split_off(1)
-    }
-}
+//     pub fn get_h1_to_hL(&self) -> Vec<E::G1Affine> {
+//         let mut points = self.hig1.clone();
+//         points.split_off(1)
+//     }
+// }
 #[cfg(test)]
 mod test {
     use super::*;
@@ -67,8 +63,8 @@ mod test {
         assert!(sk.x != Fr::zero(), "Secret key should not be zero");
         assert!(pk.w != pp.g2, "Public key w should not be equal to g2");
         assert_eq!(
-            pk.hig1.len(),
-            (L + 1) as usize,
+            pk.h1hL.len(),
+            (L) as usize,
             "Public key hig1 should have L + 1 elements"
         );
     }

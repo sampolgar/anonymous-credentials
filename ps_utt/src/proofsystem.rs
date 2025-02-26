@@ -24,7 +24,7 @@ pub enum CommitmentProofError {
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommitmentProof<E: Pairing> {
     pub commitment: E::G1Affine,
-    pub schnorr_commitment: E::G1Affine,
+    pub schnorr_commitment: SchnorrCommitment<E::G1Affine>,
     pub bases: Vec<E::G1Affine>,
     pub challenge: E::ScalarField,
     pub responses: Vec<E::ScalarField>,
@@ -33,7 +33,7 @@ pub struct CommitmentProof<E: Pairing> {
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommitmentEqualityProof<E: Pairing> {
     pub commitments: Vec<E::G1Affine>,
-    pub schnorr_commitments: Vec<E::G1Affine>,
+    pub schnorr_commitments: Vec<SchnorrCommitment<E::G1Affine>>,
     pub bases: Vec<Vec<E::G1Affine>>,
     pub challenge: E::ScalarField,
     pub responses: Vec<Vec<E::ScalarField>>,
@@ -63,7 +63,7 @@ impl CommitmentProofs {
         // Create and serialize proof with explicit type annotation
         let proof: CommitmentProof<E> = CommitmentProof {
             commitment: commitment.cmg1,
-            schnorr_commitment: schnorr_commitment.com_t,
+            schnorr_commitment: schnorr_commitment,
             bases: bases,
             challenge,
             responses: responses.0,
@@ -131,7 +131,7 @@ impl CommitmentProofs {
             commitments: commitments.iter().map(|c| c.cmg1).collect(),
             schnorr_commitments: schnorr_equality_commitments
                 .iter()
-                .map(|sc| sc.com_t)
+                .map(|sc| sc.clone())
                 .collect(),
             bases: commitments
                 .iter()
@@ -197,7 +197,7 @@ impl CommitmentProofs {
         // Create and serialize proof with explicit type annotation
         let proof: CommitmentProof<E> = CommitmentProof {
             commitment: commitment.cmg1,
-            schnorr_commitment: schnorr_commitment.com_t,
+            schnorr_commitment: schnorr_commitment,
             bases: bases,
             challenge,
             responses: responses.0,

@@ -3,6 +3,7 @@ use crate::publicparams::PublicParams;
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{Field, UniformRand};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::Rng;
 use ark_std::{
     ops::{Add, Mul, Neg},
@@ -11,14 +12,15 @@ use ark_std::{
 use schnorr::schnorr::SchnorrProtocol;
 use utils::pairing::PairingCheck;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct BBSPlusSignature<E: Pairing> {
     pub A: E::G1Affine,
     pub e: E::ScalarField,
     pub s: E::ScalarField,
 }
 
-pub struct RandomizedSignature<E: Pairing> {
+#[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
+pub struct BBSPlusRandomizedSignature<E: Pairing> {
     pub A_prime: E::G1Affine,
     pub A_bar: E::G1Affine,
     pub d: E::G1Affine,
@@ -40,9 +42,8 @@ impl<E: Pairing> BBSPlusSignature<E> {
     ) -> Self {
         let e = E::ScalarField::rand(rng);
         let s = E::ScalarField::rand(rng);
-        let h0mL = pk.get_h1_to_hL();
-        let himi: E::G1 = E::G1::msm(&h0mL, &messages).unwrap();
-        let b = pp.g1 + (pk.get_h0() * s + himi);
+        let himi: E::G1 = E::G1::msm(&pk.h1hL, &messages).unwrap();
+        let b = pp.g1 + (pk.h0 * s + himi);
         let invexp = (sk.x + e).inverse().unwrap();
         let A = (b * invexp).into_affine();
         Self { A, e, s }
@@ -54,8 +55,8 @@ impl<E: Pairing> BBSPlusSignature<E> {
         pk: &keygen::PublicKey<E>,
         messages: &[E::ScalarField],
         rng: &mut R,
-    ) -> RandomizedSignature<E> {
-        RandomizedSignature::randomize(self, &pp, &pk, &messages, rng)
+    ) -> BBSPlusRandomizedSignature<E> {
+        BBSPlusRandomizedSignature::randomize(self, &pp, &pk, &messages, rng)
     }
 
     pub fn verify(
@@ -64,11 +65,10 @@ impl<E: Pairing> BBSPlusSignature<E> {
         pk: &PublicKey<E>,
         messages: &[E::ScalarField],
     ) -> bool {
-        let h1_hL = pk.get_h1_to_hL();
-        assert_eq!(messages.len(), h1_hL.len(), "Invalid number of messages");
+        assert_eq!(messages.len(), pk.h1hL.len(), "Invalid number of messages");
 
-        let himi: E::G1 = E::G1::msm(&h1_hL, messages).unwrap();
-        let b = pp.g1 + pk.get_h0() * self.s + himi;
+        let himi: E::G1 = E::G1::msm(&pk.h1hL, messages).unwrap();
+        let b = pp.g1 + pk.h0 * self.s + himi;
 
         let lhs = E::pairing(self.A, pk.w + pp.g2.mul(self.e));
         let rhs = E::pairing(b.into_affine(), pp.g2);
@@ -77,7 +77,7 @@ impl<E: Pairing> BBSPlusSignature<E> {
     }
 }
 
-impl<E: Pairing> RandomizedSignature<E> {
+impl<E: Pairing> BBSPlusRandomizedSignature<E> {
     pub(crate) fn randomize<R: Rng>(
         signature: &BBSPlusSignature<E>,
         pp: &PublicParams<E>,
@@ -90,13 +90,11 @@ impl<E: Pairing> RandomizedSignature<E> {
         let r3 = r1.inverse().unwrap();
 
         let A_prime = signature.A.mul(r1).into_affine();
-        let h0mL = pk.get_h1_to_hL();
-        let h0 = pk.get_h0();
-        let himi: E::G1 = E::G1::msm(&h0mL, &messages).unwrap();
-        let b = pp.g1 + h0 * signature.s + himi;
+        let himi: E::G1 = E::G1::msm(&pk.h1hL, messages).unwrap();
+        let b = pp.g1 + pk.h0 * signature.s + himi;
         let A_bar = A_prime.mul(signature.e.neg()).add(b.mul(r1));
 
-        let d = (b * r1) + (h0 * r2.neg());
+        let d = (b * r1) + (pk.h0 * r2.neg());
 
         let s_prime = signature.s - (r2 * r3);
 

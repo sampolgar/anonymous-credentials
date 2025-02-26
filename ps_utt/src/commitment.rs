@@ -86,7 +86,7 @@ mod tests {
         let is_valid = SchnorrProtocol::verify(
             &pp.get_g1_bases(),
             &commitment.cmg1,
-            &blinding_commitment.com_t,
+            &blinding_commitment,
             &responses,
             &challenge,
         );

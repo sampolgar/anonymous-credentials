@@ -116,7 +116,7 @@ impl<E: Pairing> VRF<E> {
         let is_schnorr_valid = SchnorrProtocol::verify(
             &[self.pp.g1],
             &output.pi,
-            &proof.t_commitment.com_t,
+            &proof.t_commitment,
             &proof.t_responses,
             &proof.challenge,
         );
