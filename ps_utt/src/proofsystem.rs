@@ -23,11 +23,20 @@ pub enum CommitmentProofError {
     SerializationError(#[from] ark_serialize::SerializationError),
 }
 
-#[derive(CanonicalSerialize, CanonicalDeserialize)]
+#[derive(CanonicalSerialize, CanonicalDeserialize, Debug, Clone)]
 pub struct CommitmentProof<E: Pairing> {
     pub commitment: E::G1Affine,
     pub schnorr_commitment: SchnorrCommitment<E::G1Affine>,
     pub bases: Vec<E::G1Affine>,
+    pub challenge: E::ScalarField,
+    pub responses: Vec<E::ScalarField>,
+}
+
+#[derive(CanonicalSerialize, CanonicalDeserialize, Debug, Clone)]
+pub struct CommitmentProofG2<E: Pairing> {
+    pub commitment: E::G2Affine,
+    pub schnorr_commitment: SchnorrCommitment<E::G2Affine>,
+    pub bases: Vec<E::G2Affine>,
     pub challenge: E::ScalarField,
     pub responses: Vec<E::ScalarField>,
 }
@@ -65,6 +74,39 @@ impl CommitmentProofs {
         // Create and serialize proof with explicit type annotation
         let proof: CommitmentProof<E> = CommitmentProof {
             commitment: commitment.cmg1,
+            schnorr_commitment: schnorr_commitment,
+            bases: bases,
+            challenge,
+            responses: responses.0,
+        };
+
+        let mut serialized_proof = Vec::new();
+        proof.serialize_compressed(&mut serialized_proof)?;
+
+        Ok(serialized_proof)
+    }
+
+    pub fn pok_commitment_prove_g2<E: Pairing>(
+        commitment: &Commitment<E>,
+    ) -> Result<Vec<u8>, CommitmentProofError> {
+        let mut rng = ark_std::test_rng();
+
+        // Get bases and exponents for the proof
+        let bases = commitment.pp.get_g2_bases();
+        let exponents = commitment.get_exponents();
+
+        // Generate Schnorr commitment
+        let schnorr_commitment = SchnorrProtocol::commit(&bases.clone(), &mut rng);
+
+        // Generate challenge
+        let challenge = E::ScalarField::rand(&mut rng);
+
+        // Generate responses
+        let responses = SchnorrProtocol::prove(&schnorr_commitment, &exponents, &challenge);
+
+        // Create and serialize proof with explicit type annotation
+        let proof: CommitmentProofG2<E> = CommitmentProofG2 {
+            commitment: commitment.cmg2,
             schnorr_commitment: schnorr_commitment,
             bases: bases,
             challenge,
