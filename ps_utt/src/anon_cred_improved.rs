@@ -1,8 +1,8 @@
 use crate::commitment::Commitment;
-use crate::keygen::{gen_keys, SecretKey, VerificationKey};
-use crate::proofsystem::{CommitmentProof, CommitmentProofError, CommitmentProofs};
+use crate::keygen::{gen_keys_improved, SecretKeyImproved, VerificationKeyImproved};
+use crate::proofsystem::{CommitmentProofError, CommitmentProofG2, CommitmentProofs};
 use crate::publicparams::PublicParams;
-use crate::signature::PSUTTSignature;
+use crate::signature::PSUTTSignatureImproved;
 use ark_ec::pairing::Pairing;
 use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -16,14 +16,12 @@ pub struct UserCred<E: Pairing> {
     pub commitment: Commitment<E>,
 }
 
-/// Presentation of a credential with G1 and G2 elements
-pub struct ShowCredential<E: Pairing> {
+/// Improved presentation of a credential (G1 only)
+pub struct ShowCredentialImproved<E: Pairing> {
     /// Randomized signature
-    pub randomized_signature: PSUTTSignature<E>,
+    pub randomized_signature: PSUTTSignatureImproved<E>,
     /// Commitment in G1
     pub cmg1: E::G1Affine,
-    /// Commitment in G2
-    pub cmg2: E::G2Affine,
     /// Serialized proof of knowledge
     pub proof: Vec<u8>,
 }
@@ -50,48 +48,48 @@ impl<E: Pairing> UserCred<E> {
     }
 }
 
-/// Standard anonymous credential protocol
-pub struct AnonCredProtocol<E: Pairing> {
+/// Improved anonymous credential protocol with reduced pairing operations
+pub struct AnonCredProtocolImproved<E: Pairing> {
     /// Public parameters
     pub pp: PublicParams<E>,
     /// Issuer's secret key
-    sk: SecretKey<E>,
+    sk: SecretKeyImproved<E>,
     /// Issuer's verification key
-    vk: VerificationKey<E>,
+    vk: VerificationKeyImproved<E>,
 }
 
-impl<E: Pairing> AnonCredProtocol<E> {
+impl<E: Pairing> AnonCredProtocolImproved<E> {
     /// Create a new protocol instance with specified message count
     pub fn new(n: usize, rng: &mut impl Rng) -> Self {
         let context = E::ScalarField::rand(rng);
         let pp = PublicParams::<E>::new(&n, &context, rng);
-        let (sk, vk) = gen_keys(&pp, rng);
+        let (sk, vk) = gen_keys_improved(&pp, rng);
         Self { pp, sk, vk }
     }
 
     /// User generates proof of knowledge for obtaining a credential
     pub fn obtain(&self, user_cred: &UserCred<E>) -> Result<Vec<u8>, CommitmentProofError> {
-        CommitmentProofs::pok_commitment_prove(&user_cred.commitment)
+        CommitmentProofs::pok_commitment_prove_g2(&user_cred.commitment)
     }
 
     /// Issuer verifies proof and issues credential
     pub fn issue(
         &self,
         serialized_proof: &[u8],
-    ) -> Result<PSUTTSignature<E>, CommitmentProofError> {
+    ) -> Result<PSUTTSignatureImproved<E>, CommitmentProofError> {
         let mut rng = ark_std::test_rng();
 
         // Verify proof of knowledge
-        if !CommitmentProofs::pok_commitment_verify::<E>(serialized_proof)? {
+        if !CommitmentProofs::pok_commitment_verify_g2::<E>(serialized_proof)? {
             return Err(CommitmentProofError::InvalidProof);
         }
 
         // Deserialize proof to access the commitment
-        let proof: CommitmentProof<E> =
+        let proof: CommitmentProofG2<E> =
             CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
 
         // Sign the commitment
-        Ok(PSUTTSignature::sign(
+        Ok(PSUTTSignatureImproved::sign(
             &self.pp,
             &self.sk,
             &proof.commitment,
@@ -103,9 +101,9 @@ impl<E: Pairing> AnonCredProtocol<E> {
     pub fn show<R: Rng>(
         &self,
         commitment: &Commitment<E>,
-        signature: &PSUTTSignature<E>,
+        signature: &PSUTTSignatureImproved<E>,
         rng: &mut R,
-    ) -> Result<ShowCredential<E>, CommitmentProofError> {
+    ) -> Result<ShowCredentialImproved<E>, CommitmentProofError> {
         // Generate random values for rerandomization
         let r_delta = E::ScalarField::rand(rng);
         let u_delta = E::ScalarField::rand(rng);
@@ -115,30 +113,29 @@ impl<E: Pairing> AnonCredProtocol<E> {
         let randomized_signature = signature.rerandomize(&self.pp, &r_delta, &u_delta);
 
         // Create proof of knowledge for the rerandomized commitment
-        let serialized_proof = CommitmentProofs::pok_commitment_prove(&randomized_commitment)?;
+        let serialized_proof = CommitmentProofs::pok_commitment_prove_g2(&randomized_commitment)?;
 
-        Ok(ShowCredential {
+        Ok(ShowCredentialImproved {
             randomized_signature,
             cmg1: randomized_commitment.cmg1,
-            cmg2: randomized_commitment.cmg2,
             proof: serialized_proof,
         })
     }
 
     /// Verifier checks credential presentation
-    pub fn verify(&self, cred_show: &ShowCredential<E>) -> Result<bool, CommitmentProofError> {
+    pub fn verify(
+        &self,
+        cred_show: &ShowCredentialImproved<E>,
+    ) -> Result<bool, CommitmentProofError> {
         // Verify proof of knowledge
-        if !CommitmentProofs::pok_commitment_verify::<E>(&cred_show.proof)? {
+        if !CommitmentProofs::pok_commitment_verify_g2::<E>(&cred_show.proof)? {
             return Ok(false);
         }
 
         // Verify signature
-        Ok(cred_show.randomized_signature.verify_with_pairing_checker(
-            &self.pp,
-            &self.vk,
-            &cred_show.cmg1,
-            &cred_show.cmg2,
-        ))
+        Ok(cred_show
+            .randomized_signature
+            .verify_with_pairing_checker_improved(&self.pp, &self.vk, &cred_show.cmg1))
     }
 }
 
@@ -149,11 +146,11 @@ mod tests {
     use ark_std::test_rng;
 
     #[test]
-    fn test_psutt_credential_lifecycle() {
+    fn test_psutt_credential_lifecycle_improved() {
         // Setup phase
         let mut rng = test_rng();
         let message_count = 5;
-        let protocol = AnonCredProtocol::<Bls12_381>::new(message_count, &mut rng);
+        let protocol = AnonCredProtocolImproved::<Bls12_381>::new(message_count, &mut rng);
 
         // User phase - generate attributes and commitment
         let user_attributes: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
@@ -170,11 +167,10 @@ mod tests {
 
         // Verify original signature
         assert!(
-            signature.verify_with_pairing_checker(
+            signature.verify_with_pairing_checker_improved(
                 &protocol.pp,
                 &protocol.vk,
                 &user_cred.commitment.cmg1,
-                &user_cred.commitment.cmg2
             ),
             "Original signature verification failed"
         );
