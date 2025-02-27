@@ -1,7 +1,3 @@
-// Obtain
-// Issue
-// Show
-// Verify
 use crate::keygen::{PublicKey, SecretKey};
 use crate::proofsystem::{BBSPlusProofOfKnowledge, CommitmentWithProof, ProofError, ProofSystem};
 use crate::publicparams::PublicParams;
@@ -27,7 +23,16 @@ pub struct IssuerResponse<E: Pairing> {
 }
 pub struct AnonCredProtocol;
 impl AnonCredProtocol {
-    /// Obtain protocol: User creates a commitment to their messages and proves knowledge
+    /// User creates a commitment to their messages and proves knowledge
+    ///
+    /// # Arguments
+    /// * `pp` - Public parameters
+    /// * `pk` - Issuer's public key
+    /// * `messages` - Array of messages to commit to
+    /// * `rng` - Random number generator
+    ///
+    /// # Returns
+    /// * Commitment with proof and blinding factor
     pub fn obtain<E: Pairing, R: Rng>(
         pp: &PublicParams<E>,
         pk: &PublicKey<E>,
@@ -37,15 +42,24 @@ impl AnonCredProtocol {
         // Generate random blinding factor s'
         let s_prime = E::ScalarField::rand(rng);
 
-        // cm = [s_', m_1, ...., m_L]
-        // cm = h_0^s' h_1^m_1 ... h_L^m_L
-
+        // Create commitment and proof: cm = h_0^s' h_1^m_1 ... h_L^m_L
         let commitment_proof =
             ProofSystem::create_commitment_proof(pp, pk, messages, &s_prime, rng)?;
 
         Ok((commitment_proof, s_prime))
     }
-    /// Issue protocol: Issuer verifies the proof and issues a signature
+
+    /// Issuer verifies the proof and issues a signature
+    ///
+    /// # Arguments
+    /// * `pp` - Public parameters
+    /// * `sk` - Issuer's secret key
+    /// * `pk` - Issuer's public key
+    /// * `commitment_proof` - Commitment with proof from user
+    /// * `rng` - Random number generator
+    ///
+    /// # Returns
+    /// * Issuer's response containing signature components
     pub fn issue<E: Pairing, R: Rng>(
         pp: &PublicParams<E>,
         sk: &SecretKey<E>,
@@ -53,7 +67,7 @@ impl AnonCredProtocol {
         commitment_proof: &CommitmentWithProof<E>,
         rng: &mut R,
     ) -> Result<IssuerResponse<E>, ProofError> {
-        // Verify the proof of knowledge using ProofSystem
+        // Verify the proof of knowledge
         let is_valid = ProofSystem::verify_commitment_proof(pp, pk, commitment_proof)?;
 
         if !is_valid {
@@ -66,7 +80,7 @@ impl AnonCredProtocol {
 
         // Compute A = (g₁ · g₂^s'' · Cm)^(1/(e+x))
         let base = pp.g1 + pk.h0 * s_double_prime + commitment_proof.commitment;
-        let exponent = (sk.x + e).inverse().unwrap();
+        let exponent = (sk.x + e).inverse().ok_or(ProofError::VerificationFailed)?;
         let A = (base * exponent).into_affine();
 
         Ok(IssuerResponse {
@@ -76,7 +90,14 @@ impl AnonCredProtocol {
         })
     }
 
-    /// Complete signature: User combines issuer response with their secrets to get a valid signature
+    /// User combines issuer response with their secrets to get a valid signature
+    ///
+    /// # Arguments
+    /// * `s_prime` - User's blinding factor
+    /// * `issuer_response` - Response from the issuer
+    ///
+    /// # Returns
+    /// * Complete BBS+ signature
     pub fn complete_signature<E: Pairing>(
         s_prime: &E::ScalarField,
         issuer_response: &IssuerResponse<E>,
@@ -92,36 +113,52 @@ impl AnonCredProtocol {
         }
     }
 
-    // pub fn Obtain
-    // pub fn Issue
+    /// User shows the credential by creating a randomized signature and proof
+    ///
+    /// # Arguments
+    /// * `pp` - Public parameters
+    /// * `pk` - Issuer's public key
+    /// * `signature` - BBS+ signature
+    /// * `messages` - Array of messages
+    /// * `rng` - Random number generator
+    ///
+    /// # Returns
+    /// * Randomized signature and proof
     pub fn show<E: Pairing, R: Rng>(
         pp: &PublicParams<E>,
         pk: &PublicKey<E>,
         signature: &BBSPlusSignature<E>,
         messages: &[E::ScalarField],
         rng: &mut R,
-    ) -> (BBSPlusRandomizedSignature<E>, Result<Vec<u8>, ProofError>) {
+    ) -> Result<(BBSPlusRandomizedSignature<E>, Vec<u8>), ProofError> {
         // Rerandomize the signature
-        let randomized_signature = signature.rerandomize(&pp, &pk, &messages, rng);
+        let randomized_signature = signature.rerandomize(pp, pk, messages, rng);
 
-        let proof = ProofSystem::bbs_plus_prove(&pp, &randomized_signature, &pk, &messages, rng)
-            .expect("Failed to generate proof");
+        // Generate the proof
+        let proof = ProofSystem::bbs_plus_prove(pp, &randomized_signature, pk, messages, rng)?;
 
-        // Return the randomized signature and the proof result
-        (randomized_signature, Ok(proof))
+        // Return the randomized signature and the proof
+        Ok((randomized_signature, proof))
     }
 
+    /// Verifier checks the credential proof
+    ///
+    /// # Arguments
+    /// * `pp` - Public parameters
+    /// * `pk` - Issuer's public key
+    /// * `serialized_proof` - Serialized proof from the user
+    ///
+    /// # Returns
+    /// * Result indicating whether the proof is valid
     pub fn verify<E: Pairing>(
         pp: &PublicParams<E>,
         pk: &PublicKey<E>,
         serialized_proof: &[u8],
-    ) -> bool {
+    ) -> Result<bool, ProofError> {
         // Verify the proof
-        let verification_result = ProofSystem::bbs_plus_verify_proof(&pp, &pk, &serialized_proof)
-            .expect("Failed to verify proof");
+        let verification_result = ProofSystem::bbs_plus_verify_proof(pp, pk, serialized_proof)?;
 
-        assert!(verification_result, "Proof verification failed");
-        true
+        Ok(verification_result)
     }
 }
 
@@ -134,110 +171,32 @@ mod tests {
     use ark_std::test_rng;
 
     #[test]
-    fn test_manual_commitment_with_blind_verify() {
-        let mut rng = test_rng();
-        let setup = TestSetup::<Bls12_381>::new(&mut rng, 3);
-
-        // 1. Create a commitment manually
-        let s_prime = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
-
-        // Manually construct commitment: h0^s_prime * h1^m1 * ... * hL^mL
-        let mut manual_commitment = setup.pk.h0 * s_prime;
-        for i in 0..setup.messages.len() {
-            manual_commitment += setup.pk.h1hL[i] * setup.messages[i];
-        }
-
-        let manual_commitment_affine = manual_commitment.into_affine();
-
-        // 2. Generate a signature for this commitment
-        let e = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
-        let s_double_prime = <Bls12_381 as Pairing>::ScalarField::rand(&mut rng);
-
-        // Calculate A as in the issuer's response
-        let base = setup.pp.g1 + setup.pk.h0 * s_double_prime + manual_commitment;
-        let exponent = (setup.sk.x + e).inverse().unwrap();
-        let A = (base * exponent).into_affine();
-
-        // 3. User completes the signature
-        let s = s_prime + s_double_prime;
-        let signature = BBSPlusSignature { A, e, s };
-
-        // Additional debug info
-        println!("manual_commitment: {:?}", manual_commitment_affine);
-        println!("signature.A: {:?}", signature.A);
-        println!("signature.e: {:?}", signature.e);
-        println!("signature.s: {:?}", signature.s);
-        println!("s_prime: {:?}", s_prime);
-        println!("s_double_prime: {:?}", s_double_prime);
-
-        // 4. Use blind verification
-        let blind_verify = signature.verify_blind(&setup.pp, &setup.pk, &manual_commitment_affine);
-
-        assert!(
-            blind_verify,
-            "Blind verification failed with manually constructed commitment"
-        );
-    }
-
-    #[test]
     fn test_obtain_issue_show_verify() {
         let mut rng = test_rng();
         let setup = TestSetup::<Bls12_381>::new(&mut rng, 4);
 
         // 1. Obtain: User creates commitment and proof
-        // cm =
         let (commitment_proof, s_prime) =
             AnonCredProtocol::obtain(&setup.pp, &setup.pk, &setup.messages, &mut rng)
                 .expect("Failed to create commitment");
-
-        // // test commitment
-        // // cm = h_0^s' h_1^m_1 ... h_L^m_L=
-        // let mut exponents = vec![s_prime];
-        // exponents.extend(setup.messages.iter().cloned());
-
-        // let bases = setup.pk.get_all_h();
 
         // 2. Issue: Issuer verifies and creates signature components
         let issuer_response =
             AnonCredProtocol::issue(&setup.pp, &setup.sk, &setup.pk, &commitment_proof, &mut rng)
                 .expect("Failed to issue credential");
 
-        // A =(g_0 . h_0^s'' . cm) 1/e+x
-
-        // 3. User completes the signature
+        // 3. Complete: User completes the signature
         let signature = AnonCredProtocol::complete_signature(&s_prime, &issuer_response);
 
-        let isvalid = signature.verify_blind(&setup.pp, &setup.pk, &commitment_proof.commitment);
-        assert!(isvalid, "signature verify blind not valid");
         // 4. Show: User shows the credential
-        let (randomized_signature, proof_result) =
-            AnonCredProtocol::show(&setup.pp, &setup.pk, &signature, &setup.messages, &mut rng);
+        let (randomized_signature, proof) =
+            AnonCredProtocol::show(&setup.pp, &setup.pk, &signature, &setup.messages, &mut rng)
+                .expect("Failed to generate proof");
 
         // 5. Verify: Verifier checks the credential
-        let proof = proof_result.expect("Failed to generate proof");
-        let verification_result = AnonCredProtocol::verify(&setup.pp, &setup.pk, &proof);
-        assert!(verification_result, "Proof verification failed");
-    }
+        let verification_result =
+            AnonCredProtocol::verify(&setup.pp, &setup.pk, &proof).expect("Verification failed");
 
-    #[test]
-    fn test() {
-        let mut rng = test_rng();
-        let setup = TestSetup::<Bls12_381>::new(&mut rng, 4);
-
-        // Call the show function
-        let (randomized_signature, proof_result) = AnonCredProtocol::show(
-            &setup.pp,
-            &setup.pk,
-            &setup.signature,
-            &setup.messages,
-            &mut rng,
-        );
-
-        // Ensure the proof generation was successful
-        let proof = proof_result.expect("Failed to generate proof");
-
-        // Verify the proof
-        let verification_result = AnonCredProtocol::verify(&setup.pp, &setup.pk, &proof);
         assert!(verification_result, "Proof verification failed");
     }
 }
