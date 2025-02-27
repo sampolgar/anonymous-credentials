@@ -2,7 +2,6 @@ use crate::test_helpers::PSTestSetup;
 use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::UniformRand;
-use ark_groth16::Proof;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::ops::Neg;
 use schnorr::schnorr_pairing::SchnorrProtocolPairing;

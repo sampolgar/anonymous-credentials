@@ -97,8 +97,9 @@ fn benchmark_psutt_split(c: &mut Criterion) {
                 for i in 0..cred_count {
                     let sig_valid = randomized_sigs[i].verify_with_pairing_checker(
                         &setup.psutt_setups[i].pp,
-                        &setup.psutt_setups[i].keypair,
-                        &randomized_commitments[i],
+                        &setup.psutt_setups[i].vk,
+                        &randomized_commitments[i].cmg1,
+                        &randomized_commitments[i].cmg2,
                     );
                     assert!(sig_valid);
                 }

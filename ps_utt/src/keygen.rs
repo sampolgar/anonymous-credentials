@@ -9,6 +9,12 @@ pub struct KeyPair<E: Pairing> {
     pub sk: E::G1Affine,
     pub vk: E::G2Affine,
 }
+pub struct SecretKey<E: Pairing> {
+    pub sk: E::G1Affine,
+}
+pub struct VerificationKey<E: Pairing> {
+    pub vk: E::G2Affine,
+}
 
 impl<E: Pairing> KeyPair<E> {
     pub fn new(pp: &PublicParams<E>, rng: &mut impl Rng) -> Self {
@@ -30,6 +36,13 @@ pub struct KeyPairImproved<E: Pairing> {
     pub vk: E::G1Affine,
 }
 
+pub struct SecretKeyImproved<E: Pairing> {
+    pub sk: E::G2Affine,
+}
+pub struct VerificationKeyImproved<E: Pairing> {
+    pub vk: E::G1Affine,
+}
+
 impl<E: Pairing> KeyPairImproved<E> {
     pub fn new(pp: &PublicParams<E>, rng: &mut impl Rng) -> Self {
         // Generate random scalar x
@@ -43,6 +56,26 @@ impl<E: Pairing> KeyPairImproved<E> {
 
         KeyPairImproved { sk, vk }
     }
+}
+
+pub fn gen_keys<E: Pairing>(
+    pp: &PublicParams<E>,
+    rng: &mut impl Rng,
+) -> (SecretKey<E>, VerificationKey<E>) {
+    let x = E::ScalarField::rand(rng);
+    let sk = pp.g1.mul(x).into_affine();
+    let vk = pp.g2.mul(x).into_affine();
+    (SecretKey { sk }, VerificationKey { vk })
+}
+
+pub fn gen_keys_improved<E: Pairing>(
+    pp: &PublicParams<E>,
+    rng: &mut impl Rng,
+) -> (SecretKeyImproved<E>, VerificationKeyImproved<E>) {
+    let x = E::ScalarField::rand(rng);
+    let sk = pp.g2.mul(x).into_affine();
+    let vk = pp.g1.mul(x).into_affine();
+    (SecretKeyImproved { sk }, VerificationKeyImproved { vk })
 }
 
 // Add test module

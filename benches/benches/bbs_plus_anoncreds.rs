@@ -1,12 +1,10 @@
 use ark_bls12_381::Bls12_381;
 use ark_ec::pairing::Pairing;
 use ark_ff::UniformRand;
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use std::time::Duration;
-
-// Import your crate modules
 use bbs_plus::anon_cred::AnonCredProtocol;
 use bbs_plus::test_helpers::TestSetup;
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use std::time::Duration;
 
 /// Benchmark function for AnonCred protocol with different message sizes
 fn benchmark_anoncred_protocol(c: &mut Criterion) {

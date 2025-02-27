@@ -1,7 +1,10 @@
 use crate::commitment::Commitment;
-use crate::keygen::{KeyPair, KeyPairImproved};
+use crate::keygen::{
+    gen_keys, gen_keys_improved, SecretKey, SecretKeyImproved, VerificationKey,
+    VerificationKeyImproved,
+};
 use crate::publicparams::PublicParams;
-use crate::signature::{PSSignature, PSUTTSignatureImproved};
+use crate::signature::{PSUTTSignature, PSUTTSignatureImproved};
 use ark_ec::pairing::Pairing;
 use ark_ec::{CurveGroup, VariableBaseMSM};
 use ark_ff::UniformRand;
@@ -59,9 +62,10 @@ pub fn g2_commit_schnorr<E: Pairing>(
 // for our equality tests, we need to set the userid to position 0 of the message vector
 pub struct PSUttTestSetup<E: Pairing> {
     pub pp: PublicParams<E>,
-    pub keypair: KeyPair<E>,
+    pub sk: SecretKey<E>,
+    pub vk: VerificationKey<E>,
     pub commitment: Commitment<E>,
-    pub signature: PSSignature<E>,
+    pub signature: PSUTTSignature<E>,
 }
 
 impl<E: Pairing> PSUttTestSetup<E> {
@@ -77,18 +81,19 @@ impl<E: Pairing> PSUttTestSetup<E> {
         let r = E::ScalarField::rand(&mut rng);
 
         let pp = PublicParams::<E>::new(&msg_count, &context, &mut rng);
-        let keypair = KeyPair::<E>::new(&pp, &mut rng);
+        let (sk, vk) = gen_keys(&pp, &mut rng);
         let commitment = Commitment::new(&pp, &messages, &r);
-        let signature = PSSignature::sign(&pp, &keypair, &commitment, &mut rng);
+        let signature = PSUTTSignature::sign(&pp, &sk, &commitment.cmg1, &mut rng);
 
         assert!(
-            signature.verify(&pp, &keypair, &commitment),
+            signature.verify(&pp, &vk, &commitment.cmg1, &commitment.cmg2),
             "sig isn't valid"
         );
 
         Self {
             pp,
-            keypair,
+            sk,
+            vk,
             commitment,
             signature,
         }
@@ -128,7 +133,8 @@ impl<E: Pairing> BenchmarkSetup<E> {
 
 pub struct PSUttImprovedTestSetup<E: Pairing> {
     pub pp: PublicParams<E>,
-    pub keypair: KeyPairImproved<E>,
+    pub sk: SecretKeyImproved<E>,
+    pub vk: VerificationKeyImproved<E>,
     pub commitment: Commitment<E>,
     pub signature: PSUTTSignatureImproved<E>,
 }
@@ -146,18 +152,19 @@ impl<E: Pairing> PSUttImprovedTestSetup<E> {
         let r = E::ScalarField::rand(&mut rng);
 
         let pp = PublicParams::<E>::new(&msg_count, &context, &mut rng);
-        let keypair = KeyPairImproved::<E>::new(&pp, &mut rng);
+        let (sk, vk) = gen_keys_improved(&pp, &mut rng);
         let commitment = Commitment::new(&pp, &messages, &r);
-        let signature = PSUTTSignatureImproved::sign(&pp, &keypair, &commitment, &mut rng);
+        let signature = PSUTTSignatureImproved::sign(&pp, &sk, &commitment.cmg2, &mut rng);
 
         assert!(
-            signature.verify(&pp, &keypair, &commitment),
+            signature.verify(&pp, &vk, &commitment.cmg1),
             "sig isn't valid"
         );
 
         Self {
             pp,
-            keypair,
+            sk,
+            vk,
             commitment,
             signature,
         }

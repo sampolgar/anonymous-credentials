@@ -13,6 +13,8 @@ use thiserror::Error;
 pub enum CommitmentProofError {
     #[error("Invalid commitment")]
     InvalidCommitment,
+    #[error("Invalid proof")]
+    InvalidProof,
     #[error("Invalid index for equality proof")]
     InvalidEqualityIndex,
     #[error("Mismatched commitment lengths")]
@@ -42,7 +44,7 @@ pub struct CommitmentEqualityProof<E: Pairing> {
 pub struct CommitmentProofs;
 
 impl CommitmentProofs {
-    pub fn prove_knowledge<E: Pairing>(
+    pub fn pok_commitment_prove<E: Pairing>(
         commitment: &Commitment<E>,
     ) -> Result<Vec<u8>, CommitmentProofError> {
         let mut rng = ark_std::test_rng();
@@ -75,7 +77,7 @@ impl CommitmentProofs {
         Ok(serialized_proof)
     }
 
-    pub fn verify_knowledge<E: Pairing>(
+    pub fn pok_commitment_verify<E: Pairing>(
         serialized_proof: &[u8],
     ) -> Result<bool, CommitmentProofError> {
         let proof: CommitmentProof<E> =
@@ -228,8 +230,8 @@ mod tests {
 
         let commitment = Commitment::new(&pp, &messages, &r);
 
-        let proof = CommitmentProofs::prove_knowledge(&commitment).unwrap();
-        assert!(CommitmentProofs::verify_knowledge::<Bls12_381>(&proof).unwrap());
+        let proof = CommitmentProofs::pok_commitment_prove(&commitment).unwrap();
+        assert!(CommitmentProofs::pok_commitment_verify::<Bls12_381>(&proof).unwrap());
     }
 
     #[test]

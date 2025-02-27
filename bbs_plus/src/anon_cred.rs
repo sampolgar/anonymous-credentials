@@ -14,13 +14,16 @@ use ark_std::{
     One, Zero,
 };
 
-/// Issuer's incomplete
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct IssuerResponse<E: Pairing> {
     pub A: E::G1Affine,
     pub e: E::ScalarField,
     pub s_double_prime: E::ScalarField, // Issuer's blinding factor
 }
+// pub struct AnonCredProtocol<E: Pairing> {
+//     pub pp: PublicParams<E>,
+// }
+
 pub struct AnonCredProtocol;
 impl AnonCredProtocol {
     /// User creates a commitment to their messages and proves knowledge

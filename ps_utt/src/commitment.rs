@@ -1,3 +1,4 @@
+use crate::proofsystem::{CommitmentProof, CommitmentProofError, CommitmentProofs};
 use crate::ps_helpers::{g1_commit, g2_commit};
 use crate::publicparams::PublicParams;
 use ark_ec::pairing::Pairing;
@@ -50,6 +51,11 @@ impl<E: Pairing> Commitment<E> {
         let mut exponents: Vec<E::ScalarField> = self.messages.clone();
         exponents.push(self.r.clone());
         exponents
+    }
+
+    // get pok in g1
+    pub fn prove_opening(&self) -> Result<Vec<u8>, CommitmentProofError> {
+        CommitmentProofs::pok_commitment_prove(&self)
     }
 }
 
