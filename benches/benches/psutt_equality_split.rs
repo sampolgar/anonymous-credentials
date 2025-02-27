@@ -2,9 +2,10 @@ use ark_bls12_381::{Bls12_381, Fr};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::UniformRand;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use ps_utt::benchmark_helpers::BenchmarkSetup;
 use ps_utt::commitment::Commitment;
 use ps_utt::proofsystem::CommitmentProofs;
-use ps_utt::ps_helpers::{BenchmarkSetup, PSUttTestSetup};
+use ps_utt::test_helpers::PSUttTestSetup;
 use std::time::Duration;
 
 fn benchmark_psutt_split(c: &mut Criterion) {

@@ -43,3 +43,8 @@ harness = false
 name = "bbs_plus_anoncreds"
 path = "benches/bbs_plus_anoncreds.rs"
 harness = false
+
+[[bench]]
+name = "ps_utt_anoncreds"
+path = "benches/ps_utt_anoncreds.rs"
+harness = false

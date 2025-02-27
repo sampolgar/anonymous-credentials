@@ -95,7 +95,6 @@ fn benchmark_anoncred_protocol(c: &mut Criterion) {
     group.finish();
 }
 
-// Define your criterion groups and main
 criterion_group!(
     name = benches;
     config = Criterion::default();

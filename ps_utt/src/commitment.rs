@@ -1,8 +1,7 @@
 use crate::proofsystem::{CommitmentProof, CommitmentProofError, CommitmentProofs};
-use crate::ps_helpers::{g1_commit, g2_commit};
 use crate::publicparams::PublicParams;
 use ark_ec::pairing::Pairing;
-use ark_ec::CurveGroup;
+use ark_ec::{CurveGroup, VariableBaseMSM};
 use ark_ff::UniformRand;
 use ark_std::ops::{Add, Mul, Neg};
 use ark_std::rand::Rng;
@@ -57,6 +56,32 @@ impl<E: Pairing> Commitment<E> {
     pub fn prove_opening(&self) -> Result<Vec<u8>, CommitmentProofError> {
         CommitmentProofs::pok_commitment_prove(&self)
     }
+}
+
+pub fn g1_commit<E: Pairing>(
+    pp: &PublicParams<E>,
+    messages: &[E::ScalarField],
+    r: &E::ScalarField,
+) -> E::G1Affine {
+    assert!(messages.len() <= pp.ckg1.len(), "m.len should be < ck!");
+    let ck = &pp.ckg1[..messages.len()];
+
+    let temp = E::G1::msm_unchecked(ck, messages);
+    let g1_r = pp.g1.mul(r);
+    temp.add(g1_r).into_affine()
+}
+
+pub fn g2_commit<E: Pairing>(
+    pp: &PublicParams<E>,
+    messages: &[E::ScalarField],
+    r: &E::ScalarField,
+) -> E::G2Affine {
+    assert!(messages.len() <= pp.ckg2.len(), "message.len > ckg2.len");
+    // cut ckg2 to the size of m
+    let ck = &pp.ckg2[..messages.len()];
+    let temp = E::G2::msm_unchecked(ck, messages);
+    let g2_r = pp.g2.mul(r);
+    temp.add(g2_r).into_affine()
 }
 
 #[cfg(test)]

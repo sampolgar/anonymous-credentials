@@ -1,19 +1,17 @@
 use crate::commitment::Commitment;
 use crate::keygen::{
-    gen_keys, gen_keys_improved, KeyPair, KeyPairImproved, SecretKey, SecretKeyImproved,
-    VerificationKey, VerificationKeyImproved,
+    gen_keys, gen_keys_improved, SecretKey, SecretKeyImproved, VerificationKey,
+    VerificationKeyImproved,
 };
 use crate::publicparams::PublicParams;
-use ark_bls12_381::G1Affine;
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::UniformRand;
 use ark_std::rand::Rng;
 use ark_std::{
     ops::{Add, Mul, Neg},
-    One, Zero,
+    One,
 };
-use schnorr::schnorr::SchnorrProtocol;
 use utils::pairing::PairingCheck;
 
 #[derive(Clone, Debug)]
@@ -27,7 +25,6 @@ impl<E: Pairing> PSUTTSignature<E> {
         pp: &PublicParams<E>,
         sk: &SecretKey<E>,
         cmg1: &E::G1Affine,
-        // commitment: &Commitment<E>,
         rng: &mut impl Rng,
     ) -> Self {
         let u = E::ScalarField::rand(rng);
@@ -35,8 +32,6 @@ impl<E: Pairing> PSUTTSignature<E> {
         let sigma2 = (cmg1.add(sk.sk)).mul(u).into_affine();
         Self { sigma1, sigma2 }
     }
-
-    // pub fn blind_sign
 
     pub fn rerandomize(
         &self,
@@ -57,46 +52,35 @@ impl<E: Pairing> PSUTTSignature<E> {
         &self,
         pp: &PublicParams<E>,
         vk: &VerificationKey<E>,
-        // commitment: &Commitment<E>,
         cmg1: &E::G1Affine,
         cmg2: &E::G2Affine,
     ) -> bool {
-        // verify e(sigma2, g2) = e(sigma1, vk \cdot cm)
+        // Verify: e(sigma2, g2) = e(sigma1, vk · cm)
         let p1 = E::pairing(self.sigma2, pp.g2);
         let p2 = E::pairing(self.sigma1, vk.vk.add(cmg2));
         let is_valid = p1 == p2;
         assert_eq!(p1, p2);
-        // let cmg1 = commitment.cmg1;
-        // let cmg2 = commitment.cmg2;
+
+        // Verify commitment consistency: e(cmg1, g2) = e(g1, cmg2)
         let p3 = E::pairing(cmg1, pp.g2);
         let p4 = E::pairing(pp.g1, cmg2);
         assert_eq!(p3, p4);
-        return is_valid;
+
+        is_valid
     }
 
-    // we change our 2 pairing checks
-    //  e(sigma2, \tilde{g2}) = e(sigma1, \tilde{vk} \cdot \tilde{cm})
-    //  e(cm, \tilde{g}) = e(g1, \tilde{cm})
-    // to
-    // e(sigma2, g2) * e(sigma1, vk + cmg2)^-1 = 1
-    // e(cmg1, g2) * e(g1, cmg2)^-1 = 1
-    // and merge
-    // e(sigma2, g2) * e(sigma1, vk + cmg2)^-1 * e(cmg1, g2) * e(g1, cmg2)^-1 = 1
     pub fn verify_with_pairing_checker(
         &self,
         pp: &PublicParams<E>,
         vk: &VerificationKey<E>,
-        // commitment: &Commitment<E>,
         cmg1: &E::G1Affine,
         cmg2: &E::G2Affine,
     ) -> bool {
         let mut rng = ark_std::test_rng();
         let mr = std::sync::Mutex::new(rng);
 
-        // First equation: e(sigma2, g2) = e(sigma1, vk + cmg2)
-        // Rearrange to: e(sigma2, g2) * e(sigma1, vk + cmg2)^-1 = 1
+        // Optimized check: e(sigma2, g2) * e(sigma1, vk + cmg2)^-1 = 1
         let vk_plus_cmg2 = vk.vk.add(cmg2).into_affine();
-
         let check1 = PairingCheck::<E>::rand(
             &mr,
             &[
@@ -106,8 +90,7 @@ impl<E: Pairing> PSUTTSignature<E> {
             &E::TargetField::one(),
         );
 
-        // Second equation: e(cmg1, g2) = e(g1, cmg2)
-        // Rearrange to: e(cmg1, g2) * e(g1, cmg2)^-1 = 1
+        // Optimized check: e(cmg1, g2) * e(g1, cmg2)^-1 = 1
         let check2 = PairingCheck::<E>::rand(
             &mr,
             &[
@@ -135,7 +118,6 @@ impl<E: Pairing> PSUTTSignatureImproved<E> {
         pp: &PublicParams<E>,
         sk: &SecretKeyImproved<E>,
         cmg2: &E::G2Affine,
-        // commitment: &Commitment<E>,
         rng: &mut impl Rng,
     ) -> Self {
         let u = E::ScalarField::rand(rng);
@@ -144,7 +126,6 @@ impl<E: Pairing> PSUTTSignatureImproved<E> {
         Self { sigma1, sigma2 }
     }
 
-    // pub fn blind_sign
     pub fn rerandomize(
         &self,
         pp: &PublicParams<E>,
@@ -165,44 +146,26 @@ impl<E: Pairing> PSUTTSignatureImproved<E> {
         pp: &PublicParams<E>,
         vk: &VerificationKeyImproved<E>,
         cmg1: &E::G1Affine,
-        // commitment: &Commitment<E>,
     ) -> bool {
-        // verify e(sigma2, g2) = e(sigma1, vk \cdot cm)
+        // Verify: e(g1, sigma2) = e(vk + cmg1, sigma1)
         let p1 = E::pairing(pp.g1, self.sigma2);
         let p2 = E::pairing(vk.vk.add(cmg1), self.sigma1);
         let is_valid = p1 == p2;
         assert_eq!(p1, p2, "pairing verify is wrong psutt improved");
-        return is_valid;
-        // let cmg1 = commitment.cmg1;
-        // let cmg2 = commitment.cmg2;
-        // let p3 = E::pairing(cmg1, pp.g2);
-        // let p4 = E::pairing(pp.g1, cmg2);
-        // assert_eq!(p3, p4);
-        // return is_valid;
+        is_valid
     }
 
-    // we change our 2 pairing checks
-    //  e(sigma2, \tilde{g2}) = e(sigma1, \tilde{vk} \cdot \tilde{cm})
-    //  e(cm, \tilde{g}) = e(g1, \tilde{cm})
-    // to
-    // e(sigma2, g2) * e(sigma1, vk + cmg2)^-1 = 1
-    // e(cmg1, g2) * e(g1, cmg2)^-1 = 1
-    // and merge
-    // e(sigma2, g2) * e(sigma1, vk + cmg2)^-1 * e(cmg1, g2) * e(g1, cmg2)^-1 = 1
     pub fn verify_with_pairing_checker_improved(
         &self,
         pp: &PublicParams<E>,
         vk: &VerificationKeyImproved<E>,
-        // commitment: &Commitment<E>,
         cmg1: &E::G1Affine,
     ) -> bool {
         let mut rng = ark_std::test_rng();
         let mr = std::sync::Mutex::new(rng);
 
-        // First equation: e(sigma2, g2) = e(sigma1, vk + cmg2)
-        // Rearrange to: e(sigma2, g2) * e(sigma1, vk + cmg2)^-1 = 1
+        // Optimized check: e(g1, sigma2) * e(vk + cmg1, -sigma1) = 1
         let vk_plus_cmg1 = vk.vk.add(cmg1).into_affine();
-
         let check = PairingCheck::<E>::rand(
             &mr,
             &[
@@ -212,29 +175,14 @@ impl<E: Pairing> PSUTTSignatureImproved<E> {
             &E::TargetField::one(),
         );
 
-        // Second equation: e(cmg1, g2) = e(g1, cmg2)
-        // Rearrange to: e(cmg1, g2) * e(g1, cmg2)^-1 = 1
-        // let check2 = PairingCheck::<E>::rand(
-        //     &mr,
-        //     &[
-        //         (&commitment.cmg1, &pp.g2),
-        //         (&pp.g1.into_group().neg().into_affine(), &commitment.cmg2),
-        //     ],
-        //     &E::TargetField::one(),
-        // );
-
         check.verify()
-
-        // let mut final_check = PairingCheck::<E>::new();
-        // final_check.merge(&check1);
-        // final_check.merge(&check2);
-        // final_check.verify()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commitment::Commitment;
     use ark_bls12_381::{Bls12_381, Fr};
 
     #[test]
@@ -243,7 +191,6 @@ mod tests {
         let context = Fr::rand(&mut rng);
         let pp = PublicParams::<Bls12_381>::new(&4, &context, &mut rng);
         let (sk, vk) = gen_keys(&pp, &mut rng);
-        // let keypair = KeyPair::new(&pp, &mut rng);
         let messages = (0..pp.n).map(|_| Fr::rand(&mut rng)).collect();
         let r = Fr::rand(&mut rng);
         let commitment = Commitment::new(&pp, &messages, &r);
@@ -285,8 +232,12 @@ mod tests {
         let randomized_commitment = commitment.create_randomized(&r_delta);
         let randomized_sig = sig.rerandomize(&pp, &r_delta, &u_delta);
 
-        let is_randomized_valid =
-            randomized_sig.verify(&pp, &vk, &commitment.cmg1, &commitment.cmg2);
+        let is_randomized_valid = randomized_sig.verify(
+            &pp,
+            &vk,
+            &randomized_commitment.cmg1,
+            &randomized_commitment.cmg2,
+        );
         assert!(is_randomized_valid, "randomized sig verification failed");
     }
 

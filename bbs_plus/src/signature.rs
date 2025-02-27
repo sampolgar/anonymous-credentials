@@ -69,11 +69,19 @@ impl<E: Pairing> BBSPlusSignature<E> {
 
         let himi: E::G1 = E::G1::msm(&pk.h1hL, messages).unwrap();
         let b = pp.g1 + pk.h0 * self.s + himi;
+        let b_neg = b.neg().into_affine();
 
-        let lhs = E::pairing(self.A, pk.w + pp.g2.mul(self.e));
-        let rhs = E::pairing(b.into_affine(), pp.g2);
-
-        lhs == rhs
+        let mut rng = ark_std::test_rng();
+        let mr = std::sync::Mutex::new(rng);
+        let check = PairingCheck::<E>::rand(
+            &mr,
+            &[
+                (&self.A, &(pk.w + pp.g2.mul(self.e)).into_affine()),
+                (&b_neg, &pp.g2),
+            ],
+            &E::TargetField::one(),
+        );
+        check.verify()
     }
 
     pub fn verify_blind(
@@ -82,14 +90,19 @@ impl<E: Pairing> BBSPlusSignature<E> {
         pk: &keygen::PublicKey<E>,
         commitment: &E::G1Affine,
     ) -> bool {
-        // let b = commitment;
         let b = pp.g1 + commitment;
-        // let b = pp.g1 + pk.h0 * self.s + commitment;
-
-        let lhs = E::pairing(self.A, pk.w + pp.g2.mul(self.e));
-        let rhs = E::pairing(b.into_affine(), pp.g2);
-
-        lhs == rhs
+        let b_neg = b.neg().into_affine();
+        let mut rng = ark_std::test_rng();
+        let mr = std::sync::Mutex::new(rng);
+        let check = PairingCheck::<E>::rand(
+            &mr,
+            &[
+                (&self.A, &(pk.w + pp.g2.mul(self.e)).into_affine()),
+                (&b_neg, &pp.g2),
+            ],
+            &E::TargetField::one(),
+        );
+        check.verify()
     }
 }
 
@@ -127,10 +140,19 @@ impl<E: Pairing> BBSPlusRandomizedSignature<E> {
     }
 
     pub fn verify_pairing(&self, pp: &PublicParams<E>, pk: &keygen::PublicKey<E>) -> bool {
-        let lhs = E::pairing(self.A_prime, pk.w);
-        let rhs = E::pairing(self.A_bar, pp.g2);
+        let mut rng = ark_std::test_rng();
+        let mr = std::sync::Mutex::new(rng);
+        let A_bar_neg = self.A_bar.into_group().neg().into_affine();
+        let check = PairingCheck::<E>::rand(
+            &mr,
+            &[(&self.A_prime, &pk.w), (&A_bar_neg, &pp.g2)],
+            &E::TargetField::one(),
+        );
+        check.verify()
+        // let lhs = E::pairing(self.A_prime, pk.w);
+        // let rhs = E::pairing(self.A_bar, pp.g2);
 
-        lhs == rhs
+        // lhs == rhs
     }
 }
 
