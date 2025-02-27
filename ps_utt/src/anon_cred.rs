@@ -9,36 +9,42 @@ use crate::proofsystem::{
 use crate::publicparams::PublicParams;
 use crate::signature::{PSUTTSignature, PSUTTSignatureImproved};
 use ark_ec::pairing::Pairing;
-use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::{Field, UniformRand};
+use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::Rng;
-use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
 
-use ark_std::{
-    ops::{Add, Mul, Neg},
-    One, Zero,
-};
-
+/// User credential containing a secret key and commitment
 pub struct UserCred<E: Pairing> {
+    /// User's secret key
     pub usk: E::ScalarField,
+    /// Commitment to user attributes
     pub commitment: Commitment<E>,
 }
 
+/// Presentation of a credential with G1 and G2 elements
 pub struct ShowCredential<E: Pairing> {
+    /// Randomized signature
     pub randomized_signature: PSUTTSignature<E>,
+    /// Commitment in G1
     pub cmg1: E::G1Affine,
+    /// Commitment in G2
     pub cmg2: E::G2Affine,
+    /// Serialized proof of knowledge
     pub proof: Vec<u8>,
 }
 
+/// Improved presentation of a credential (G1 only)
 pub struct ShowCredentialImproved<E: Pairing> {
+    /// Randomized signature
     pub randomized_signature: PSUTTSignatureImproved<E>,
+    /// Commitment in G1
     pub cmg1: E::G1Affine,
+    /// Serialized proof of knowledge
     pub proof: Vec<u8>,
 }
 
 impl<E: Pairing> UserCred<E> {
+    /// Create a new user credential with provided attributes
     pub fn new(
         pp: &PublicParams<E>,
         messages: &Vec<E::ScalarField>,
@@ -48,6 +54,7 @@ impl<E: Pairing> UserCred<E> {
         Self { usk, commitment }
     }
 
+    /// Create a new user credential with random attributes
     pub fn new_random_messages(pp: &PublicParams<E>) -> UserCred<E> {
         let mut rng = ark_std::test_rng();
         let usk = E::ScalarField::rand(&mut rng);
@@ -58,13 +65,18 @@ impl<E: Pairing> UserCred<E> {
     }
 }
 
+/// Standard anonymous credential protocol
 pub struct AnonCredProtocol<E: Pairing> {
+    /// Public parameters
     pub pp: PublicParams<E>,
+    /// Issuer's secret key
     sk: SecretKey<E>,
+    /// Issuer's verification key
     vk: VerificationKey<E>,
 }
 
 impl<E: Pairing> AnonCredProtocol<E> {
+    /// Create a new protocol instance with specified message count
     pub fn new(n: usize, rng: &mut impl Rng) -> Self {
         let context = E::ScalarField::rand(rng);
         let pp = PublicParams::<E>::new(&n, &context, rng);
@@ -72,42 +84,28 @@ impl<E: Pairing> AnonCredProtocol<E> {
         Self { pp, sk, vk }
     }
 
+    /// User generates proof of knowledge for obtaining a credential
     pub fn obtain(&self, user_cred: &UserCred<E>) -> Result<Vec<u8>, CommitmentProofError> {
-        let proof = CommitmentProofs::pok_commitment_prove(&user_cred.commitment)?;
-        let mut serialized_proof = Vec::new();
-        println!("serializing proof ------------------");
-        proof.serialize_compressed(&mut serialized_proof)?;
-        // Debug: Test test proofs
-        let result = CommitmentProofs::pok_commitment_verify::<E>(&serialized_proof)?;
-        if !result {
-            return Err(CommitmentProofError::InvalidProof);
-        }
-        println!("proof was valid ------------------");
-        // Debug: Test deserialization immediately
-        let deserialized_proof: CommitmentProof<E> =
-            CanonicalDeserialize::deserialize_compressed(&serialized_proof[..])?;
-        println!("Serialized proof length: {}", serialized_proof.len());
-        assert_eq!(
-            deserialized_proof.commitment, user_cred.commitment.cmg1,
-            "cmg1, not eq cmg1"
-        );
-        Ok(serialized_proof)
+        CommitmentProofs::pok_commitment_prove(&user_cred.commitment)
     }
 
+    /// Issuer verifies proof and issues credential
     pub fn issue(
         &self,
         serialized_proof: &[u8],
     ) -> Result<PSUTTSignature<E>, CommitmentProofError> {
         let mut rng = ark_std::test_rng();
-        let deserialized_proof: CommitmentProof<E> =
-            CanonicalDeserialize::deserialize_compressed(&serialized_proof[..])?;
 
-        let result = CommitmentProofs::pok_commitment_verify::<E>(serialized_proof)?;
-        if !result {
+        // Verify proof of knowledge
+        if !CommitmentProofs::pok_commitment_verify::<E>(serialized_proof)? {
             return Err(CommitmentProofError::InvalidProof);
         }
+
+        // Deserialize proof to access the commitment
         let proof: CommitmentProof<E> =
             CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
+
+        // Sign the commitment
         Ok(PSUTTSignature::sign(
             &self.pp,
             &self.sk,
@@ -116,67 +114,7 @@ impl<E: Pairing> AnonCredProtocol<E> {
         ))
     }
 
-    // pub fn obtain(&self, user_cred: &UserCred<E>) -> Result<Vec<u8>, CommitmentProofError> {
-    //     // Generate proof of knowledge of the commitment opening
-    //     let proof = CommitmentProofs::pok_commitment_prove(&user_cred.commitment)?;
-    //     let mut serialized_proof = Vec::new();
-    //     proof.serialize_compressed(&mut serialized_proof)?;
-    //     Ok(serialized_proof)
-    // }
-
-    // pub fn obtain(&self, user_cred: &UserCred<E>) -> Result<Vec<u8>, CommitmentProofError> {
-    //     let proof = CommitmentProofs::pok_commitment_prove(&user_cred.commitment)?;
-    //     let mut serialized_proof = Vec::new();
-    //     proof.serialize_compressed(&mut serialized_proof)?;
-    //     // Debug: Test deserialization immediately
-    //     let deserialized_proof: CommitmentProof<E> =
-    //         CanonicalDeserialize::deserialize_compressed(&serialized_proof[..])?;
-    //     println!("Serialized proof length: {}", serialized_proof.len());
-    //     Ok(serialized_proof)
-    // }
-
-    // pub fn issue(
-    //     &self,
-    //     serialized_proof: &[u8],
-    // ) -> Result<PSUTTSignature<E>, CommitmentProofError> {
-    //     let mut rng = ark_std::test_rng();
-    //     let result = CommitmentProofs::pok_commitment_verify::<E>(serialized_proof)?;
-
-    //     if !result {
-    //         return Err(CommitmentProofError::InvalidProof);
-    //     }
-
-    //     let proof: CommitmentProof<E> =
-    //         CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
-    //     // if result is valid
-    //     Ok(PSUTTSignature::sign(
-    //         &self.pp,
-    //         &self.sk,
-    //         &proof.commitment,
-    //         &mut rng,
-    //     ))
-    // }
-
-    // pub fn issue(
-    //     &self,
-    //     serialized_proof: &[u8],
-    // ) -> Result<PSUTTSignature<E>, CommitmentProofError> {
-    //     let mut rng = ark_std::test_rng();
-    //     println!("Issue: Serialized proof length: {}", serialized_proof.len());
-    //     let result = CommitmentProofs::pok_commitment_verify::<E>(serialized_proof)?;
-    //     if !result {
-    //         return Err(CommitmentProofError::InvalidProof);
-    //     }
-    //     let proof: CommitmentProof<E> =
-    //         CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
-    //     Ok(PSUTTSignature::sign(
-    //         &self.pp,
-    //         &self.sk,
-    //         &proof.commitment,
-    //         &mut rng,
-    //     ))
-    // }
-
+    /// User shows credential by rerandomizing and creating presentation
     pub fn show<R: Rng>(
         &self,
         commitment: &Commitment<E>,
@@ -187,18 +125,12 @@ impl<E: Pairing> AnonCredProtocol<E> {
         let r_delta = E::ScalarField::rand(rng);
         let u_delta = E::ScalarField::rand(rng);
 
-        // Rerandomize the commitment
+        // Rerandomize the commitment and signature
         let randomized_commitment = commitment.create_randomized(&r_delta);
-
-        // Rerandomize the signature
         let randomized_signature = signature.rerandomize(&self.pp, &r_delta, &u_delta);
 
-        // Create a proof of knowledge for the rerandomized commitment
-        let proof = CommitmentProofs::pok_commitment_prove(&randomized_commitment)?;
-
-        // Serialize the proof
-        let mut serialized_proof = Vec::new();
-        proof.serialize_compressed(&mut serialized_proof)?;
+        // Create proof of knowledge for the rerandomized commitment
+        let serialized_proof = CommitmentProofs::pok_commitment_prove(&randomized_commitment)?;
 
         Ok(ShowCredential {
             randomized_signature,
@@ -208,10 +140,10 @@ impl<E: Pairing> AnonCredProtocol<E> {
         })
     }
 
+    /// Verifier checks credential presentation
     pub fn verify(&self, cred_show: &ShowCredential<E>) -> Result<bool, CommitmentProofError> {
         // Verify proof of knowledge
-        let proof_valid = CommitmentProofs::pok_commitment_verify::<E>(&cred_show.proof)?;
-        if !proof_valid {
+        if !CommitmentProofs::pok_commitment_verify::<E>(&cred_show.proof)? {
             return Ok(false);
         }
 
@@ -225,108 +157,108 @@ impl<E: Pairing> AnonCredProtocol<E> {
     }
 }
 
-// pub struct AnonCredProtocolImproved<E: Pairing> {
-//     pub pp: PublicParams<E>,
-//     sk: SecretKeyImproved<E>,
-//     vk: VerificationKeyImproved<E>,
-// }
+/// Improved anonymous credential protocol with reduced pairing operations
+pub struct AnonCredProtocolImproved<E: Pairing> {
+    /// Public parameters
+    pub pp: PublicParams<E>,
+    /// Issuer's secret key
+    sk: SecretKeyImproved<E>,
+    /// Issuer's verification key
+    vk: VerificationKeyImproved<E>,
+}
 
-// impl<E: Pairing> AnonCredProtocolImproved<E> {
-//     pub fn new(n: usize, rng: &mut impl Rng) -> Self {
-//         let context = E::ScalarField::rand(rng);
-//         let pp = PublicParams::<E>::new(&n, &context, rng);
-//         let (sk, vk) = gen_keys_improved(&pp, rng);
-//         Self { pp, sk, vk }
-//     }
+impl<E: Pairing> AnonCredProtocolImproved<E> {
+    /// Create a new protocol instance with specified message count
+    pub fn new(n: usize, rng: &mut impl Rng) -> Self {
+        let context = E::ScalarField::rand(rng);
+        let pp = PublicParams::<E>::new(&n, &context, rng);
+        let (sk, vk) = gen_keys_improved(&pp, rng);
+        Self { pp, sk, vk }
+    }
 
-//     pub fn obtain(&self, user_cred: &UserCred<E>) -> Result<Vec<u8>, CommitmentProofError> {
-//         // Generate proof of knowledge of the commitment opening
-//         let proof = CommitmentProofs::pok_commitment_prove_g2(&user_cred.commitment)?;
-//         let mut serialized_proof = Vec::new();
-//         proof.serialize_compressed(&mut serialized_proof)?;
-//         Ok(serialized_proof)
-//     }
+    /// User generates proof of knowledge for obtaining a credential
+    pub fn obtain(&self, user_cred: &UserCred<E>) -> Result<Vec<u8>, CommitmentProofError> {
+        CommitmentProofs::pok_commitment_prove_g2(&user_cred.commitment)
+    }
 
-//     pub fn issue(
-//         &self,
-//         serialized_proof: &[u8],
-//     ) -> Result<PSUTTSignatureImproved<E>, CommitmentProofError> {
-//         let mut rng = ark_std::test_rng();
+    /// Issuer verifies proof and issues credential
+    pub fn issue(
+        &self,
+        serialized_proof: &[u8],
+    ) -> Result<PSUTTSignatureImproved<E>, CommitmentProofError> {
+        let mut rng = ark_std::test_rng();
 
-//         let result = CommitmentProofs::pok_commitment_verify::<E>(serialized_proof)?;
-//         if !result {
-//             return Err(CommitmentProofError::InvalidProof);
-//         }
+        // Verify proof of knowledge
+        if !CommitmentProofs::pok_commitment_verify_g2::<E>(serialized_proof)? {
+            return Err(CommitmentProofError::InvalidProof);
+        }
 
-//         let proof: CommitmentProofG2<E> =
-//             CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
+        // Deserialize proof to access the commitment
+        let proof: CommitmentProofG2<E> =
+            CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
 
-//         // if result is valid
-//         Ok(PSUTTSignatureImproved::sign(
-//             &self.pp,
-//             &self.sk,
-//             &proof.commitment,
-//             &mut rng,
-//         ))
-//     }
+        // Sign the commitment
+        Ok(PSUTTSignatureImproved::sign(
+            &self.pp,
+            &self.sk,
+            &proof.commitment,
+            &mut rng,
+        ))
+    }
 
-//     pub fn show<R: Rng>(
-//         &self,
-//         commitment: &Commitment<E>,
-//         signature: &PSUTTSignatureImproved<E>,
-//         rng: &mut R,
-//     ) -> Result<ShowCredentialImproved<E>, CommitmentProofError> {
-//         // Generate random values for rerandomization
-//         let r_delta = E::ScalarField::rand(rng);
-//         let u_delta = E::ScalarField::rand(rng);
+    /// User shows credential by rerandomizing and creating presentation
+    pub fn show<R: Rng>(
+        &self,
+        commitment: &Commitment<E>,
+        signature: &PSUTTSignatureImproved<E>,
+        rng: &mut R,
+    ) -> Result<ShowCredentialImproved<E>, CommitmentProofError> {
+        // Generate random values for rerandomization
+        let r_delta = E::ScalarField::rand(rng);
+        let u_delta = E::ScalarField::rand(rng);
 
-//         // Rerandomize the commitment
-//         let randomized_commitment = commitment.create_randomized(&r_delta);
+        // Rerandomize the commitment and signature
+        let randomized_commitment = commitment.create_randomized(&r_delta);
+        let randomized_signature = signature.rerandomize(&self.pp, &r_delta, &u_delta);
 
-//         // Rerandomize the signature
-//         let randomized_signature = signature.rerandomize(&self.pp, &r_delta, &u_delta);
+        // Create proof of knowledge for the rerandomized commitment
+        let serialized_proof = CommitmentProofs::pok_commitment_prove_g2(&randomized_commitment)?;
 
-//         // Create a proof of knowledge for the rerandomized commitment
-//         let proof = CommitmentProofs::pok_commitment_prove_g2(&randomized_commitment)?;
+        Ok(ShowCredentialImproved {
+            randomized_signature,
+            cmg1: randomized_commitment.cmg1,
+            proof: serialized_proof,
+        })
+    }
 
-//         // Serialize the proof
-//         let mut serialized_proof = Vec::new();
-//         proof.serialize_compressed(&mut serialized_proof)?;
+    /// Verifier checks credential presentation
+    pub fn verify(
+        &self,
+        cred_show: &ShowCredentialImproved<E>,
+    ) -> Result<bool, CommitmentProofError> {
+        // Verify proof of knowledge
+        if !CommitmentProofs::pok_commitment_verify_g2::<E>(&cred_show.proof)? {
+            return Ok(false);
+        }
 
-//         Ok(ShowCredentialImproved {
-//             randomized_signature,
-//             cmg1: randomized_commitment.cmg1,
-//             proof: serialized_proof,
-//         })
-//     }
-
-//     pub fn verify(
-//         &self,
-//         cred_show: &ShowCredentialImproved<E>,
-//     ) -> Result<bool, CommitmentProofError> {
-//         // Verify proof of knowledge
-//         let proof_valid = CommitmentProofs::pok_commitment_verify::<E>(&cred_show.proof)?;
-//         if !proof_valid {
-//             return Ok(false);
-//         }
-
-//         // Verify signature
-//         Ok(cred_show
-//             .randomized_signature
-//             .verify_with_pairing_checker_improved(&self.pp, &self.vk, &cred_show.cmg1))
-//     }
-// }
+        // Verify signature
+        Ok(cred_show
+            .randomized_signature
+            .verify_with_pairing_checker_improved(&self.pp, &self.vk, &cred_show.cmg1))
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use ark_bls12_381::{Bls12_381, Fr};
     use ark_std::test_rng;
+
     #[test]
     fn test_psutt_credential_lifecycle() {
-        // Setup phase - establish protocol parameters and key material
+        // Setup phase
         let mut rng = test_rng();
-        let message_count = 5; // Credentials with 5 attributes
+        let message_count = 5;
         let protocol = AnonCredProtocol::<Bls12_381>::new(message_count, &mut rng);
 
         // User phase - generate attributes and commitment
@@ -334,7 +266,7 @@ mod tests {
         let user_blinding = Fr::rand(&mut rng);
         let user_cred = UserCred::<Bls12_381>::new(&protocol.pp, &user_attributes, user_blinding);
 
-        // Obtain phase - user creates proof of knowledge of commitment
+        // Obtain phase - user creates proof of knowledge
         let proof = protocol
             .obtain(&user_cred)
             .expect("Failed to generate proof");
@@ -342,7 +274,7 @@ mod tests {
         // Issue phase - issuer verifies proof and issues credential
         let signature = protocol.issue(&proof).expect("Failed to issue credential");
 
-        // Verify original signature directly to confirm issuance worked
+        // Verify original signature
         assert!(
             signature.verify_with_pairing_checker(
                 &protocol.pp,
@@ -353,17 +285,59 @@ mod tests {
             "Original signature verification failed"
         );
 
-        // Show phase - user rerandomizes credential and generates presentation
+        // Show phase - user creates presentation
         let presentation = protocol
             .show(&user_cred.commitment, &signature, &mut rng)
             .expect("Failed to generate credential presentation");
 
-        // Verify phase - verifier checks the presentation
+        // Verify phase
         let is_valid = protocol
             .verify(&presentation)
             .expect("Verification process failed");
 
-        // Assert the presentation verifies correctly
+        assert!(is_valid, "Credential verification failed");
+    }
+
+    #[test]
+    fn test_psutt_credential_lifecycle_improved() {
+        // Setup phase
+        let mut rng = test_rng();
+        let message_count = 5;
+        let protocol = AnonCredProtocolImproved::<Bls12_381>::new(message_count, &mut rng);
+
+        // User phase - generate attributes and commitment
+        let user_attributes: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
+        let user_blinding = Fr::rand(&mut rng);
+        let user_cred = UserCred::<Bls12_381>::new(&protocol.pp, &user_attributes, user_blinding);
+
+        // Obtain phase - user creates proof of knowledge
+        let proof = protocol
+            .obtain(&user_cred)
+            .expect("Failed to generate proof");
+
+        // Issue phase - issuer verifies proof and issues credential
+        let signature = protocol.issue(&proof).expect("Failed to issue credential");
+
+        // Verify original signature
+        assert!(
+            signature.verify_with_pairing_checker_improved(
+                &protocol.pp,
+                &protocol.vk,
+                &user_cred.commitment.cmg1,
+            ),
+            "Original signature verification failed"
+        );
+
+        // Show phase - user creates presentation
+        let presentation = protocol
+            .show(&user_cred.commitment, &signature, &mut rng)
+            .expect("Failed to generate credential presentation");
+
+        // Verify phase
+        let is_valid = protocol
+            .verify(&presentation)
+            .expect("Verification process failed");
+
         assert!(is_valid, "Credential verification failed");
     }
 }
