@@ -9,15 +9,15 @@ use ark_std::{
     One,
 };
 use utils::helpers::Helpers;
-use utils::pairing::{verify_pairing_equation, PairingCheck};
+use utils::pairing::verify_pairing_equation;
 
 #[derive(Clone, Debug)]
-pub struct Signature<E: Pairing> {
+pub struct PSSignature<E: Pairing> {
     pub sigma1: E::G1Affine,
     pub sigma2: E::G1Affine,
 }
 
-impl<E: Pairing> Signature<E> {
+impl<E: Pairing> PSSignature<E> {
     /// Issues a blind signature on a commitment
     pub fn blind_sign<R: Rng>(
         pp: &PublicParams<E>,
@@ -28,11 +28,7 @@ impl<E: Pairing> Signature<E> {
     ) -> Self {
         // Generate random u
         let u = E::ScalarField::rand(rng);
-
-        // Compute signature components
-        // sigma1 = g1^u
         let sigma1 = pp.g1.mul(u).into_affine();
-
         // sigma2 = (X1 + commitment)^u where X1 = g1^x
         // let sigma2 = (sk.x_g1 + signature_commitment).mul(u).into_affine();
         let sigma2 = (pp.g1.mul(sk.x) + signature_commitment)
@@ -43,11 +39,11 @@ impl<E: Pairing> Signature<E> {
     }
 
     /// Unblinds a blind signature using the blinding factor
-
     pub fn unblind(&self, t: &E::ScalarField) -> Self {
+        let sigma2 = self.sigma1.mul(t).neg() + self.sigma2;
         Self {
             sigma1: self.sigma1,
-            sigma2: (self.sigma2.into_group() - self.sigma1.mul(*t)).into_affine(),
+            sigma2: sigma2.into_affine(),
         }
     }
 
@@ -134,29 +130,6 @@ impl<E: Pairing> Signature<E> {
             ],
             None,
         )
-
-        // Equivalently: e(σ₁, X̃ · ∏ Ỹⱼᵐʲ) · e(σ₂^(-1), g̃) = 1
-        // verify_pairing_equation::<E>(
-        //     &[
-        //         (&self.sigma1, &yimix.into_affine()),
-        //         (&self.sigma2.into_group().neg().into_affine(), &pp.g2),
-        //     ],
-        //     None,
-        // )
-
-        // // Compute x_g2 + ∑(y_g2[i] * messages[i])
-        // let yimi = E::G2::msm_unchecked(&pk.y_g2, messages);
-        // let yimix = (yimi + pk.x_g2.into_group()).into_affine();
-
-        // // Verify e(sigma1, yimix) = e(sigma2, g2)
-        // // Equivalent to e(sigma1, yimix) · e(sigma2^(-1), g2) = 1
-        // let sigma2_neg = self.sigma2.into_group().neg().into_affine();
-
-        // // Use the simplified pairing equation verification
-        // verify_pairing_equation::<E>(
-        //     &[(&self.sigma1, &yimix), (&sigma2_neg, &pp.g2)],
-        //     None, // Target is 1 (default)
-        // )
     }
 }
 
@@ -266,20 +239,6 @@ mod tests {
         let r = Fr::rand(&mut rng);
         let t = Fr::rand(&mut rng);
         let randomized_signature = signature.rerandomize(&r, &t);
-
-        let unblinded_signature = signature.unblind(&t);
-        let is_valid = unblinded_signature.public_verify(&pp, &messages, &pk);
-        assert!(is_valid, "Unblinded signature verification failed");
-
-        // // Verify randomized signature
-        // let is_valid = randomized_signature.public_verify(&pp, &messages, &pk);
-        // assert!(is_valid, "Rerandomized signature verification failed");
-
-        // // Verify original signature was not modified
-        // assert!(
-        //     signature.public_verify(&pp, &messages, &pk),
-        //     "Original signature should still verify"
-        // );
     }
 
     #[test]

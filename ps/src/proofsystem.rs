@@ -1,30 +1,31 @@
-use crate::commitment::Commitment;
+use crate::keygen::PublicKey;
 use crate::publicparams::PublicParams;
-use ark_ec::pairing::Pairing;
+use crate::{commitment::Commitment, signature::PSSignature};
+use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
+use schnorr::schnorr_pairing::{
+    SchnorrCommitmentPairing, SchnorrProtocolPairing, SchnorrResponsesPairing,
+};
 use thiserror::Error;
+use utils::pairing::{create_check, verify_pairing_equation};
 
 /// Possible errors that can occur during commitment proof operations
 #[derive(Error, Debug)]
-pub enum CommitmentProofError {
+pub enum ProofError {
     /// The commitment is invalid
     #[error("Invalid commitment")]
     InvalidCommitment,
-
     /// The proof is invalid
     #[error("Invalid proof")]
     InvalidProof,
-
     /// The provided index for an equality proof is invalid
     #[error("Invalid index for equality proof")]
     InvalidEqualityIndex,
-
     /// Commitments in a batch have different lengths
     #[error("Mismatched commitment lengths")]
     MismatchedCommitmentLengths,
-
     /// An error occurred during serialization or deserialization
     #[error("Serialization error: {0}")]
     SerializationError(#[from] ark_serialize::SerializationError),
@@ -33,19 +34,10 @@ pub enum CommitmentProofError {
 /// Proof of knowledge of a commitment in the G1 group
 #[derive(CanonicalSerialize, CanonicalDeserialize, Debug, Clone)]
 pub struct CommitmentProof<E: Pairing> {
-    /// The commitment value in G1
     pub commitment: E::G1Affine,
-
-    /// The Schnorr commitment
     pub schnorr_commitment: SchnorrCommitment<E::G1Affine>,
-
-    /// The bases used in the commitment
     pub bases: Vec<E::G1Affine>,
-
-    /// Challenge value used in the proof
     pub challenge: E::ScalarField,
-
-    /// Response values used in the proof
     pub responses: Vec<E::ScalarField>,
 }
 
@@ -61,7 +53,7 @@ impl CommitmentProofs {
     /// A serialized proof
     pub fn pok_commitment_prove<E: Pairing>(
         commitment: &Commitment<E>,
-    ) -> Result<Vec<u8>, CommitmentProofError> {
+    ) -> Result<Vec<u8>, ProofError> {
         let mut rng = ark_std::test_rng();
 
         // Get bases and exponents for the proof
@@ -99,9 +91,7 @@ impl CommitmentProofs {
     ///
     /// # Returns
     /// `true` if the proof is valid, `false` otherwise
-    pub fn pok_commitment_verify<E: Pairing>(
-        serialized_proof: &[u8],
-    ) -> Result<bool, CommitmentProofError> {
+    pub fn pok_commitment_verify<E: Pairing>(serialized_proof: &[u8]) -> Result<bool, ProofError> {
         let proof: CommitmentProof<E> =
             CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
 
@@ -179,5 +169,115 @@ mod tests {
             schnorr_valid,
             "Manual verification of Schnorr proof should succeed"
         );
+    }
+}
+
+#[derive(CanonicalSerialize, CanonicalDeserialize)]
+pub struct SignatureProof<E: Pairing> {
+    pub randomized_signature: (E::G1Affine, E::G1Affine),
+    pub signature_commitment: PairingOutput<E>,
+    pub schnorr_commitment: PairingOutput<E>,
+    pub challenge: E::ScalarField,
+    pub responses: Vec<E::ScalarField>,
+}
+
+pub struct SignatureProofs;
+impl SignatureProofs {
+    pub fn pok_signature<E: Pairing>(
+        pp: PublicParams<E>,
+        pk: PublicKey<E>,
+        commitment: &Commitment<E>,
+        signature: &PSSignature<E>,
+    ) -> Vec<u8> {
+        let mut rng = ark_std::test_rng();
+        let r = E::ScalarField::rand(&mut rng);
+        let t = E::ScalarField::rand(&mut rng);
+        let sigma_prime = signature.rerandomize(&r, &t);
+
+        // Generate a commitment to the signature
+        let signature_commitment_gt = sigma_prime.generate_commitment_gt(&pp, &pk);
+
+        let bases_g1 = commitment.get_bases();
+        let bases_g2 = commitment.get_bases_g2();
+
+        let schnorr_commitment_gt =
+            SchnorrProtocolPairing::commit::<E, _>(&bases_g1, &bases_g2, &mut rng);
+
+        let challenge = E::ScalarField::rand(&mut rng);
+
+        // generate message vector
+        let exponents = commitment.get_exponents();
+        let responses =
+            SchnorrProtocolPairing::prove(&schnorr_commitment_gt, &exponents, &challenge);
+
+        let proof = SignatureProof {
+            randomized_signature: (sigma_prime.sigma1, sigma_prime.sigma2),
+            signature_commitment: signature_commitment_gt,
+            schnorr_commitment: schnorr_commitment_gt.t_com,
+            challenge,
+            responses: responses.0,
+        };
+
+        let mut serialized_proof = Vec::new();
+        proof.serialize_compressed(&mut serialized_proof).unwrap();
+        serialized_proof
+    }
+
+    pub fn verify_knowledge<E: Pairing>(
+        pp: &PublicParams<E>,
+        pk: &PublicKey<E>,
+        serialized_proof: &[u8],
+    ) -> bool {
+        let proof: SignatureProof<E> =
+            CanonicalDeserialize::deserialize_compressed(serialized_proof).unwrap();
+
+        // Generate a commitment to the signature
+        //   pairs: &[(&E::G1Affine, &E::G2Affine)],
+        // target: Option<&E::TargetField>,
+        let signature_commitment = create_check(
+
+        )
+
+        let computed_signature_commitment = Helpers::compute_gt::<E>(
+            &[
+                proof.randomized_signature.1,
+                proof
+                    .randomized_signature
+                    .0
+                    .into_group()
+                    .neg()
+                    .into_affine(),
+            ],
+            &[setup.pk.g2, setup.pk.x_g2],
+        );
+
+        assert_eq!(
+            computed_signature_commitment, proof.signature_commitment,
+            "must be equal"
+        );
+
+        // 2. Prepare bases for verification
+        let base_length = setup.messages.len() + 1;
+        let bases_g1 =
+            Helpers::copy_point_to_length_g1::<E>(proof.randomized_signature.0, &base_length);
+        let bases_g2 = Helpers::add_affine_to_vector::<E::G2>(&setup.pk.g2, &setup.pk.y_g2);
+
+        // 3. Verify the Schnorr proof
+        let is_valid = SchnorrProtocolPairing::verify(
+            &proof.schnorr_commitment,
+            &proof.signature_commitment,
+            &proof.challenge,
+            &bases_g1,
+            &bases_g2,
+            &proof.responses,
+        );
+
+        assert_eq!(
+            proof.responses.len(),
+            base_length,
+            "responses and base length don't match"
+        );
+
+        is_valid
     }
 }

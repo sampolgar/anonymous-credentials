@@ -1,5 +1,5 @@
 use crate::keygen::PublicKey;
-use crate::proofsystem::{CommitmentProof, CommitmentProofError, CommitmentProofs};
+use crate::proofsystem::{CommitmentProof, CommitmentProofs, ProofError};
 use crate::publicparams::PublicParams;
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
@@ -55,8 +55,14 @@ impl<E: Pairing> Commitment<E> {
         bases
     }
 
+    pub fn get_bases_g2(&self) -> Vec<E::G2Affine> {
+        let mut bases: Vec<E::G2Affine> = self.pk.y_g2.clone();
+        bases.push(self.pp.g2.clone());
+        bases
+    }
+
     // get pok in g1
-    pub fn prove_opening(&self) -> Result<Vec<u8>, CommitmentProofError> {
+    pub fn prove_opening(&self) -> Result<Vec<u8>, ProofError> {
         CommitmentProofs::pok_commitment_prove(&self)
     }
 }
