@@ -149,10 +149,6 @@ impl<E: Pairing> BBSPlusRandomizedSignature<E> {
             &E::TargetField::one(),
         );
         check.verify()
-        // let lhs = E::pairing(self.A_prime, pk.w);
-        // let rhs = E::pairing(self.A_bar, pp.g2);
-
-        // lhs == rhs
     }
 }
 

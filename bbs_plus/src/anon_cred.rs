@@ -20,9 +20,14 @@ pub struct IssuerResponse<E: Pairing> {
     pub e: E::ScalarField,
     pub s_double_prime: E::ScalarField, // Issuer's blinding factor
 }
-// pub struct AnonCredProtocol<E: Pairing> {
-//     pub pp: PublicParams<E>,
-// }
+
+#[derive(Clone)]
+pub struct ShowCredential<E: Pairing> {
+    /// Randomized signature
+    pub randomized_signature: BBSPlusRandomizedSignature<E>,
+    /// Serialized proof of knowledge
+    pub proof: Vec<u8>,
+}
 
 pub struct AnonCredProtocol;
 impl AnonCredProtocol {
@@ -127,13 +132,30 @@ impl AnonCredProtocol {
     ///
     /// # Returns
     /// * Randomized signature and proof
+    // pub fn show<E: Pairing, R: Rng>(
+    //     pp: &PublicParams<E>,
+    //     pk: &PublicKey<E>,
+    //     signature: &BBSPlusSignature<E>,
+    //     messages: &[E::ScalarField],
+    //     rng: &mut R,
+    // ) -> Result<(BBSPlusRandomizedSignature<E>, Vec<u8>), ProofError> {
+    //     // Rerandomize the signature
+    //     let randomized_signature = signature.rerandomize(pp, pk, messages, rng);
+
+    //     // Generate the proof
+    //     let proof = ProofSystem::bbs_plus_prove(pp, &randomized_signature, pk, messages, rng)?;
+
+    //     // Return the randomized signature and the proof
+    //     Ok((randomized_signature, proof))
+    // }
+
     pub fn show<E: Pairing, R: Rng>(
         pp: &PublicParams<E>,
         pk: &PublicKey<E>,
         signature: &BBSPlusSignature<E>,
         messages: &[E::ScalarField],
         rng: &mut R,
-    ) -> Result<(BBSPlusRandomizedSignature<E>, Vec<u8>), ProofError> {
+    ) -> Result<ShowCredential<E>, ProofError> {
         // Rerandomize the signature
         let randomized_signature = signature.rerandomize(pp, pk, messages, rng);
 
@@ -141,7 +163,10 @@ impl AnonCredProtocol {
         let proof = ProofSystem::bbs_plus_prove(pp, &randomized_signature, pk, messages, rng)?;
 
         // Return the randomized signature and the proof
-        Ok((randomized_signature, proof))
+        Ok(ShowCredential {
+            randomized_signature,
+            proof,
+        })
     }
 
     /// Verifier checks the credential proof
@@ -156,12 +181,18 @@ impl AnonCredProtocol {
     pub fn verify<E: Pairing>(
         pp: &PublicParams<E>,
         pk: &PublicKey<E>,
-        serialized_proof: &[u8],
+        cred_show: &ShowCredential<E>,
     ) -> Result<bool, ProofError> {
         // Verify the proof
-        let verification_result = ProofSystem::bbs_plus_verify_proof(pp, pk, serialized_proof)?;
+        if !ProofSystem::bbs_plus_verify_proof(pp, pk, &cred_show.proof)? {
+            return Ok(false);
+        }
 
-        Ok(verification_result)
+        if !cred_show.randomized_signature.verify_pairing(&pp, &pk) {
+            return Ok(false);
+        }
+
+        Ok(true)
     }
 }
 
@@ -192,13 +223,13 @@ mod tests {
         let signature = AnonCredProtocol::complete_signature(&s_prime, &issuer_response);
 
         // 4. Show: User shows the credential
-        let (randomized_signature, proof) =
+        let show_cred =
             AnonCredProtocol::show(&setup.pp, &setup.pk, &signature, &setup.messages, &mut rng)
                 .expect("Failed to generate proof");
 
         // 5. Verify: Verifier checks the credential
-        let verification_result =
-            AnonCredProtocol::verify(&setup.pp, &setup.pk, &proof).expect("Verification failed");
+        let verification_result = AnonCredProtocol::verify(&setup.pp, &setup.pk, &show_cred)
+            .expect("Verification failed");
 
         assert!(verification_result, "Proof verification failed");
     }

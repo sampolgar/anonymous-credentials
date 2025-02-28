@@ -1,12 +1,16 @@
 use crate::commitment::Commitment;
 use crate::keygen::{gen_keys_improved, SecretKeyImproved, VerificationKeyImproved};
-use crate::proofsystem::{CommitmentProofError, CommitmentProofG2, CommitmentProofs};
+use crate::proofsystem::{
+    CommitmentProof, CommitmentProofError, CommitmentProofG2, CommitmentProofs,
+};
 use crate::publicparams::PublicParams;
 use crate::signature::PSUTTSignatureImproved;
-use ark_ec::pairing::Pairing;
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::ops::Neg;
 use ark_std::rand::Rng;
+use utils::pairing::verify_pairing_equation;
 
 /// User credential containing a secret key and commitment
 pub struct UserCred<E: Pairing> {
@@ -68,32 +72,45 @@ impl<E: Pairing> AnonCredProtocolImproved<E> {
     }
 
     /// User generates proof of knowledge for obtaining a credential
+    // User generates proof of knowledge in G1
     pub fn obtain(&self, user_cred: &UserCred<E>) -> Result<Vec<u8>, CommitmentProofError> {
-        CommitmentProofs::pok_commitment_prove_g2(&user_cred.commitment)
+        CommitmentProofs::pok_commitment_prove(&user_cred.commitment)
     }
 
-    /// Issuer verifies proof and issues credential
+    /// Issuer verifies proof of knowledge in G1 and verifies consistency of CM in G1 and G2. Issued Signature on G2 commitment.\
     pub fn issue(
         &self,
+        cmg2: &E::G2Affine,
         serialized_proof: &[u8],
     ) -> Result<PSUTTSignatureImproved<E>, CommitmentProofError> {
         let mut rng = ark_std::test_rng();
 
         // Verify proof of knowledge
-        if !CommitmentProofs::pok_commitment_verify_g2::<E>(serialized_proof)? {
+        if !CommitmentProofs::pok_commitment_verify::<E>(serialized_proof)? {
             return Err(CommitmentProofError::InvalidProof);
         }
 
         // Deserialize proof to access the commitment
-        let proof: CommitmentProofG2<E> =
+        let proof: CommitmentProof<E> =
             CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
+
+        // Verify consistency of commitments - this checks e(proof.commitment, g2) = e(g1, cmg2)
+        let is_consistent = verify_pairing_equation::<E>(
+            &[
+                (&proof.commitment, &self.pp.g2),
+                (&self.pp.g1.into_group().neg().into_affine(), &cmg2),
+            ],
+            None,
+        );
+
+        // Guard against inconsistent commitments
+        if !is_consistent {
+            return Err(CommitmentProofError::InvalidCommitment);
+        }
 
         // Sign the commitment
         Ok(PSUTTSignatureImproved::sign(
-            &self.pp,
-            &self.sk,
-            &proof.commitment,
-            &mut rng,
+            &self.pp, &self.sk, &cmg2, &mut rng,
         ))
     }
 
@@ -113,7 +130,7 @@ impl<E: Pairing> AnonCredProtocolImproved<E> {
         let randomized_signature = signature.rerandomize(&self.pp, &r_delta, &u_delta);
 
         // Create proof of knowledge for the rerandomized commitment
-        let serialized_proof = CommitmentProofs::pok_commitment_prove_g2(&randomized_commitment)?;
+        let serialized_proof = CommitmentProofs::pok_commitment_prove(&randomized_commitment)?;
 
         Ok(ShowCredentialImproved {
             randomized_signature,
@@ -128,7 +145,7 @@ impl<E: Pairing> AnonCredProtocolImproved<E> {
         cred_show: &ShowCredentialImproved<E>,
     ) -> Result<bool, CommitmentProofError> {
         // Verify proof of knowledge
-        if !CommitmentProofs::pok_commitment_verify_g2::<E>(&cred_show.proof)? {
+        if !CommitmentProofs::pok_commitment_verify::<E>(&cred_show.proof)? {
             return Ok(false);
         }
 
@@ -163,7 +180,9 @@ mod tests {
             .expect("Failed to generate proof");
 
         // Issue phase - issuer verifies proof and issues credential
-        let signature = protocol.issue(&proof).expect("Failed to issue credential");
+        let signature = protocol
+            .issue(&user_cred.commitment.cmg2, &proof)
+            .expect("Failed to issue credential");
 
         // Verify original signature
         assert!(

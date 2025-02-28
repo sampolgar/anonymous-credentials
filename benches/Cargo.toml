@@ -45,6 +45,11 @@ path = "benches/bbs_plus_anoncreds.rs"
 harness = false
 
 [[bench]]
-name = "ps_utt_anoncreds"
-path = "benches/ps_utt_anoncreds.rs"
+name = "ps_utt_anoncreds_std"
+path = "benches/ps_utt_anoncreds_std.rs"
+harness = false
+
+[[bench]]
+name = "ps_utt_anoncreds_imp"
+path = "benches/ps_utt_anoncreds_imp.rs"
 harness = false

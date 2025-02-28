@@ -5,5 +5,4 @@ Cargo.lock
 .DS_Store
 */.DS_Store
 z_tex/*
-z_py_tests/artifacts/
-z_py_tests/benchmark_analysis
+z_py_tests/

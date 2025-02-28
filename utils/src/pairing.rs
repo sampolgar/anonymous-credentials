@@ -4,6 +4,7 @@ use ark_ec::{
 };
 // {AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{Field, PrimeField};
+use ark_std::test_rng;
 // use ark_std::{ops::Mul, rand::Rng,  sync::Mutex, One, UniformRand, Zero};
 use ark_std::{ops::Mul, rand::Rng, sync::Mutex, One, UniformRand, Zero};
 // use itertools::Itertools;
@@ -176,19 +177,38 @@ fn mul_if_not_one<E: Pairing>(
     left.mul_assign(right);
 }
 
-// //
-// // sam test
-// //
-// fn verify_using_struct<E: Pairing>(left: PairingTuple<E>, right: PairingTuple<E>) -> bool {
-//     let mut rng = test_rng();
-//     let mr = Mutex::new(rng);
+/// Single-line verification for common equations of form: e(a,b)·e(c,d)... = target
+///
+/// # Arguments
+/// * `pairs` - Slice of G1, G2 point pairs to include in the equation
+/// * `target` - Expected target value (defaults to 1 if None)
+///
+/// # Returns
+/// * `bool` - True if the equation holds
+pub fn verify_pairing_equation<E: Pairing>(
+    pairs: &[(&E::G1Affine, &E::G2Affine)],
+    target: Option<&E::TargetField>,
+) -> bool {
+    let mut rng = test_rng();
+    let target_value = target.cloned().unwrap_or_else(|| E::TargetField::one());
 
-//     let lhs_pairing_check = PairingCheck::<E>::rand(
-//         &mr,
-//         &left.pairing_vec,
-//         &E::TargetField::one(),
-//     )
-// }
+    let check = PairingCheck::<E>::rand(&Mutex::new(rng), pairs, &target_value);
+
+    check.verify()
+}
+
+/// Creates a new pairing check with common defaults
+///
+/// Useful when you need to create a check and possibly merge with others
+pub fn create_check<E: Pairing>(
+    pairs: &[(&E::G1Affine, &E::G2Affine)],
+    target: Option<&E::TargetField>,
+) -> PairingCheck<E> {
+    let mut rng = test_rng();
+    let target_value = target.cloned().unwrap_or_else(|| E::TargetField::one());
+
+    PairingCheck::<E>::rand(&Mutex::new(rng), pairs, &target_value)
+}
 
 #[cfg(test)]
 mod test {

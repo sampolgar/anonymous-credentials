@@ -1,7 +1,7 @@
 use ark_bls12_381::Bls12_381;
 use ark_ec::pairing::Pairing;
 use ark_ff::UniformRand;
-use bbs_plus::anon_cred::AnonCredProtocol;
+use bbs_plus::anon_cred::{AnonCredProtocol, ShowCredential};
 use bbs_plus::test_helpers::TestSetup;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::time::Duration;
@@ -38,7 +38,7 @@ fn benchmark_anoncred_protocol(c: &mut Criterion) {
         let signature = AnonCredProtocol::complete_signature(&s_prime, &issuer_response);
 
         // Also use the existing signature from TestSetup for show/verify
-        let (_, proof_from_setup) = AnonCredProtocol::show(
+        let show_cred = AnonCredProtocol::show(
             &setup.pp,
             &setup.pk,
             &setup.signature,
@@ -86,7 +86,7 @@ fn benchmark_anoncred_protocol(c: &mut Criterion) {
             BenchmarkId::from_parameter(format!("bbs_plus_verify_messages_{}", msg_size));
         group.bench_function(verify_id, |b| {
             b.iter(|| {
-                AnonCredProtocol::verify(&setup.pp, &setup.pk, &proof_from_setup)
+                AnonCredProtocol::verify(&setup.pp, &setup.pk, &show_cred)
                     .expect("Failed to verify")
             })
         });
