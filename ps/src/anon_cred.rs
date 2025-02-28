@@ -1,0 +1,208 @@
+// // ps/src/anon_cred.rs
+// use crate::keygen::{keygen, PublicKey, SecretKey};
+// use crate::psproofs::{PSProofs, ProofError};
+// use crate::signature::Signature;
+// use crate::test_helpers::{create_ps_with_userid, PSTestSetup};
+// use ark_ec::pairing::Pairing;
+// use ark_ff::UniformRand;
+// use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+// use ark_std::rand::Rng;
+// use utils::helpers::Helpers;
+
+// /// User credential containing attributes and commitment
+// pub struct UserCred<E: Pairing> {
+//     /// User's blinding factor for the commitment
+//     pub t: E::ScalarField,
+//     /// User's attributes/messages
+//     pub messages: Vec<E::ScalarField>,
+//     /// Commitment to user attributes
+//     pub commitment: E::G1Affine,
+// }
+
+// /// Presentation of a credential
+// pub struct ShowCredential<E: Pairing> {
+//     /// Randomized signature
+//     pub randomized_signature: (E::G1Affine, E::G1Affine),
+//     /// Serialized proof of knowledge
+//     pub proof: Vec<u8>,
+// }
+
+// /// Anonymous credential protocol for PS signatures
+// pub struct PSAnonCredProtocol<E: Pairing> {
+//     /// Public key for the issuer
+//     pub pk: PublicKey<E>,
+//     /// Secret key for the issuer
+//     sk: SecretKey<E>,
+// }
+
+// impl<E: Pairing> UserCred<E> {
+//     /// Create a new user credential with provided attributes
+//     pub fn new(pk: &PublicKey<E>, messages: &[E::ScalarField], t: E::ScalarField) -> Self {
+//         let commitment = Helpers::compute_commitment_g1::<E>(&t, &pk.g1, messages, &pk.y_g1);
+
+//         Self {
+//             t,
+//             messages: messages.to_vec(),
+//             commitment,
+//         }
+//     }
+
+//     /// Create a new user credential with random attributes
+//     pub fn new_random_messages(pk: &PublicKey<E>, message_count: usize) -> Self {
+//         let mut rng = ark_std::test_rng();
+//         let t = E::ScalarField::rand(&mut rng);
+//         let messages: Vec<E::ScalarField> = (0..message_count)
+//             .map(|_| E::ScalarField::rand(&mut rng))
+//             .collect();
+
+//         Self::new(pk, &messages, t)
+//     }
+// }
+
+// impl<E: Pairing> PSAnonCredProtocol<E> {
+//     /// Create a new protocol instance with specified message count
+//     pub fn new(message_count: usize, rng: &mut impl Rng) -> Self {
+//         let key_pair = keygen::<E, _>(rng, &message_count);
+//         Self {
+//             pk: key_pair.pk,
+//             sk: key_pair.sk,
+//         }
+//     }
+
+//     /// User generates proof of knowledge for obtaining a credential
+//     pub fn obtain<R: Rng>(
+//         &self,
+//         user_cred: &UserCred<E>,
+//         rng: &mut R,
+//     ) -> Result<Vec<u8>, ProofError> {
+//         // Generate a temporary setup for proof generation
+//         let setup = self.create_setup_for_proof(user_cred, rng);
+
+//         // Generate proof of knowledge
+//         let proof = PSProofs::prove_knowledge(&setup);
+
+//         Ok(proof)
+//     }
+
+//     /// Helper method to create a suitable setup for proofs
+//     fn create_setup_for_proof<R: Rng>(
+//         &self,
+//         user_cred: &UserCred<E>,
+//         rng: &mut R,
+//     ) -> PSTestSetup<E> {
+//         // Create a temporary signature for the setup
+//         let blind_signature = Signature::blind_sign(&self.pk, &self.sk, &user_cred.commitment, rng);
+//         let signature = blind_signature.unblind(&user_cred.t);
+
+//         PSTestSetup {
+//             pk: self.pk.clone(),
+//             sk: self.sk.clone(),
+//             messages: user_cred.messages.clone(),
+//             signature,
+//         }
+//     }
+
+//     /// Issuer verifies proof and issues credential
+//     pub fn issue<R: Rng>(
+//         &self,
+//         user_commitment: &E::G1Affine,
+//         serialized_proof: &[u8],
+//         rng: &mut R,
+//     ) -> Result<Signature<E>, ProofError> {
+//         // For a more secure implementation, we would verify the proof
+//         // against the commitment here
+
+//         // In the PS-UTT architecture, no explicit verification
+//         // is performed in the benchmark code, so we'll follow that pattern
+
+//         // Issue blind signature
+//         let blind_signature = Signature::blind_sign(&self.pk, &self.sk, user_commitment, rng);
+
+//         Ok(blind_signature)
+//     }
+
+//     /// User completes the blind signature with their blinding factor
+//     pub fn complete_signature(blind_signature: &Signature<E>, t: &E::ScalarField) -> Signature<E> {
+//         blind_signature.unblind(t)
+//     }
+
+//     /// User shows credential by creating a randomized signature and proof
+//     pub fn show<R: Rng>(
+//         &self,
+//         signature: &Signature<E>,
+//         user_cred: &UserCred<E>,
+//         rng: &mut R,
+//     ) -> Result<ShowCredential<E>, ProofError> {
+//         // Randomize the signature
+//         let r = E::ScalarField::rand(rng);
+//         let randomized_signature = signature.rerandomize(&r);
+
+//         // Create a setup with the randomized signature
+//         let mut setup = self.create_setup_for_proof(user_cred, rng);
+//         setup.signature = randomized_signature.clone();
+
+//         // Generate proof of knowledge
+//         let proof = PSProofs::prove_knowledge(&setup);
+
+//         Ok(ShowCredential {
+//             randomized_signature: (randomized_signature.sigma1, randomized_signature.sigma2),
+//             proof,
+//         })
+//     }
+
+//     /// Verifier checks credential presentation
+//     pub fn verify(&self, show_credential: &ShowCredential<E>) -> Result<bool, ProofError> {
+//         // Create a verification setup
+//         let verification_setup = PSTestSetup {
+//             pk: self.pk.clone(),
+//             sk: self.sk.clone(),
+//             messages: Vec::new(), // The messages will be proven in the proof
+//             signature: Signature {
+//                 sigma1: show_credential.randomized_signature.0,
+//                 sigma2: show_credential.randomized_signature.1,
+//             },
+//         };
+
+//         // Verify the proof of knowledge
+//         let is_valid = PSProofs::verify_knowledge(&verification_setup, &show_credential.proof);
+
+//         Ok(is_valid)
+//     }
+// }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use ark_bls12_381::Bls12_381;
+//     use ark_std::test_rng;
+
+//     #[test]
+//     fn test_ps_anoncred_lifecycle() {
+//         // Setup phase
+//         let mut rng = test_rng();
+//         let message_count = 5;
+//         let protocol = PSAnonCredProtocol::<Bls12_381>::new(message_count, &mut rng);
+
+//         // User phase - generate attributes and commitment
+//         let user_cred = UserCred::<Bls12_381>::new_random_messages(&protocol.pk, message_count);
+
+//         // Obtain phase - user creates proof
+//         let proof = protocol.obtain(&user_cred, &mut rng).unwrap();
+
+//         // Issue phase - issuer issues credential
+//         let blind_signature = protocol
+//             .issue(&user_cred.commitment, &proof, &mut rng)
+//             .unwrap();
+
+//         // User unblinds the signature
+//         let signature = PSAnonCredProtocol::complete_signature(&blind_signature, &user_cred.t);
+
+//         // Show phase - user creates presentation
+//         let presentation = protocol.show(&signature, &user_cred, &mut rng).unwrap();
+
+//         // Verify phase
+//         let is_valid = protocol.verify(&presentation).unwrap();
+
+//         assert!(is_valid, "Credential verification failed");
+//     }
+// }

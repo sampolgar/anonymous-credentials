@@ -5,6 +5,7 @@ use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::ops::Neg;
 use schnorr::schnorr_pairing::SchnorrProtocolPairing;
+// use schnorr::schnorr_pairing::{SchnorrCommitment, SchnorrProtocolPairing};
 use thiserror::Error;
 use utils::helpers::Helpers;
 
@@ -39,6 +40,15 @@ pub struct EqualityProof<E: Pairing> {
     pub equality_blindings: Vec<E::ScalarField>,
 }
 
+/// Proof of knowledge of a commitment in the G1 group
+// #[derive(CanonicalSerialize, CanonicalDeserialize, Debug, Clone)]
+// pub struct CommitmentProof<E: Pairing> {
+//     pub commitment: E::G1Affine,
+//     pub schnorr_commitment: SchnorrCommitment<E::G1Affine>,
+//     pub bases: Vec<E::G1Affine>,
+//     pub challenge: E::ScalarField,
+//     pub responses: Vec<E::ScalarField>,
+// }
 #[derive(Error, Debug)]
 pub enum ProofError {
     #[error("Invalid disclosed index")]
@@ -53,11 +63,46 @@ pub enum ProofError {
     NoEqualityIndices,
     #[error("No equality checks provided")]
     NoEqualityChecks,
+    #[error("Invalid proof")]
+    InvalidProof,
 }
 
 pub struct PSProofs;
 
 impl PSProofs {
+    // pub fn pok_commitment_prove<E: Pairing>(
+    //     commitment: E::G1Affine,
+    // ) -> Result<Vec<u8>, ProofError> {
+    //     let mut rng = ark_std::test_rng();
+
+    //     // Get bases and exponents for the proof
+    //     let bases = commitment.pp.get_g1_bases();
+    //     let exponents = commitment.get_exponents();
+
+    //     // Generate Schnorr commitment
+    //     let schnorr_commitment = SchnorrProtocol::commit(&bases, &mut rng);
+
+    //     // Generate challenge
+    //     let challenge = E::ScalarField::rand(&mut rng);
+
+    //     // Generate responses
+    //     let responses = SchnorrProtocol::prove(&schnorr_commitment, &exponents, &challenge);
+
+    //     // Create and serialize proof with explicit type annotation
+    //     let proof: CommitmentProof<E> = CommitmentProof {
+    //         commitment: commitment.cmg1,
+    //         schnorr_commitment,
+    //         bases,
+    //         challenge,
+    //         responses: responses.0,
+    //     };
+
+    //     let mut serialized_proof = Vec::new();
+    //     proof.serialize_compressed(&mut serialized_proof)?;
+
+    //     Ok(serialized_proof)
+    // }
+
     pub fn prove_knowledge<E: Pairing>(setup: &PSTestSetup<E>) -> Vec<u8> {
         let mut rng = ark_std::test_rng();
         let t = E::ScalarField::rand(&mut rng);

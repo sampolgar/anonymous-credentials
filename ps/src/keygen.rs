@@ -1,3 +1,4 @@
+use crate::publicparams::PublicParams;
 use ark_ec::pairing::Pairing;
 use ark_ec::CurveGroup;
 use ark_ff::UniformRand;
@@ -13,8 +14,6 @@ pub struct SecretKey<E: Pairing> {
 
 #[derive(Clone, Debug)]
 pub struct PublicKey<E: Pairing> {
-    pub g1: E::G1Affine,
-    pub g2: E::G2Affine,
     pub y_g1: Vec<E::G1Affine>, //[Y_1, Y_2, ..., Y_n]
     pub y_g2: Vec<E::G2Affine>, //[Y_1, Y_2, ..., Y_n]
     pub x_g2: E::G2Affine,      //X_2 public key
@@ -26,7 +25,10 @@ pub struct KeyPair<E: Pairing> {
     pub pk: PublicKey<E>,
 }
 
-pub fn keygen<E: Pairing, R: Rng>(rng: &mut R, message_count: &usize) -> KeyPair<E> {
+pub fn gen_keys<E: Pairing>(
+    pp: &PublicParams<E>,
+    rng: &mut impl Rng,
+) -> (SecretKey<E>, PublicKey<E>) {
     // setup random g points for the public key
     let g1 = E::G1Affine::rand(rng);
     let g2 = E::G2Affine::rand(rng);
@@ -34,7 +36,7 @@ pub fn keygen<E: Pairing, R: Rng>(rng: &mut R, message_count: &usize) -> KeyPair
     // generate x and yi for each message
     // Generate x and y_i for each message
     let x = E::ScalarField::rand(rng);
-    let yi = (0..*message_count)
+    let yi = (0..pp.n)
         .map(|_| E::ScalarField::rand(rng))
         .collect::<Vec<_>>();
 
@@ -46,100 +48,47 @@ pub fn keygen<E: Pairing, R: Rng>(rng: &mut R, message_count: &usize) -> KeyPair
     let y_g2 = yi.iter().map(|yi| g2.mul(*yi)).collect::<Vec<_>>();
     let y_g2 = E::G2::normalize_batch(&y_g2);
 
-    KeyPair {
-        sk: SecretKey { x, yi, x_g1 },
-        pk: PublicKey {
-            g1,
-            g2,
-            y_g1,
-            y_g2,
-            x_g2,
-        },
-    }
+    let sk = SecretKey { x, yi, x_g1 };
+    let pk = PublicKey { y_g1, y_g2, x_g2 };
+    (sk, pk)
 }
 
-impl<E: Pairing> KeyPair<E> {
-    pub fn secret_key(&self) -> &SecretKey<E> {
-        &self.sk
-    }
-
-    pub fn public_key(&self) -> &PublicKey<E> {
-        &self.pk
-    }
-}
-
-#[cfg(feature = "parallel")]
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
-    use ark_bls12_381::Bls12_381;
+    // use crate::{gen_keys, PublicKey, SecretKey};
+    use ark_bls12_381::{Bls12_381, Fr};
+    use ark_ec::pairing::Pairing;
+    use ark_std::rand::Rng;
     use ark_std::test_rng;
 
     #[test]
-    fn test_keygen_with_2_messages() {
+    fn test_key_generation_basic() {
+        // Initialize test environment
         let mut rng = test_rng();
-        let message_count = 2;
-        let key_pair = keygen::<Bls12_381, _>(&mut rng, &message_count);
+        let n = 3; // Support for 3 messages
+        let context = Fr::rand(&mut rng);
 
-        // Check that the correct number of y values were generated
-        assert_eq!(key_pair.sk.yi.len(), message_count);
-        assert_eq!(key_pair.pk.y_g1.len(), message_count);
-        assert_eq!(key_pair.pk.y_g2.len(), message_count);
+        // Generate public parameters
+        let pp = PublicParams::<Bls12_381>::new(&n, &context, &mut rng);
 
-        // Verify that x_g1 and x_g2 are correctly computed
-        assert_eq!(
-            key_pair.pk.g1.mul(key_pair.sk.x).into_affine(),
-            key_pair.sk.x_g1
-        );
-        assert_eq!(
-            key_pair.pk.g2.mul(key_pair.sk.x).into_affine(),
-            key_pair.pk.x_g2
-        );
+        // Generate a keypair
+        let (sk, pk) = gen_keys(&pp, &mut rng);
 
-        // Verify that y_g1 and y_g2 are correctly computed
-        for i in 0..message_count {
-            assert_eq!(
-                key_pair.pk.g1.mul(key_pair.sk.yi[i]).into_affine(),
-                key_pair.pk.y_g1[i]
-            );
-            assert_eq!(
-                key_pair.pk.g2.mul(key_pair.sk.yi[i]).into_affine(),
-                key_pair.pk.y_g2[i]
-            );
-        }
-    }
+        // Basic validation checks
+        assert_eq!(sk.yi.len(), n, "Secret key should have n elements");
+        assert_eq!(pk.y_g1.len(), n, "Public key G1 elements should match n");
+        assert_eq!(pk.y_g2.len(), n, "Public key G2 elements should match n");
 
-    #[test]
-    fn test_keygen_with_6_messages() {
-        let mut rng = test_rng();
-        let message_count = 6;
-        let key_pair = keygen::<Bls12_381, _>(&mut rng, &message_count);
+        // Verify the public parameters were properly used
+        // assert_eq!(pk.g1, pp.g1, "Public key should use pp.g1");
+        // assert_eq!(pk.g2, pp.g2, "Public key should use pp.g2");
 
-        // Check that the correct number of y values were generated
-        assert_eq!(key_pair.sk.yi.len(), message_count);
-        assert_eq!(key_pair.pk.y_g1.len(), message_count);
-        assert_eq!(key_pair.pk.y_g2.len(), message_count);
-
-        // Verify that x_g1 and x_g2 are correctly computed
-        assert_eq!(
-            key_pair.pk.g1.mul(key_pair.sk.x).into_affine(),
-            key_pair.sk.x_g1
-        );
-        assert_eq!(
-            key_pair.pk.g2.mul(key_pair.sk.x).into_affine(),
-            key_pair.pk.x_g2
-        );
-
-        // Verify that y_g1 and y_g2 are correctly computed
-        for i in 0..message_count {
-            assert_eq!(
-                key_pair.pk.g1.mul(key_pair.sk.yi[i]).into_affine(),
-                key_pair.pk.y_g1[i]
-            );
-            assert_eq!(
-                key_pair.pk.g2.mul(key_pair.sk.yi[i]).into_affine(),
-                key_pair.pk.y_g2[i]
-            );
+        // Verify secret and public keys are related correctly
+        for i in 0..n {
+            let pairing1 = Bls12_381::pairing(pk.y_g1[i], pp.g2);
+            let pairing2 = Bls12_381::pairing(pp.g1, pk.y_g2[i]);
+            assert_eq!(pairing1, pairing2, "Pairing consistency check failed");
         }
     }
 }

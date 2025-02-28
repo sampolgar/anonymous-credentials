@@ -36,7 +36,7 @@ impl<E: Pairing> Signature<E> {
             sigma2: (self.sigma2.into_group() - self.sigma1.mul(*t)).into_affine(),
         }
     }
-    
+
     // rerandomize signature by scalar
     pub fn rerandomize(&self, t: &E::ScalarField) -> Self {
         Self {
@@ -67,7 +67,7 @@ impl<E: Pairing> Signature<E> {
         }
     }
 
-    // In Short Randomizable Signatures the pairing verification is 
+    // In Short Randomizable Signatures the pairing verification is
     // e(sigma1', tilde_X) . \Sum e(sigma1', Y_j)^m_j . e(sigma1',tilde_g)^t = e(sigma2', tilde_g)
     // we simplify by taking left most pairing over to rhs
     // \Sum e(sigma1', Y_j)^m_j . e(sigma1',tilde_g)^t  =  e(sigma2', tilde_g) / e(sigma1', tilde_X)
@@ -75,7 +75,7 @@ impl<E: Pairing> Signature<E> {
     pub fn generate_commitment_gt(&self, pk: &keygen::PublicKey<E>) -> PairingOutput<E> {
         let signature_commitment_gt = Helpers::compute_gt::<E>(
             &[self.sigma2, self.sigma1.into_group().neg().into_affine()],
-            &[pk.g2, pk.x_g2],
+            &[pp.g2, pk.x_g2],
         );
         signature_commitment_gt
     }
