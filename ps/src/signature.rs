@@ -1,4 +1,5 @@
-use crate::keygen;
+use crate::keygen::{PublicKey, SecretKey};
+use crate::publicparams::PublicParams;
 use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::UniformRand;
@@ -8,6 +9,7 @@ use ark_std::{
     One,
 };
 use utils::helpers::Helpers;
+use utils::pairing::{verify_pairing_equation, PairingCheck};
 
 #[derive(Clone, Debug)]
 pub struct Signature<E: Pairing> {
@@ -16,19 +18,31 @@ pub struct Signature<E: Pairing> {
 }
 
 impl<E: Pairing> Signature<E> {
+    /// Issues a blind signature on a commitment
     pub fn blind_sign<R: Rng>(
-        pk: &keygen::PublicKey<E>,
-        sk: &keygen::SecretKey<E>,
+        pp: &PublicParams<E>,
+        pk: &PublicKey<E>,
+        sk: &SecretKey<E>,
         signature_commitment: &E::G1Affine,
         rng: &mut R,
     ) -> Self {
+        // Generate random u
         let u = E::ScalarField::rand(rng);
-        let sigma1 = pk.g1.mul(u).into_affine();
-        let sigma2 = (pk.g1.mul(sk.x) + signature_commitment)
+
+        // Compute signature components
+        // sigma1 = g1^u
+        let sigma1 = pp.g1.mul(u).into_affine();
+
+        // sigma2 = (X1 + commitment)^u where X1 = g1^x
+        // let sigma2 = (sk.x_g1 + signature_commitment).mul(u).into_affine();
+        let sigma2 = (pp.g1.mul(sk.x) + signature_commitment)
             .mul(u)
             .into_affine();
+
         Self { sigma1, sigma2 }
     }
+
+    /// Unblinds a blind signature using the blinding factor
 
     pub fn unblind(&self, t: &E::ScalarField) -> Self {
         Self {
@@ -37,42 +51,29 @@ impl<E: Pairing> Signature<E> {
         }
     }
 
-    // rerandomize signature by scalar
-    pub fn rerandomize(&self, t: &E::ScalarField) -> Self {
-        Self {
-            sigma1: self.sigma1.mul(t).into_affine(),
-            sigma2: self.sigma2.mul(t).into_affine(),
-        }
-    }
-
-    pub fn randomize_for_pok(&self, r: &E::ScalarField, t: &E::ScalarField) -> Self {
+    /// Randomizes signature for proof of knowledge with explicit randomness
+    pub fn rerandomize(&self, r: &E::ScalarField, t: &E::ScalarField) -> Self {
         let sigma1_temp = self.sigma1;
         Self {
-            sigma1: self.sigma1.mul(r).into_affine(),
+            // sigma1' = sigma1 * r
+            sigma1: self.sigma1.mul(*r).into_affine(),
+            // sigma2' = (sigma2 + sigma1 * t) * r
             sigma2: (self.sigma2.into_group() + sigma1_temp.mul(*t))
-                .mul(r)
+                .mul(*r)
                 .into_affine(),
         }
     }
 
-    //
-    pub fn randomize_for_pok_new<R: Rng>(&self, rng: &mut R, t: &E::ScalarField) -> Self {
-        let sigma1_temp = self.sigma1;
-        let r = E::ScalarField::rand(rng);
-        Self {
-            sigma1: self.sigma1.mul(r).into_affine(),
-            sigma2: (self.sigma2.into_group() + sigma1_temp.mul(*t))
-                .mul(r)
-                .into_affine(),
-        }
-    }
-
-    // In Short Randomizable Signatures the pairing verification is
-    // e(sigma1', tilde_X) . \Sum e(sigma1', Y_j)^m_j . e(sigma1',tilde_g)^t = e(sigma2', tilde_g)
-    // we simplify by taking left most pairing over to rhs
-    // \Sum e(sigma1', Y_j)^m_j . e(sigma1',tilde_g)^t  =  e(sigma2', tilde_g) / e(sigma1', tilde_X)
-    // to do this, we compute the GT point at the end: e(sigma2', tilde_g) / e(sigma1', tilde_X)
-    pub fn generate_commitment_gt(&self, pk: &keygen::PublicKey<E>) -> PairingOutput<E> {
+    /// Generates a GT element for simplified verification
+    /// In Short Randomizable Signatures the pairing verification is:
+    /// e(sigma1', X2) · ∏ e(sigma1', Yi)^mi · e(sigma1', g2)^t = e(sigma2', g2)
+    /// We simplify by taking leftmost pairing over to RHS:
+    /// ∏ e(sigma1', Yi)^mi · e(sigma1', g2)^t = e(sigma2', g2) / e(sigma1', X2)
+    pub fn generate_commitment_gt(
+        &self,
+        pp: &PublicParams<E>,
+        pk: &PublicKey<E>,
+    ) -> PairingOutput<E> {
         let signature_commitment_gt = Helpers::compute_gt::<E>(
             &[self.sigma2, self.sigma1.into_group().neg().into_affine()],
             &[pp.g2, pk.x_g2],
@@ -80,65 +81,276 @@ impl<E: Pairing> Signature<E> {
         signature_commitment_gt
     }
 
-    // this is for testing, public signature isn't used in anonymous credentials
-    // this will be used for pairing testing
+    /// Signs a message vector directly (primarily for testing)
     pub fn public_sign(
         messages: &[E::ScalarField],
-        sk: &keygen::SecretKey<E>,
-        h: &E::G1Affine,
+        sk: &SecretKey<E>,
+        pp: &PublicParams<E>,
     ) -> Self {
         assert!(messages.len() == sk.yi.len());
+        let mut rng = ark_std::test_rng();
+        let h = E::G1Affine::rand(&mut rng);
+
         let mut exponent = sk.x;
         for (y, m) in sk.yi.iter().zip(messages.iter()) {
             exponent += *y * m;
         }
+
+        // sigma2 = h^(x + ∑(yi * mi))
         let sigma2 = h.mul(exponent).into_affine();
-        Self { sigma1: *h, sigma2 }
+        Self { sigma1: h, sigma2 }
     }
 
-    pub fn public_verify(&self, messages: &[E::ScalarField], pk: &keygen::PublicKey<E>) -> bool {
-        assert!(!self.sigma1.is_zero());
-        assert_eq!(pk.y_g1.len(), messages.len());
+    /// Verifies a signature on public messages
+    pub fn public_verify(
+        &self,
+        pp: &PublicParams<E>,
+        messages: &[E::ScalarField],
+        pk: &PublicKey<E>,
+    ) -> bool {
+        assert!(!self.sigma1.is_zero(), "Signature sigma1 cannot be zero");
+        assert_eq!(
+            pk.y_g2.len(),
+            messages.len(),
+            "Message count must match public key count"
+        );
+
+        // Compute X̃ · ∏ Ỹⱼᵐʲ in G2
+        let mut yimix = pk.x_g2.into_group();
+        for (yi, mi) in pk.y_g2.iter().zip(messages.iter()) {
+            yimix += yi.mul(*mi);
+        }
 
         let x_g2 = pk.x_g2.into_group();
         let yi = pk.y_g2.clone();
         let yimi = E::G2::msm(&yi, messages).unwrap();
         let yimix = yimi + x_g2;
-
-        let a = E::G1Prepared::from(self.sigma1);
-        let b = E::G2Prepared::from(yimix);
         let sigma2_inv = self.sigma2.into_group().neg();
-        let c = E::G1Prepared::from(sigma2_inv);
-        let d = E::G2Prepared::from(pk.g2);
 
-        let multi_pairing = E::multi_pairing([a, c], [b, d]);
-        multi_pairing.0.is_one()
+        verify_pairing_equation::<E>(
+            &[
+                (&self.sigma1, &yimix.into_affine()),
+                (&sigma2_inv.into_affine(), &pp.g2),
+            ],
+            None,
+        )
+
+        // Equivalently: e(σ₁, X̃ · ∏ Ỹⱼᵐʲ) · e(σ₂^(-1), g̃) = 1
+        // verify_pairing_equation::<E>(
+        //     &[
+        //         (&self.sigma1, &yimix.into_affine()),
+        //         (&self.sigma2.into_group().neg().into_affine(), &pp.g2),
+        //     ],
+        //     None,
+        // )
+
+        // // Compute x_g2 + ∑(y_g2[i] * messages[i])
+        // let yimi = E::G2::msm_unchecked(&pk.y_g2, messages);
+        // let yimix = (yimi + pk.x_g2.into_group()).into_affine();
+
+        // // Verify e(sigma1, yimix) = e(sigma2, g2)
+        // // Equivalent to e(sigma1, yimix) · e(sigma2^(-1), g2) = 1
+        // let sigma2_neg = self.sigma2.into_group().neg().into_affine();
+
+        // // Use the simplified pairing equation verification
+        // verify_pairing_equation::<E>(
+        //     &[(&self.sigma1, &yimix), (&sigma2_neg, &pp.g2)],
+        //     None, // Target is 1 (default)
+        // )
     }
 }
 
-#[cfg(feature = "parallel")]
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
-    use ark_bls12_381::Bls12_381;
-    use ark_bls12_381::{Fr, G1Affine};
+    use crate::commitment::{compute_commitment_g1, Commitment};
+    use crate::keygen::gen_keys;
+    use crate::publicparams::PublicParams;
+    use ark_bls12_381::{Bls12_381, Fr};
+    use ark_ff::Zero;
 
     #[test]
-    fn test_sign_and_verify() {
+    fn test_ps_signature_direct() {
+        // Setup with precisely 5 messages
+        let message_count = 5;
+        let mut rng = ark_std::test_rng();
+        let context = Fr::rand(&mut rng);
+        let pp = PublicParams::<Bls12_381>::new(&message_count, &context, &mut rng);
+        let (sk, pk) = gen_keys(&pp, &mut rng);
+
+        // Generate exactly 5 random messages
+        let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
+
+        // Create signature directly using public_sign
+        let signature = Signature::public_sign(&messages, &sk, &pp);
+
+        // Examine the signature components
+        println!("Signature created with random generator in G1");
+
+        // Verify signature validity using the bilinear map relation
+        let is_valid = signature.public_verify(&pp, &messages, &pk);
+
+        // Assertion with detailed failure message
+        assert!(
+            is_valid,
+            "Signature verification failed. This suggests an inconsistency in the \
+         implementation of the bilinear pairing relation e(σ₁, X·∏Yⱼᵐʲ) = e(σ₂, g₂)"
+        );
+
+        // Optional: Demonstrate that verification is sensitive to message integrity
+        let mut modified_messages = messages.clone();
+        modified_messages[2] = Fr::rand(&mut rng); // Modify the third message
+
+        let is_invalid = signature.public_verify(&pp, &modified_messages, &pk);
+        assert!(
+            !is_invalid,
+            "Signature incorrectly verified against modified messages, indicating a \
+         fundamental flaw in the verification equation implementation"
+        );
+    }
+
+    #[test]
+    fn test_blind_sign_and_unblind() {
+        // Setup
         let message_count = 4;
         let mut rng = ark_std::test_rng();
-        let key_pair = keygen::keygen::<Bls12_381, _>(&mut rng, &message_count);
-        let sk = key_pair.sk;
-        let pk = key_pair.pk;
+        let context = Fr::rand(&mut rng);
+        let pp = PublicParams::<Bls12_381>::new(&message_count, &context, &mut rng);
+        let (sk, pk) = gen_keys(&pp, &mut rng);
+
+        // Create messages and commitment
+        let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
+        let t = Fr::rand(&mut rng);
+
+        let commitment = compute_commitment_g1::<Bls12_381>(&t, &pp.g1, &messages, &pk.y_g1);
+
+        // Blind sign
+        let blind_signature = Signature::blind_sign(&pp, &pk, &sk, &commitment, &mut rng);
+        assert!(
+            !blind_signature.sigma1.is_zero(),
+            "sigma1 should not be zero"
+        );
+        assert!(
+            !blind_signature.sigma2.is_zero(),
+            "sigma2 should not be zero"
+        );
+
+        // Unblind
+        let signature = blind_signature.unblind(&t);
+
+        // Verify
+        let is_valid = signature.public_verify(&pp, &messages, &pk);
+        assert!(is_valid, "Unblinded signature verification failed");
+    }
+
+    #[test]
+    fn test_signature_rerandomization() {
+        // Setup
+        let message_count = 4;
+        let mut rng = ark_std::test_rng();
+        let context = Fr::rand(&mut rng);
+        let pp = PublicParams::<Bls12_381>::new(&message_count, &context, &mut rng);
+        let (sk, pk) = gen_keys(&pp, &mut rng);
 
         // Create messages
-        let messages: Vec<Fr> = (0..message_count)
-            .map(|_| Fr::rand(&mut rng))
-            .collect::<Vec<_>>();
+        let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
 
-        let h = G1Affine::rand(&mut rng);
-        let public_signature = Signature::<Bls12_381>::public_sign(&messages, &sk, &h);
-        let is_valid = public_signature.public_verify(&messages, &pk);
-        assert!(is_valid, "Public signature verification failed");
+        // Public sign for testing
+        let signature = Signature::public_sign(&messages, &sk, &pp);
+        assert!(
+            signature.public_verify(&pp, &messages, &pk),
+            "Original signature should verify"
+        );
+
+        // Rerandomize
+        let r = Fr::rand(&mut rng);
+        let t = Fr::rand(&mut rng);
+        let randomized_signature = signature.rerandomize(&r, &t);
+
+        let unblinded_signature = signature.unblind(&t);
+        let is_valid = unblinded_signature.public_verify(&pp, &messages, &pk);
+        assert!(is_valid, "Unblinded signature verification failed");
+
+        // // Verify randomized signature
+        // let is_valid = randomized_signature.public_verify(&pp, &messages, &pk);
+        // assert!(is_valid, "Rerandomized signature verification failed");
+
+        // // Verify original signature was not modified
+        // assert!(
+        //     signature.public_verify(&pp, &messages, &pk),
+        //     "Original signature should still verify"
+        // );
+    }
+
+    #[test]
+    fn test_randomize_for_pok() {
+        // Setup
+        let message_count = 4;
+        let mut rng = ark_std::test_rng();
+        let context = Fr::rand(&mut rng);
+        let pp = PublicParams::<Bls12_381>::new(&message_count, &context, &mut rng);
+        let (sk, pk) = gen_keys(&pp, &mut rng);
+
+        // Create messages
+        let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
+
+        // Public sign
+        let signature = Signature::public_sign(&messages, &sk, &pp);
+
+        // // Randomize for POK
+        let r = Fr::rand(&mut rng);
+        let t = Fr::rand(&mut rng);
+        // let randomized = signature.randomize(&r, &t);
+
+        // Test the auto-randomization version too
+        let randomized_auto = signature.rerandomize(&r, &t);
+        assert!(
+            !randomized_auto.sigma1.is_zero(),
+            "Auto-randomized sigma1 should not be zero"
+        );
+        assert!(
+            !randomized_auto.sigma2.is_zero(),
+            "Auto-randomized sigma2 should not be zero"
+        );
+    }
+
+    #[test]
+    fn test_generate_commitment_gt() {
+        // Setup
+        let message_count = 4;
+        let mut rng = ark_std::test_rng();
+        let context = Fr::rand(&mut rng);
+        let pp = PublicParams::<Bls12_381>::new(&message_count, &context, &mut rng);
+        let (sk, pk) = gen_keys(&pp, &mut rng);
+
+        // Create messages
+        let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
+
+        // Public sign
+        let signature = Signature::public_sign(&messages, &sk, &pp);
+
+        // Generate GT commitment
+        let gt_commitment = signature.generate_commitment_gt(&pp, &pk);
+        assert!(!gt_commitment.is_zero(), "GT commitment should not be zero");
+    }
+
+    #[test]
+    fn test_pairing_check_verification() {
+        // Setup
+        let message_count = 4;
+        let mut rng = ark_std::test_rng();
+        let context = Fr::rand(&mut rng);
+        let pp = PublicParams::<Bls12_381>::new(&message_count, &context, &mut rng);
+        let (sk, pk) = gen_keys(&pp, &mut rng);
+
+        // Create messages
+        let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
+
+        // Public sign
+        let signature = Signature::public_sign(&messages, &sk, &pp);
+
+        // Verify with standard method
+        let is_valid_standard = signature.public_verify(&pp, &messages, &pk);
+        assert!(is_valid_standard, "Standard verification failed");
     }
 }

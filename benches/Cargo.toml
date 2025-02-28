@@ -24,15 +24,6 @@ bbs_plus = {default-features = false, path = "../bbs_plus" }
 criterion = "0.5"
 ark-serialize = { version = "^0.4.1", default-features = false, features = [ "derive" ] }
 
-[[bench]]
-name = "ps_equality"
-path = "benches/ps_equality.rs"
-harness = false
-
-[[bench]]
-name = "psutt_equality_split"
-path = "benches/psutt_equality_split.rs"
-harness = false
 
 [[bench]]
 name = "psutt_improved_equality_split"

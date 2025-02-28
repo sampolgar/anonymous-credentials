@@ -30,8 +30,8 @@ pub fn gen_keys<E: Pairing>(
     rng: &mut impl Rng,
 ) -> (SecretKey<E>, PublicKey<E>) {
     // setup random g points for the public key
-    let g1 = E::G1Affine::rand(rng);
-    let g2 = E::G2Affine::rand(rng);
+    // let g1 = E::G1Affine::rand(rng);
+    // let g2 = E::G2Affine::rand(rng);
 
     // generate x and yi for each message
     // Generate x and y_i for each message
@@ -40,12 +40,12 @@ pub fn gen_keys<E: Pairing>(
         .map(|_| E::ScalarField::rand(rng))
         .collect::<Vec<_>>();
 
-    let x_g1 = g1.mul(x).into_affine();
-    let y_g1 = yi.iter().map(|yi| g1.mul(*yi)).collect::<Vec<_>>();
+    let x_g1 = pp.g1.mul(x).into_affine();
+    let y_g1 = yi.iter().map(|yi| pp.g1.mul(*yi)).collect::<Vec<_>>();
     let y_g1 = E::G1::normalize_batch(&y_g1);
 
-    let x_g2 = g2.mul(x).into_affine();
-    let y_g2 = yi.iter().map(|yi| g2.mul(*yi)).collect::<Vec<_>>();
+    let x_g2 = pp.g2.mul(x).into_affine();
+    let y_g2 = yi.iter().map(|yi| pp.g2.mul(*yi)).collect::<Vec<_>>();
     let y_g2 = E::G2::normalize_batch(&y_g2);
 
     let sk = SecretKey { x, yi, x_g1 };
