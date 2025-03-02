@@ -18,6 +18,13 @@ pub struct PSSignature<E: Pairing> {
     pub sigma2: E::G1Affine,
 }
 
+// pub struct PSSignatureRandomized<E: Pairing> {
+//     pub sigma1: E::G1Affine,
+//     pub sigma2: E::G1Affine,
+//     pub bases_g1: Vec<E::G1Affine>,
+//     pub bases_g2: Vec<E::G2Affine>,
+// }
+
 impl<E: Pairing> PSSignature<E> {
     /// Issues a blind signature on a commitment
     pub fn blind_sign<R: Rng>(

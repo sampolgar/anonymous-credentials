@@ -41,11 +41,13 @@ impl SchnorrProtocolPairing {
             .map(|_| E::ScalarField::rand(rng))
             .collect();
         // scale one side of the pairing eqn by blinding. e(blinding * sigma1, y1)..
-        let scaled_g1bases_by_blindings =
-            Helpers::compute_scaled_points_g1::<E>(None, None, &blindings, &bases_g1);
 
-        let commited_blindings_gt =
-            Helpers::compute_gt::<E>(&scaled_g1bases_by_blindings, &bases_g2);
+        let scaled_sigma1_vec: Vec<E::G1Affine> = blindings
+            .iter()
+            .map(|exp| bases_g1[0].mul(*exp).into_affine())
+            .collect();
+
+        let commited_blindings_gt = Helpers::compute_gt::<E>(&scaled_sigma1_vec, &bases_g2);
 
         SchnorrCommitmentPairing {
             blindings,
