@@ -402,7 +402,7 @@ impl Helpers {
     ///
     /// # Returns
     ///
-    /// A vector of affine group elements with the additional element at the start
+    /// A vector of affine group elements with the additional element at the end
     pub fn add_affine_to_vector<G: CurveGroup>(
         additional_element: &G::Affine,
         elements: &[G::Affine],

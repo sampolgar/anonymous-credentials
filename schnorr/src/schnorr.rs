@@ -9,7 +9,7 @@ use digest::Digest;
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SchnorrCommitment<G: AffineRepr> {
     pub random_blindings: Vec<G::ScalarField>,
-    pub com_t: G,
+    pub commited_blindings: G,
 }
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
@@ -18,7 +18,7 @@ pub struct SchnorrResponses<G: AffineRepr>(pub Vec<G::ScalarField>);
 pub struct SchnorrProtocol;
 
 impl SchnorrProtocol {
-    // commit takes in public_generators and exponents
+    /// returns a commitment to random blindings, the commitment T = g_1^{\rho_1},...,g_L^{\rho_L} from random blindings and bases
     pub fn commit<G: AffineRepr, R: Rng>(
         public_generators: &[G],
         rng: &mut R,
@@ -29,10 +29,11 @@ impl SchnorrProtocol {
             .collect();
         // Compute t = public_generators[0] * random_blindings[0] + ... + public_generators[i] * random_blindings[i]
         // multi-scalar multiplication - efficient
-        let com_t: G = G::Group::msm_unchecked(public_generators, &random_blindings).into_affine();
+        let commited_blindings: G =
+            G::Group::msm_unchecked(public_generators, &random_blindings).into_affine();
         SchnorrCommitment {
             random_blindings,
-            com_t,
+            commited_blindings,
         }
     }
 
@@ -53,10 +54,11 @@ impl SchnorrProtocol {
         random_blindings.insert(0, *equal_blindness);
         // Compute t = public_generators[0] * random_blindings[0] + ... + public_generators[i] * random_blindings[i]
         // multi-scalar multiplication - efficient
-        let com_t: G = G::Group::msm_unchecked(public_generators, &random_blindings).into_affine();
+        let commited_blindings: G =
+            G::Group::msm_unchecked(public_generators, &random_blindings).into_affine();
         SchnorrCommitment {
             random_blindings,
-            com_t,
+            commited_blindings,
         }
     }
 
@@ -78,22 +80,17 @@ impl SchnorrProtocol {
     // y = g1^m1 * g2^m2 * h^r the public commitment
     pub fn verify<G: AffineRepr>(
         public_generators: &[G],
-        y: &G,
+        statement: &G,
         blinding_commitment: &SchnorrCommitment<G>,
-        // blinding_commitment: &G,
         schnorr_responses: &SchnorrResponses<G>,
         challenge: &G::ScalarField,
     ) -> bool {
         //e.g.  LHS = g1^(t1 + e*m1) * g2^(t2 + e*m2) * h^(t3 + e*r)
         let lhs = G::Group::msm_unchecked(public_generators, &schnorr_responses.0).into_affine();
         // com^e + com
-        let rhs = (blinding_commitment.com_t + y.mul(*challenge)).into_affine();
+        let rhs =
+            (blinding_commitment.commited_blindings + statement.mul(*challenge)).into_affine();
         lhs == rhs
-    }
-
-    pub fn compute_random_oracle_challenge<F: PrimeField, D: Digest>(challenge_bytes: &[u8]) -> F {
-        let hash_output = D::digest(challenge_bytes);
-        F::from_be_bytes_mod_order(&hash_output)
     }
 }
 
@@ -111,31 +108,19 @@ mod tests {
         fn check<G: AffineRepr>(rng: &mut impl Rng) {
             let base = G::Group::rand(rng).into_affine();
             let witness = G::ScalarField::rand(rng);
-            let public_statement = base.mul(witness).into_affine();
-            let blinding = G::ScalarField::rand(rng);
+            let statement = base.mul(witness).into_affine();
 
-            let commitment = SchnorrProtocol::commit(&[base], rng);
-            let mut chal_contrib = Vec::new();
-            base.serialize_compressed(&mut chal_contrib).unwrap();
-            public_statement
-                .serialize_compressed(&mut chal_contrib)
-                .unwrap();
-            commitment
-                .com_t
-                .serialize_compressed(&mut chal_contrib)
-                .unwrap();
+            let schnorr_commitment = SchnorrProtocol::commit(&[base], rng);
 
-            let challenge = SchnorrProtocol::compute_random_oracle_challenge::<
-                G::ScalarField,
-                Blake2b512,
-            >(&chal_contrib);
+            let challenge = G::ScalarField::rand(rng);
 
-            let schnorr_responses = SchnorrProtocol::prove(&commitment, &[witness], &challenge);
+            let schnorr_responses =
+                SchnorrProtocol::prove(&schnorr_commitment, &[witness], &challenge);
 
             assert!(SchnorrProtocol::verify(
                 &[base],
-                &public_statement,
-                &commitment,
+                &statement,
+                &schnorr_commitment,
                 &schnorr_responses,
                 &challenge
             ));
@@ -157,22 +142,8 @@ mod tests {
             let public_statement = (base1.mul(witness1) + base2.mul(witness2)).into_affine();
 
             let commitment = SchnorrProtocol::commit(&[base1, base2], rng);
-            let mut chal_contrib = Vec::new();
-            base1.serialize_compressed(&mut chal_contrib).unwrap();
-            base2.serialize_compressed(&mut chal_contrib).unwrap();
-            public_statement
-                .serialize_compressed(&mut chal_contrib)
-                .unwrap();
+            let challenge = G::ScalarField::rand(rng);
 
-            commitment
-                .com_t
-                .serialize_compressed(&mut chal_contrib)
-                .unwrap();
-
-            let challenge = SchnorrProtocol::compute_random_oracle_challenge::<
-                G::ScalarField,
-                Blake2b512,
-            >(&chal_contrib);
             let schnorr_responses =
                 SchnorrProtocol::prove(&commitment, &[witness1, witness2], &challenge);
 
@@ -221,7 +192,3 @@ mod tests {
         assert!(is_valid, "Schnorr proof verification failed");
     }
 }
-
-// Previous imports remain the same...
-
-// Tests remain the same...

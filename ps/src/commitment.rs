@@ -41,27 +41,28 @@ impl<E: Pairing> Commitment<E> {
         }
     }
 
-    // get all exponents of the commitment, C([m_1,...,m_n],r)
+    /// returns commitment exponents C([m_1,...,m_n],t)
     pub fn get_exponents(&self) -> Vec<E::ScalarField> {
         let mut exponents: Vec<E::ScalarField> = self.messages.clone();
         exponents.push(self.t.clone());
         exponents
     }
 
-    // get all exponents of the commitment, C([m_1,...,m_n],r)
+    /// returns commitment bases g_1, g_2, ..., g_L+1
     pub fn get_bases(&self) -> Vec<E::G1Affine> {
         let mut bases: Vec<E::G1Affine> = self.pk.y_g1.clone();
         bases.push(self.pp.g1.clone());
         bases
     }
 
+    /// returns commitment bases g_1, g_2, ..., g_L+1
     pub fn get_bases_g2(&self) -> Vec<E::G2Affine> {
         let mut bases: Vec<E::G2Affine> = self.pk.y_g2.clone();
         bases.push(self.pp.g2.clone());
         bases
     }
 
-    // get pok in g1
+    /// get pok in g1
     pub fn prove_opening(&self) -> Result<Vec<u8>, ProofError> {
         CommitmentProofs::pok_commitment_prove(&self)
     }
@@ -75,6 +76,7 @@ pub fn compute_commitment_g1<E: Pairing>(
     bases: &[E::G1Affine],
 ) -> E::G1Affine {
     // Compute Y1^m1 · ... · Yn^mn using multi-scalar multiplication
+
     let msm = E::G1::msm_unchecked(&bases[..messages.len()], messages);
 
     // Add g1^t to complete the commitment

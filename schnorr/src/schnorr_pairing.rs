@@ -1,14 +1,22 @@
 use ark_ec::pairing::{Pairing, PairingOutput};
+use ark_ec::CurveGroup;
 use ark_ec::Group;
 use ark_ff::{PrimeField, UniformRand, Zero};
 use ark_std::rand::Rng;
-
+use std::ops::Mul;
 use utils::helpers::Helpers;
+use utils::pairing::{create_check, verify_pairing_equation, PairingCheck};
 
 #[derive(Clone, Debug)]
 pub struct SchnorrCommitmentPairing<E: Pairing> {
     pub blindings: Vec<E::ScalarField>,
-    pub t_com: PairingOutput<E>,
+    pub commited_blindings_gt: PairingOutput<E>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SchnorrCommitmentPairingCheck<E: Pairing> {
+    pub blindings: Vec<E::ScalarField>,
+    pub committed_blindings_check: PairingCheck<E>,
 }
 
 #[derive(Clone, Debug)]
@@ -36,9 +44,48 @@ impl SchnorrProtocolPairing {
         let scaled_g1bases_by_blindings =
             Helpers::compute_scaled_points_g1::<E>(None, None, &blindings, &bases_g1);
 
-        let t_com = Helpers::compute_gt::<E>(&scaled_g1bases_by_blindings, &bases_g2);
+        let commited_blindings_gt =
+            Helpers::compute_gt::<E>(&scaled_g1bases_by_blindings, &bases_g2);
 
-        SchnorrCommitmentPairing { blindings, t_com }
+        SchnorrCommitmentPairing {
+            blindings,
+            commited_blindings_gt,
+        }
+    }
+
+    pub fn commit_pairing_checker<E: Pairing, R: Rng>(
+        bases_g1: &[E::G1Affine],
+        bases_g2: &[E::G2Affine],
+        rng: &mut R,
+    ) -> SchnorrCommitmentPairingCheck<E> {
+        assert_eq!(
+            bases_g1.len(),
+            bases_g2.len(),
+            "public_generators lengths must match"
+        );
+
+        // random_blindings hide the exponent like a pedersen commitment e.g. g^m h^r
+        let blindings: Vec<E::ScalarField> = (0..bases_g1.len())
+            .map(|_| E::ScalarField::rand(rng))
+            .collect();
+
+        let scaled_sigma1_vec: Vec<E::G1Affine> = blindings
+            .iter()
+            .map(|exp| bases_g1[0].mul(*exp).into_affine())
+            .collect();
+
+        let pairs: Vec<(&E::G1Affine, &E::G2Affine)> = scaled_sigma1_vec
+            .iter()
+            .enumerate()
+            .map(|(i, scaled)| (scaled, &bases_g2[i]))
+            .collect();
+
+        let committed_blindings_check = create_check(&pairs, None);
+
+        SchnorrCommitmentPairingCheck {
+            blindings,
+            committed_blindings_check,
+        }
     }
 
     pub fn commit_with_prepared_blindness<E: Pairing, R: Rng>(
@@ -69,9 +116,13 @@ impl SchnorrProtocolPairing {
         let scaled_g1bases_by_blindings =
             Helpers::compute_scaled_points_g1::<E>(None, None, &blindings, &bases_g1);
 
-        let t_com = Helpers::compute_gt::<E>(&scaled_g1bases_by_blindings, &bases_g2);
+        let commited_blindings_gt =
+            Helpers::compute_gt::<E>(&scaled_g1bases_by_blindings, &bases_g2);
 
-        SchnorrCommitmentPairing { blindings, t_com }
+        SchnorrCommitmentPairing {
+            blindings,
+            commited_blindings_gt,
+        }
     }
 
     // takes in bases in g1, g2, and prepared blindness
@@ -92,11 +143,12 @@ impl SchnorrProtocolPairing {
         let scaled_g1bases_by_blindings =
             Helpers::compute_scaled_points_g1::<E>(None, None, &prepared_blindness, &bases_g1);
 
-        let t_com = Helpers::compute_gt::<E>(&scaled_g1bases_by_blindings, &bases_g2);
+        let commited_blindings_gt =
+            Helpers::compute_gt::<E>(&scaled_g1bases_by_blindings, &bases_g2);
 
         SchnorrCommitmentPairing {
             blindings: prepared_blindness.to_vec(),
-            t_com,
+            commited_blindings_gt,
         }
     }
 
@@ -115,8 +167,8 @@ impl SchnorrProtocolPairing {
     }
 
     pub fn verify<E: Pairing>(
+        statement: &PairingOutput<E>,
         schnorr_commitment: &PairingOutput<E>,
-        public_commitment: &PairingOutput<E>,
         challenge: &E::ScalarField,
         bases_g1: &[E::G1Affine],
         bases_g2: &[E::G2Affine],
@@ -135,7 +187,7 @@ impl SchnorrProtocolPairing {
 
         let lhs = Helpers::compute_gt::<E>(&scaled_g1_by_responses, bases_g2);
 
-        let rhs = public_commitment.mul_bigint(challenge.into_bigint()) + schnorr_commitment;
+        let rhs = statement.mul_bigint(challenge.into_bigint()) + schnorr_commitment;
 
         lhs == rhs
     }
