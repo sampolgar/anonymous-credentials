@@ -3,6 +3,7 @@ use crate::publicparams::PublicParams;
 use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::UniformRand;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     ops::{Mul, Neg},
     rand::Rng,
@@ -11,7 +12,7 @@ use ark_std::{
 use utils::helpers::Helpers;
 use utils::pairing::verify_pairing_equation;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PSSignature<E: Pairing> {
     pub sigma1: E::G1Affine,
     pub sigma2: E::G1Affine,
@@ -155,7 +156,7 @@ mod tests {
         let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
 
         // Create signature directly using public_sign
-        let signature = Signature::public_sign(&messages, &sk, &pp);
+        let signature = PSSignature::public_sign(&messages, &sk, &pp);
 
         // Examine the signature components
         println!("Signature created with random generator in G1");
@@ -198,7 +199,7 @@ mod tests {
         let commitment = compute_commitment_g1::<Bls12_381>(&t, &pp.g1, &messages, &pk.y_g1);
 
         // Blind sign
-        let blind_signature = Signature::blind_sign(&pp, &pk, &sk, &commitment, &mut rng);
+        let blind_signature = PSSignature::blind_sign(&pp, &pk, &sk, &commitment, &mut rng);
         assert!(
             !blind_signature.sigma1.is_zero(),
             "sigma1 should not be zero"
@@ -229,7 +230,7 @@ mod tests {
         let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
 
         // Public sign for testing
-        let signature = Signature::public_sign(&messages, &sk, &pp);
+        let signature = PSSignature::public_sign(&messages, &sk, &pp);
         assert!(
             signature.public_verify(&pp, &messages, &pk),
             "Original signature should verify"
@@ -254,7 +255,7 @@ mod tests {
         let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
 
         // Public sign
-        let signature = Signature::public_sign(&messages, &sk, &pp);
+        let signature = PSSignature::public_sign(&messages, &sk, &pp);
 
         // // Randomize for POK
         let r = Fr::rand(&mut rng);
@@ -286,7 +287,7 @@ mod tests {
         let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
 
         // Public sign
-        let signature = Signature::public_sign(&messages, &sk, &pp);
+        let signature = PSSignature::public_sign(&messages, &sk, &pp);
 
         // Generate GT commitment
         let gt_commitment = signature.generate_commitment_gt(&pp, &pk);
@@ -306,7 +307,7 @@ mod tests {
         let messages: Vec<Fr> = (0..message_count).map(|_| Fr::rand(&mut rng)).collect();
 
         // Public sign
-        let signature = Signature::public_sign(&messages, &sk, &pp);
+        let signature = PSSignature::public_sign(&messages, &sk, &pp);
 
         // Verify with standard method
         let is_valid_standard = signature.public_verify(&pp, &messages, &pk);

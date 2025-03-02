@@ -2,13 +2,16 @@ use crate::keygen::PublicKey;
 use crate::publicparams::PublicParams;
 use crate::{commitment::Commitment, signature::PSSignature};
 use ark_ec::pairing::{Pairing, PairingOutput};
+use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
 use schnorr::schnorr_pairing::{
     SchnorrCommitmentPairing, SchnorrProtocolPairing, SchnorrResponsesPairing,
 };
+use std::ops::Neg;
 use thiserror::Error;
+use utils::helpers::Helpers;
 use utils::pairing::{create_check, verify_pairing_equation};
 
 /// Possible errors that can occur during commitment proof operations
@@ -174,7 +177,7 @@ mod tests {
 
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
 pub struct SignatureProof<E: Pairing> {
-    pub randomized_signature: (E::G1Affine, E::G1Affine),
+    pub randomized_signature: PSSignature<E>,
     pub signature_commitment: PairingOutput<E>,
     pub schnorr_commitment: PairingOutput<E>,
     pub challenge: E::ScalarField,
@@ -194,12 +197,13 @@ impl SignatureProofs {
         let t = E::ScalarField::rand(&mut rng);
         let sigma_prime = signature.rerandomize(&r, &t);
 
-        // Generate a commitment to the signature
+        // // Generate a commitment to the signature
         let signature_commitment_gt = sigma_prime.generate_commitment_gt(&pp, &pk);
 
         let bases_g1 = commitment.get_bases();
         let bases_g2 = commitment.get_bases_g2();
 
+        //TODO remove this, shouldn't be here, only for testing
         let schnorr_commitment_gt =
             SchnorrProtocolPairing::commit::<E, _>(&bases_g1, &bases_g2, &mut rng);
 
@@ -211,7 +215,7 @@ impl SignatureProofs {
             SchnorrProtocolPairing::prove(&schnorr_commitment_gt, &exponents, &challenge);
 
         let proof = SignatureProof {
-            randomized_signature: (sigma_prime.sigma1, sigma_prime.sigma2),
+            randomized_signature: sigma_prime,
             signature_commitment: signature_commitment_gt,
             schnorr_commitment: schnorr_commitment_gt.t_com,
             challenge,
@@ -234,21 +238,18 @@ impl SignatureProofs {
         // Generate a commitment to the signature
         //   pairs: &[(&E::G1Affine, &E::G2Affine)],
         // target: Option<&E::TargetField>,
-        let signature_commitment = create_check(
-
-        )
 
         let computed_signature_commitment = Helpers::compute_gt::<E>(
             &[
-                proof.randomized_signature.1,
+                proof.randomized_signature.sigma1,
                 proof
                     .randomized_signature
-                    .0
+                    .sigma2
                     .into_group()
                     .neg()
                     .into_affine(),
             ],
-            &[setup.pk.g2, setup.pk.x_g2],
+            &[pp.g2, pk.x_g2],
         );
 
         assert_eq!(
@@ -257,10 +258,10 @@ impl SignatureProofs {
         );
 
         // 2. Prepare bases for verification
-        let base_length = setup.messages.len() + 1;
+        let base_length = pp.n + 1;
         let bases_g1 =
-            Helpers::copy_point_to_length_g1::<E>(proof.randomized_signature.0, &base_length);
-        let bases_g2 = Helpers::add_affine_to_vector::<E::G2>(&setup.pk.g2, &setup.pk.y_g2);
+            Helpers::copy_point_to_length_g1::<E>(proof.randomized_signature.sigma1, &base_length);
+        let bases_g2 = Helpers::add_affine_to_vector::<E::G2>(&pp.g2, &pk.y_g2);
 
         // 3. Verify the Schnorr proof
         let is_valid = SchnorrProtocolPairing::verify(
