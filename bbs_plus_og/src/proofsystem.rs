@@ -41,7 +41,6 @@ pub struct BBSPlusProofOfKnowledge<E: Pairing> {
     pub responses: Vec<E::ScalarField>, // Responses for the proof
 }
 
-
 pub struct ProofSystem;
 
 impl ProofSystem {
@@ -57,43 +56,19 @@ impl ProofSystem {
         assert_eq!(messages.len(), pp.L, "Invalid number of messages");
         assert!(signature.verify(pp, pk, messages), "Invalid signature");
 
-        // 1. Generate random r₁, r₂ ∈ Zₚ*
-        let r1 = E::ScalarField::rand(rng);
-        let r2 = E::ScalarField::rand(rng);
+        let randomized_signature = signature.randomize(&pp, &pk, &messages, &mut rng);
 
-        // 2. Compute A₁ = g₁ʳ¹g₂ʳ²
-        // Note: In the paper g₁, g₂ are arbitrary generators, we can use the first two generators
-        // from our setup for this purpose
-        let g1 = pp.g[0]; // Using first message generator as g₁
-        let g2 = pp.g[1]; // Using second message generator as g₂
+        
 
-        let A1 = (g1.mul(r1) + g2.mul(r2)).into_affine();
 
-        // 3. Compute A₂ = Ag₁ʳ¹
-        let A2 = (signature.A + g1.mul(r1)).into_affine();
 
-        // 4. Compute δ₁ = r₁e and δ₂ = r₂e
-        let delta1 = r1 * signature.e;
-        let delta2 = r2 * signature.e;
+        // // 6. Compute commitments for the proof
 
-        // 5. Generate random blinding values for the proof
-        let r_r1 = E::ScalarField::rand(rng);
-        let r_r2 = E::ScalarField::rand(rng);
-        let r_e = E::ScalarField::rand(rng);
-        let r_delta1 = E::ScalarField::rand(rng);
-        let r_delta2 = E::ScalarField::rand(rng);
-        let r_s = E::ScalarField::rand(rng);
-        let r_messages: Vec<E::ScalarField> = (0..messages.len())
-            .map(|_| E::ScalarField::rand(rng))
-            .collect();
+        // // Commitment for A₁ = g₁ʳ¹g₂ʳ²
+        // let T1 = (g1.mul(r_r1) + g2.mul(r_r2)).into_affine();
 
-        // 6. Compute commitments for the proof
-
-        // Commitment for A₁ = g₁ʳ¹g₂ʳ²
-        let T1 = (g1.mul(r_r1) + g2.mul(r_r2)).into_affine();
-
-        // Commitment for A₁ᵉ = g₁ᵟ¹g₂ᵟ²
-        let T2 = (g1.mul(r_delta1) + g2.mul(r_delta2)).into_affine();
+        // // Commitment for A₁ᵉ = g₁ᵟ¹g₂ᵟ²
+        // let T2 = (g1.mul(r_delta1) + g2.mul(r_delta2)).into_affine();
 
         // Commitment for the pairing relation
         // This is complex: e(A₂, w)/e(g₀, h₀) = e(A₂, h₀)⁻ᵉ·e(g₁, w)ʳ¹·e(g₀, h₀)ᵟ¹·e(g₁, h₀)ˢ·e(g₂, h₀)ᵐ¹...

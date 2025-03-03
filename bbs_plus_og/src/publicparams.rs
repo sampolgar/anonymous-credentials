@@ -43,11 +43,8 @@ impl<E: Pairing> PublicParams<E> {
     }
 
     /// returns [g1,g2]
-    pub fn get_g1_g2(&self) -> Vec<E::G1Affine> {
-        let mut bases: Vec<E::G1Affine> = Vec::new();
-        bases.push(self.g1);
-        bases.push(self.g2_to_L[0]);
-        bases
+    pub fn get_g1_g2(&self) -> (E::G1Affine, E::G1Affine) {
+        (self.g1, self.g2_to_L[0])
     }
 }
 

@@ -8,6 +8,7 @@ use ark_std::ops::{Add, Mul};
 use ark_std::rand::Rng;
 use ark_std::vec::Vec;
 use ark_std::One;
+use std::ops::Neg;
 
 #[derive(Clone, Debug)]
 pub struct BBSPlusSignature<E: Pairing> {
@@ -81,45 +82,91 @@ impl<E: Pairing> BBSPlusSignature<E> {
 
     pub fn randomize(
         &self,
-        &pp: &PublicParams<E>,
-        &pk: &PublicKey<E>,
+        pp: &PublicParams<E>,
+        pk: &PublicKey<E>,
+        messages: &[E::ScalarField],
         rng: &mut impl Rng,
-    ) -> RandomizedSignature {
+    ) -> RandomizedSignature<E> {
+        RandomizedSignature::new(pp, pk, self, messages, rng)
     }
 }
 
 pub struct RandomizedSignature<E: Pairing> {
-    A1: E::G1Affine,
-    A1e: E::G1Affine,
-    A2: E::G1Affine,
+    r1: E::ScalarField,
+    r2: E::ScalarField,
+    delta1: E::ScalarField,
+    delta2: E::ScalarField,
+    A1: E::G1Affine,  //g1^r1 g2^r2
+    A1e: E::G1Affine, // g1^delta1 g2^delta2
+    A2: E::G1Affine,  // A . g_2^r1
     pairing_statement: PairingOutput<E>,
-    bases_g1: Vec<E::G1Affine>,
-    bases_g2: Vec<E::G2Affine>,
+    pairing_bases_g1: Vec<E::G1Affine>,
+    pairing_bases_g2: Vec<E::G2Affine>,
     pairing_exponents: Vec<E::ScalarField>,
 }
 
-// impl<E: Pairing> ProofElements<E> {
-//     pub fn new(
-//         &pp: &PublicParams<E>,
-//         &pk: &PublicKey<E>,
-//         signature: &BBSPlusSignature<E>,
-//         rng: &mut impl Rng,
-//     ) -> Self {
+impl<E: Pairing> RandomizedSignature<E> {
+    pub fn new(
+        pp: &PublicParams<E>,
+        pk: &PublicKey<E>,
+        signature: &BBSPlusSignature<E>,
+        messages: &[E::ScalarField],
+        rng: &mut impl Rng,
+    ) -> Self {
+        // Compute A1 = g1r1 g2r2
+        let r1 = E::ScalarField::rand(rng);
+        let r2 = E::ScalarField::rand(rng);
+        let (g1, g2) = pp.get_g1_g2();
+        let A1 = g1.mul(r1) + g2.mul(r2);
 
-//     }
-//     // this is for the G1 elements of the verification. Basic for now, can improve later
-//     /// Return vector of [A2, g2, g2, g1, g2,...,g_L] for e(g2,w)^r1 . e(g2,h0),...
-//     ///
-//     pub fn get_g2_g2_g1_g2_to_L(&self, A2: E::G1Affine) -> Vec<E::G1Affine> {
-//         let mut bases: Vec<E::G1Affine> = Vec::new();
-//         bases.push(A2);
-//         bases.push(self.g2_to_L[0]);
-//         bases.push(self.g2_to_L[0]);
-//         bases.push(self.g1);
-//         bases.extend(self.g2_to_L.iter().cloned());
-//         bases
-//     }
-// }
+        // Compute A2 = A . g_2^r1
+        let A2 = signature.A.into_group() + g2.mul(r1);
+
+        let delta1 = r1 * signature.e;
+        let delta2 = r2 * signature.e;
+
+        let A1e = g1.mul(delta1) + g2.mul(delta2);
+
+        // one of the rhs is neg
+        let pairing_statement = BBSPlusOgUtils::compute_gt(
+            &[A2.into_affine(), pp.g0.into_group().neg().into_affine()],
+            &[pk.w, pp.h0],
+        );
+
+        let mut pairing_bases_g1: Vec<E::G1Affine> = Vec::new();
+        pairing_bases_g1.push(A2.into_affine());
+        pairing_bases_g1.push(pp.g2_to_L[0]);
+        pairing_bases_g1.push(pp.g2_to_L[0]);
+        pairing_bases_g1.push(pp.g1);
+        pairing_bases_g1.extend(pp.g2_to_L.iter().cloned());
+
+        let mut pairing_bases_g2 =
+            BBSPlusOgUtils::copy_point_to_length_g2::<E>(pp.h0, &pairing_bases_g1.len());
+        pairing_bases_g2[1] = pk.w;
+
+        // [-e, r1, delta1, s, m1,...,mL]
+        let mut pairing_exponents: Vec<E::ScalarField> = Vec::new();
+        pairing_exponents.push(-signature.e);
+        pairing_exponents.push(r1);
+        pairing_exponents.push(delta1);
+        pairing_exponents.push(signature.s);
+        pairing_exponents.extend(messages.iter().cloned());
+
+        Self {
+            r1,
+            r2,
+            delta1,
+            delta2,
+            A1: A1.into_affine(),
+            A1e: A1e.into_affine(),
+            A2: A2.into_affine(),
+            pairing_statement,
+            pairing_bases_g1,
+            pairing_bases_g2,
+            pairing_exponents,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
