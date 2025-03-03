@@ -32,38 +32,20 @@ pub enum CommitmentProofError {
 /// Proof of knowledge of a commitment in the G1 group
 #[derive(CanonicalSerialize, CanonicalDeserialize, Debug, Clone)]
 pub struct CommitmentProof<E: Pairing> {
-    /// The commitment value in G1
     pub commitment: E::G1Affine,
-
-    /// The Schnorr commitment
     pub schnorr_commitment: SchnorrCommitment<E::G1Affine>,
-
-    /// The bases used in the commitment
     pub bases: Vec<E::G1Affine>,
-
-    /// Challenge value used in the proof
     pub challenge: E::ScalarField,
-
-    /// Response values used in the proof
     pub responses: Vec<E::ScalarField>,
 }
 
 /// Proof of knowledge of a commitment in the G2 group
 #[derive(CanonicalSerialize, CanonicalDeserialize, Debug, Clone)]
 pub struct CommitmentProofG2<E: Pairing> {
-    /// The commitment value in G2
     pub commitment: E::G2Affine,
-
-    /// The Schnorr commitment
     pub schnorr_commitment: SchnorrCommitment<E::G2Affine>,
-
-    /// The bases used in the commitment
     pub bases: Vec<E::G2Affine>,
-
-    /// Challenge value used in the proof
     pub challenge: E::ScalarField,
-
-    /// Response values used in the proof
     pub responses: Vec<E::ScalarField>,
 }
 

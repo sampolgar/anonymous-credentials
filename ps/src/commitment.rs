@@ -48,14 +48,14 @@ impl<E: Pairing> Commitment<E> {
         exponents
     }
 
-    /// returns commitment bases g_1, g_2, ..., g_L+1
+    /// returns commitment bases g_1, g_2, ..., g
     pub fn get_bases(&self) -> Vec<E::G1Affine> {
         let mut bases: Vec<E::G1Affine> = self.pk.y_g1.clone();
         bases.push(self.pp.g1.clone());
         bases
     }
 
-    /// returns commitment bases g_1, g_2, ..., g_L+1
+    /// returns commitment bases g_1, g_2, ..., g
     pub fn get_bases_g2(&self) -> Vec<E::G2Affine> {
         let mut bases: Vec<E::G2Affine> = self.pk.y_g2.clone();
         bases.push(self.pp.g2.clone());

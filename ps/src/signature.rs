@@ -59,9 +59,7 @@ impl<E: Pairing> PSSignature<E> {
     pub fn rerandomize(&self, r: &E::ScalarField, t: &E::ScalarField) -> Self {
         let sigma1_temp = self.sigma1;
         Self {
-            // sigma1' = sigma1 * r
             sigma1: self.sigma1.mul(*r).into_affine(),
-            // sigma2' = (sigma2 + sigma1 * t) * r
             sigma2: (self.sigma2.into_group() + sigma1_temp.mul(*t))
                 .mul(*r)
                 .into_affine(),

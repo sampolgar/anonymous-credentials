@@ -14,15 +14,10 @@ pub struct SecretKey<E: Pairing> {
 
 #[derive(Clone, Debug)]
 pub struct PublicKey<E: Pairing> {
+    pub pp: PublicParams<E>,
     pub y_g1: Vec<E::G1Affine>, //[Y_1, Y_2, ..., Y_n]
     pub y_g2: Vec<E::G2Affine>, //[Y_1, Y_2, ..., Y_n]
     pub x_g2: E::G2Affine,      //X_2 public key
-}
-
-#[derive(Clone, Debug)]
-pub struct KeyPair<E: Pairing> {
-    pub sk: SecretKey<E>,
-    pub pk: PublicKey<E>,
 }
 
 pub fn gen_keys<E: Pairing>(
@@ -49,8 +44,29 @@ pub fn gen_keys<E: Pairing>(
     let y_g2 = E::G2::normalize_batch(&y_g2);
 
     let sk = SecretKey { x, yi, x_g1 };
-    let pk = PublicKey { y_g1, y_g2, x_g2 };
+    let pk = PublicKey {
+        pp: pp.clone(),
+        y_g1,
+        y_g2,
+        x_g2,
+    };
     (sk, pk)
+}
+
+impl<E: Pairing> PublicKey<E> {
+    /// returns commitment bases g_1, g_2, ..., g
+    pub fn get_bases(&self) -> Vec<E::G1Affine> {
+        let mut bases: Vec<E::G1Affine> = self.y_g1.clone();
+        bases.push(self.pp.g1.clone());
+        bases
+    }
+
+    /// returns commitment bases g_1, g_2, ..., g
+    pub fn get_bases_g2(&self) -> Vec<E::G2Affine> {
+        let mut bases: Vec<E::G2Affine> = self.y_g2.clone();
+        bases.push(self.pp.g2.clone());
+        bases
+    }
 }
 
 #[cfg(test)]
