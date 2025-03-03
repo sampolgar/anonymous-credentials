@@ -91,6 +91,7 @@ impl<E: Pairing> BBSPlusSignature<E> {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct RandomizedSignature<E: Pairing> {
     pub r1: E::ScalarField,
     pub r2: E::ScalarField,
@@ -141,7 +142,7 @@ impl<E: Pairing> RandomizedSignature<E> {
 
         // e(A2,h0) . e(g2,w) . e(g2, h0) . e(g1, h0) . e(g2, h0), ..e(g_L, h0)
         let mut pairing_bases_g1: Vec<E::G1Affine> = Vec::new();
-        pairing_bases_g1.push(A2.into_affine());    
+        pairing_bases_g1.push(A2.into_affine());
         pairing_bases_g1.push(pp.g2_to_L[0]);
         pairing_bases_g1.push(pp.g2_to_L[0]);
         pairing_bases_g1.push(pp.g1);

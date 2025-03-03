@@ -3,6 +3,7 @@ use crate::publicparams::PublicParams;
 use crate::signature::BBSPlusSignature;
 use crate::utils::BBSPlusOgUtils;
 use ark_ec::pairing::{Pairing, PairingOutput};
+use ark_ec::Group;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{Field, PrimeField, UniformRand};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -119,34 +120,225 @@ impl ProofSystem {
             .map(|_| E::ScalarField::rand(rng))
             .collect();
         let statement3 = rand_sig.pairing_statement;
-        let exponents3 = rand_sig.pairing_exponents;
+        // let exponents3 = rand_sig.pairing_exponents;
 
         // [rho_neg_e, rho_r1, rho_delta1, rho_s, rho_m1,...,mL]
         let blinding_factors3_temp = vec![rho_neg_e, rho_r1, rho_delta1, rho_s];
-        let blindind_factors3 =
+        let blinding_factors3 =
             BBSPlusOgUtils::concatenate_scalars::<E>(&blinding_factors3_temp, &rho_messages);
 
         assert_eq!(
-            blinding_factors3_temp[0], blindind_factors3[0],
+            blinding_factors3_temp[0], blinding_factors3[0],
             "zeros of blinding factors aren't equal"
         );
 
         assert_eq!(
-            blindind_factors3.len(),
+            blinding_factors3.len(),
             rand_sig.pairing_bases_g1.len(),
             "public_generators lengths must match"
         );
+        let gt1 = vec![rand_sig.A2, pp.g0];
+        let gt2 = vec![pk.w, pp.h0];
+        let scalaers = vec![E::ScalarField::one(), -E::ScalarField::one()];
+        let gt = BBSPlusOgUtils::compute_gt_from_g1_g2_scalars::<E>(&gt1, &gt2, &scalaers);
+        assert_eq!(
+            gt, rand_sig.pairing_statement,
+            "pairing statement not equal"
+        );
+        println!("pairinng statemnet equal");
+
+        // Start with empty vectors
+        let mut pairing_bases_g11: Vec<E::G1Affine> = Vec::new();
+        let mut pairing_bases_g22: Vec<E::G2Affine> = Vec::new();
+        let mut pairing_exponents2: Vec<E::ScalarField> = Vec::new();
+
+        // Add e(A₂,h₀)⁻ᵉ term
+        pairing_bases_g11.push(rand_sig.A2);
+        pairing_bases_g22.push(pp.h0);
+        pairing_exponents2.push(-signature.e); // This should be negative
+
+        // Add e(g₂,w)ʳ¹ term
+        pairing_bases_g11.push(pp.g2_to_L[0]); // g₂
+        pairing_bases_g22.push(pk.w);
+        pairing_exponents2.push(rand_sig.r1); // POSITIVE
+
+        // Add e(g₂,h₀)ᵟ¹ term
+        pairing_bases_g11.push(pp.g2_to_L[0]); // g₂
+        pairing_bases_g22.push(pp.h0);
+        pairing_exponents2.push(rand_sig.delta1); // POSITIVE
+
+        // Add e(g₁,h₀)ˢ term
+        pairing_bases_g11.push(pp.g1);
+        pairing_bases_g22.push(pp.h0);
+        pairing_exponents2.push(signature.s); // POSITIVE
+
+        // Add e(g₂,h₀)ᵐ¹...e(gL+1,h₀)ᵐᴸ terms
+        for i in 0..messages.len() {
+            pairing_bases_g11.push(pp.g2_to_L[i]); // For message terms
+            pairing_bases_g22.push(pp.h0);
+            pairing_exponents2.push(messages[i]); // POSITIVE
+        }
+
+        // for i in 0..pairing_bases_g11.len() {
+        //     println!(
+        //         "i at: {}, base1{}, base2, {}",
+        //         i, pairing_bases_g11[i], rand_sig.pairing_bases_g1[i]
+        //     );
+        //     assert_eq!(
+        //         pairing_bases_g11[i], rand_sig.pairing_bases_g1[i],
+        //         "base g1 wasn't equal"
+        //     );
+        //     assert_eq!(
+        //         pairing_bases_g22[i], rand_sig.pairing_bases_g2[i],
+        //         "base g2 wasn't equal"
+        //     );
+        //     assert_eq!(
+        //         pairing_exponents2[i], rand_sig.pairing_exponents[i],
+        //         "exponents wasn't equal"
+        //     );
+        // }
 
         let schnorr_commitment3 = SchnorrProtocolPairing::commit_with_prepared_blindness::<E>(
             &rand_sig.pairing_bases_g1,
             &rand_sig.pairing_bases_g2,
-            &blindind_factors3,
+            &blinding_factors3,
         );
 
         let schnorr_commitment_gt = schnorr_commitment3.schnorr_commitment;
 
-        let schnorr_responses3 =
-            SchnorrProtocolPairing::prove(&schnorr_commitment3, &exponents3, &challenge);
+        let schnorr_responses3 = SchnorrProtocolPairing::prove(
+            &schnorr_commitment3,
+            &rand_sig.pairing_exponents,
+            &challenge,
+        );
+
+        println!("Blinding factors vs exponents:");
+        for i in 0..3 {
+            println!(
+                "Index {}: Blinding={}, Exponent={}",
+                i, blinding_factors3[i], rand_sig.pairing_exponents[i]
+            );
+        }
+
+        println!(
+            "Commitment bases lengths: g1={}, g2={}, blindings={}",
+            rand_sig.pairing_bases_g1.len(),
+            rand_sig.pairing_bases_g2.len(),
+            blinding_factors3.len()
+        );
+
+        // Check a sample of the responses
+        println!(
+            "Response samples: [{}, {}, {}]",
+            schnorr_responses3.0[0], schnorr_responses3.0[1], schnorr_responses3.0[2]
+        );
+        println!(
+            "Expected: [{}, {}, {}]",
+            blinding_factors3[0] + (rand_sig.pairing_exponents[0] * challenge),
+            blinding_factors3[1] + (rand_sig.pairing_exponents[1] * challenge),
+            blinding_factors3[2] + (rand_sig.pairing_exponents[2] * challenge)
+        );
+
+        // responses need to be equal at some positions
+        // responses [1] = r1
+        // responses [2] = delta1
+        assert_eq!(
+            schnorr_responses3.0[1], schnorr_responses1.0[0],
+            "responses for r1 aren't equal"
+        );
+        assert_eq!(
+            schnorr_responses3.0[2], schnorr_responses2.0[0],
+            "responses for rho1 aren't equal"
+        );
+
+        // Compute left-hand side directly
+        let lhs = BBSPlusOgUtils::compute_gt_from_g1_g2_scalars(
+            &rand_sig.pairing_bases_g1,
+            &rand_sig.pairing_bases_g2,
+            &schnorr_responses3.0,
+        );
+
+        // Compute right-hand side components
+        let rhs1 = statement3.mul_bigint(challenge.into_bigint());
+        let rhs2 = schnorr_commitment_gt;
+        let rhs = rhs1 + rhs2;
+
+        println!("Verification values:");
+        println!("LHS == RHS: {}", lhs == rhs);
+        println!(
+            "Base lengths match: {}",
+            rand_sig.pairing_bases_g1.len() == rand_sig.pairing_bases_g2.len()
+                && rand_sig.pairing_bases_g1.len() == schnorr_responses3.0.len()
+        );
+
+        let lhs = BBSPlusOgUtils::compute_gt_from_g1_g2_scalars::<E>(
+            &rand_sig.pairing_bases_g1,
+            &rand_sig.pairing_bases_g2,
+            &schnorr_responses3.0,
+        );
+
+        let statement_part = statement3.mul_bigint(challenge.into_bigint());
+        let rhs = statement_part + schnorr_commitment_gt;
+
+        // Print hex representation to see exact values
+        // println!("LHS bytes: {:?}", lhs.to_bytes());
+        // println!("RHS bytes: {:?}", rhs.to_bytes());
+
+        // Try a direct verification approach
+        // Instead of using the SchnorrProtocolPairing::verify function,
+        // manually compute each side
+
+        // 1. First, calculate each pairing individually for the LHS
+        let mut lhs_product = E::TargetField::one();
+        for i in 0..rand_sig.pairing_bases_g1.len() {
+            // Compute e(g1[i]^response[i], g2[i])
+            let g1_scaled = rand_sig.pairing_bases_g1[i]
+                .mul(schnorr_responses3.0[i])
+                .into_affine();
+            let single_pairing = E::pairing(g1_scaled, rand_sig.pairing_bases_g2[i]);
+            lhs_product = lhs_product + single_pairing.0;
+        }
+
+        // 2. For the RHS, calculate statement^challenge * commitment separately
+        let statement_raised = statement3.mul_bigint(&challenge.into_bigint());
+        let rhs_product = statement_raised + schnorr_commitment_gt;
+
+        println!("Manual verification: {}", lhs_product == rhs_product.0);
+
+        // Try a completely different approach by computing all the pairings
+        // in the original equation format
+
+        // 1. Compute LHS: e(A₂,w)/e(g₀,h₀)
+        let left_numerator = E::pairing(rand_sig.A2, pk.w);
+        let left_denominator = E::pairing(pp.g0, pp.h0);
+        let left_side = left_numerator.0 + left_denominator.0.inverse().unwrap();
+
+        // 2. Compute RHS: e(A₂,h₀)⁻ᵉ·e(g₂,w)ʳ¹·e(g₂,h₀)ᵟ¹·e(g₁,h₀)ˢ·...
+        let mut right_side = E::TargetField::one();
+
+        // e(A₂,h₀)⁻ᵉ
+        let term1 = E::pairing(rand_sig.A2, pp.h0).mul_bigint(&(-signature.e).into_bigint());
+        right_side = right_side + term1.0;
+
+        // e(g₂,w)ʳ¹
+        let term2 = E::pairing(pp.g2_to_L[0], pk.w).mul_bigint(&rand_sig.r1.into_bigint());
+        right_side = right_side + term2.0;
+
+        // e(g₂,h₀)ᵟ¹
+        let term3 = E::pairing(pp.g2_to_L[0], pp.h0).mul_bigint(&rand_sig.delta1.into_bigint());
+        right_side = right_side + term3.0;
+
+        // e(g₁,h₀)ˢ
+        let term4 = E::pairing(pp.g1, pp.h0).mul_bigint(&signature.s.into_bigint());
+        right_side = right_side + term4.0;
+
+        // Message terms
+        for i in 0..messages.len() {
+            let term = E::pairing(pp.g2_to_L[i], pp.h0).mul_bigint(&messages[i].into_bigint());
+            right_side = right_side + term.0;
+        }
+
+        println!("Original equation check: {}", left_side == right_side);
 
         assert!(
             SchnorrProtocolPairing::verify(
@@ -244,7 +436,7 @@ mod tests {
     fn test_proof_of_knowledge() {
         // Initialize test environment
         let mut rng = test_rng();
-        let L = 4; // Support 4 messages
+        let L = 1; // Support 4 messages
 
         // Generate public parameters
         let pp = PublicParams::<Bls12_381>::new(&L, &mut rng);

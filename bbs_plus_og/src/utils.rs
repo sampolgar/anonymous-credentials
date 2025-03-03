@@ -73,4 +73,33 @@ impl BBSPlusOgUtils {
     ) -> Vec<E::G2Affine> {
         vec![point; *length]
     }
+
+    /// takes in g1points, g2points, scalars. Returns a gt point.
+    pub fn compute_gt_from_g1_g2_scalars<E: Pairing>(
+        g1_points: &[E::G1Affine],
+        g2_points: &[E::G2Affine],
+        scalars: &[E::ScalarField],
+    ) -> PairingOutput<E> {
+        assert!(
+            g1_points.len() == g2_points.len() && g2_points.len() == scalars.len(),
+            "Mismatched number of G1, G2, and scalars"
+        );
+
+        // Prepare points for pairing
+        // scale each g1 point by a scalar e.g. g1^m1 g2^m2 for [g1,g2] and [m1,m2]
+        let scaled_g1_projective: Vec<E::G1> = g1_points
+            .iter()
+            .zip(scalars.iter())
+            .map(|(g1, s)| g1.into_group().mul(s))
+            .collect();
+
+        let prepared_g1: Vec<_> = scaled_g1_projective
+            .iter()
+            .map(E::G1Prepared::from)
+            .collect();
+        let prepared_g2: Vec<_> = g2_points.iter().map(E::G2Prepared::from).collect();
+
+        // Compute and return the multi-pairing
+        E::multi_pairing(prepared_g1, prepared_g2)
+    }
 }
