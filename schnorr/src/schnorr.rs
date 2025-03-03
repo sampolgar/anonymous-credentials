@@ -37,6 +37,19 @@ impl SchnorrProtocol {
         }
     }
 
+    /// returns a commitment to random blindings, the commitment T = g_1^{\rho_1},...,g_L^{\rho_L} from random blindings and bases
+    pub fn commit_with_prepred_blindness<G: AffineRepr>(
+        public_generators: &[G],
+        random_blindings: &[G::ScalarField],
+    ) -> SchnorrCommitment<G> {
+        let commited_blindings: G =
+            G::Group::msm_unchecked(public_generators, &random_blindings).into_affine();
+        SchnorrCommitment {
+            random_blindings: random_blindings.to_vec(),
+            commited_blindings,
+        }
+    }
+
     // commit takes in public_generators and exponents
     pub fn commit_equality<G: AffineRepr, R: Rng>(
         public_generators: &[G],

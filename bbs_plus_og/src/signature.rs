@@ -92,17 +92,17 @@ impl<E: Pairing> BBSPlusSignature<E> {
 }
 
 pub struct RandomizedSignature<E: Pairing> {
-    r1: E::ScalarField,
-    r2: E::ScalarField,
-    delta1: E::ScalarField,
-    delta2: E::ScalarField,
-    A1: E::G1Affine,  //g1^r1 g2^r2
-    A1e: E::G1Affine, // g1^delta1 g2^delta2
-    A2: E::G1Affine,  // A . g_2^r1
-    pairing_statement: PairingOutput<E>,
-    pairing_bases_g1: Vec<E::G1Affine>,
-    pairing_bases_g2: Vec<E::G2Affine>,
-    pairing_exponents: Vec<E::ScalarField>,
+    pub r1: E::ScalarField,
+    pub r2: E::ScalarField,
+    pub delta1: E::ScalarField,
+    pub delta2: E::ScalarField,
+    pub A1: E::G1Affine,  //g1^r1 g2^r2
+    pub A1e: E::G1Affine, // g1^delta1 g2^delta2
+    pub A2: E::G1Affine,  // A . g_2^r1
+    pub pairing_statement: PairingOutput<E>,
+    pub pairing_bases_g1: Vec<E::G1Affine>,
+    pub pairing_bases_g2: Vec<E::G2Affine>,
+    pub pairing_exponents: Vec<E::ScalarField>,
 }
 
 impl<E: Pairing> RandomizedSignature<E> {
@@ -125,7 +125,13 @@ impl<E: Pairing> RandomizedSignature<E> {
         let delta1 = r1 * signature.e;
         let delta2 = r2 * signature.e;
 
-        let A1e = g1.mul(delta1) + g2.mul(delta2);
+        let A1e = A1 * signature.e;
+
+        assert_eq!(
+            A1e,
+            g1 * delta1 + g2 * delta2,
+            "a1e and g1delta1 g2delta2 aren't equal"
+        );
 
         // one of the rhs is neg
         let pairing_statement = BBSPlusOgUtils::compute_gt(
@@ -133,8 +139,9 @@ impl<E: Pairing> RandomizedSignature<E> {
             &[pk.w, pp.h0],
         );
 
+        // e(A2,h0) . e(g2,w) . e(g2, h0) . e(g1, h0) . e(g2, h0), ..e(g_L, h0)
         let mut pairing_bases_g1: Vec<E::G1Affine> = Vec::new();
-        pairing_bases_g1.push(A2.into_affine());
+        pairing_bases_g1.push(A2.into_affine());    
         pairing_bases_g1.push(pp.g2_to_L[0]);
         pairing_bases_g1.push(pp.g2_to_L[0]);
         pairing_bases_g1.push(pp.g1);

@@ -15,6 +15,26 @@ impl BBSPlusOgUtils {
         all_scalars
     }
 
+    /// A vector of scalar field elements with the additional scalar at the end
+    pub fn add_scalar_to_end_of_vector<E: Pairing>(
+        scalars: &[E::ScalarField],
+        additional_scalar: &E::ScalarField,
+    ) -> Vec<E::ScalarField> {
+        let mut all_scalars = scalars.to_vec();
+        all_scalars.push(*additional_scalar);
+        all_scalars
+    }
+
+    /// takes in [scalars1], [scalars2], returns [scalars1, scalars2]
+    pub fn concatenate_scalars<E: Pairing>(
+        scalars1: &[E::ScalarField],
+        scalars2: &[E::ScalarField],
+    ) -> Vec<E::ScalarField> {
+        let mut all_scalars = scalars1.to_vec();
+        all_scalars.extend_from_slice(scalars2);
+        all_scalars
+    }
+
     /// Computes ∏ e(g1_i, g2_i) from G1 and G2 points.
     ///
     /// # Panics

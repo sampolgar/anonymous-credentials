@@ -57,20 +57,15 @@ impl CommitmentProofs {
         commitment: &Commitment<E>,
     ) -> Result<Vec<u8>, ProofError> {
         let mut rng = ark_std::test_rng();
-
         // Get bases and exponents for the proof
         let bases = commitment.get_bases();
         let exponents = commitment.get_exponents();
-
         // Generate Schnorr commitment
         let schnorr_commitment = SchnorrProtocol::commit(&bases, &mut rng);
-
         // Generate challenge
         let challenge = E::ScalarField::rand(&mut rng);
-
         // Generate responses
         let responses = SchnorrProtocol::prove(&schnorr_commitment, &exponents, &challenge);
-
         // Create and serialize proof with explicit type annotation
         let proof: CommitmentProof<E> = CommitmentProof {
             statement: commitment.commitment,
@@ -140,7 +135,7 @@ impl SignatureProofs {
         let bases_g2 = pk.get_bases_g2();
 
         let schnorr_commitment_pairing =
-            SchnorrProtocolPairing::commit::<E, _>(&bases_g1, &bases_g2, &mut rng);
+            SchnorrProtocolPairing::commit::<E>(&bases_g1, &bases_g2, &mut rng);
         let schnorr_commitment_gt = schnorr_commitment_pairing.schnorr_commitment;
 
         let responses =
