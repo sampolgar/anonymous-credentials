@@ -289,7 +289,6 @@ impl SchnorrProtocolPairing {
             bases_g2.len(),
             responses.len()
         );
-        println!("basesg1 len verify = {}", bases_g1.len());
         let lhs = compute_gt_from_g1_g2_scalars(&bases_g1, &bases_g2, &responses);
 
         let rhs = statement.mul_bigint(challenge.into_bigint()) + schnorr_commitment;

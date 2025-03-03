@@ -36,7 +36,7 @@ pub enum ProofError {
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Debug, Clone)]
 pub struct CommitmentProof<E: Pairing> {
-    pub commitment: E::G1Affine,
+    pub statement: E::G1Affine,
     pub schnorr_commitment: SchnorrCommitment<E::G1Affine>,
     pub bases: Vec<E::G1Affine>,
     pub challenge: E::ScalarField,
@@ -73,7 +73,7 @@ impl CommitmentProofs {
 
         // Create and serialize proof with explicit type annotation
         let proof: CommitmentProof<E> = CommitmentProof {
-            commitment: commitment.commitment,
+            statement: commitment.commitment,
             schnorr_commitment,
             bases,
             challenge,
@@ -100,7 +100,7 @@ impl CommitmentProofs {
         // Verify using Schnorr protocol
         let is_valid = SchnorrProtocol::verify(
             &proof.bases,
-            &proof.commitment,
+            &proof.statement,
             &proof.schnorr_commitment,
             &SchnorrResponses(proof.responses.clone()),
             &proof.challenge,

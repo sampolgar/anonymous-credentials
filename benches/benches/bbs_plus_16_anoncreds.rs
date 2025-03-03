@@ -1,14 +1,14 @@
 use ark_bls12_381::Bls12_381;
 use ark_ec::pairing::Pairing;
 use ark_ff::UniformRand;
-use bbs_plus::anon_cred::{AnonCredProtocol, ShowCredential};
-use bbs_plus::test_helpers::TestSetup;
+use bbs_plus_16::anon_cred::{AnonCredProtocol, ShowCredential};
+use bbs_plus_16::test_helpers::TestSetup;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::time::Duration;
 
 /// Benchmark function for AnonCred protocol with different message sizes
 fn benchmark_anoncred_protocol(c: &mut Criterion) {
-    let mut group = c.benchmark_group("bbs_plus_anoncreds");
+    let mut group = c.benchmark_group("bbs_plus_16_anoncreds");
     println!("Starting BBSPlus AnonCred protocol benchmarks");
 
     // Configure benchmark parameters
@@ -49,7 +49,7 @@ fn benchmark_anoncred_protocol(c: &mut Criterion) {
 
         // Benchmark Obtain
         let obtain_id =
-            BenchmarkId::from_parameter(format!("bbs_plus_obtain_messages_{}", msg_size));
+            BenchmarkId::from_parameter(format!("bbs_plus_16_obtain_messages_{}", msg_size));
         group.bench_function(obtain_id, |b| {
             b.iter(|| {
                 AnonCredProtocol::obtain(&setup.pp, &setup.pk, &setup.messages, &mut rng)
@@ -58,7 +58,8 @@ fn benchmark_anoncred_protocol(c: &mut Criterion) {
         });
 
         // Benchmark Issue
-        let issue_id = BenchmarkId::from_parameter(format!("bbs_plus_issue_messages_{}", msg_size));
+        let issue_id =
+            BenchmarkId::from_parameter(format!("bbs_plus_16_issue_messages_{}", msg_size));
         group.bench_function(issue_id, |b| {
             b.iter(|| {
                 AnonCredProtocol::issue(&setup.pp, &setup.sk, &setup.pk, &pre_commitment, &mut rng)
@@ -67,7 +68,8 @@ fn benchmark_anoncred_protocol(c: &mut Criterion) {
         });
 
         // Benchmark Show
-        let show_id = BenchmarkId::from_parameter(format!("bbs_plus_show_messages_{}", msg_size));
+        let show_id =
+            BenchmarkId::from_parameter(format!("bbs_plus_16_show_messages_{}", msg_size));
         group.bench_function(show_id, |b| {
             b.iter(|| {
                 AnonCredProtocol::show(
@@ -83,7 +85,7 @@ fn benchmark_anoncred_protocol(c: &mut Criterion) {
 
         // Benchmark Verify
         let verify_id =
-            BenchmarkId::from_parameter(format!("bbs_plus_verify_messages_{}", msg_size));
+            BenchmarkId::from_parameter(format!("bbs_plus_16_verify_messages_{}", msg_size));
         group.bench_function(verify_id, |b| {
             b.iter(|| {
                 AnonCredProtocol::verify(&setup.pp, &setup.pk, &show_cred)

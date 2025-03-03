@@ -17,7 +17,7 @@ schnorr = {default-features = false, path = "../schnorr" }
 utils = {default-features = false, path = "../utils" }
 ps = {default-features = false, path = "../ps" }
 ps_utt = {default-features = false, path = "../ps_utt" }
-bbs_plus = {default-features = false, path = "../bbs_plus" }
+bbs_plus_16 = {default-features = false, path = "../bbs_plus_16" }
 
 
 [dev-dependencies]
@@ -31,8 +31,8 @@ path = "benches/psutt_improved_equality_split.rs"
 harness = false
 
 [[bench]]
-name = "bbs_plus_anoncreds"
-path = "benches/bbs_plus_anoncreds.rs"
+name = "bbs_plus_16_anoncreds"
+path = "benches/bbs_plus_16_anoncreds.rs"
 harness = false
 
 [[bench]]
@@ -43,4 +43,9 @@ harness = false
 [[bench]]
 name = "ps_utt_anoncreds_imp"
 path = "benches/ps_utt_anoncreds_imp.rs"
+harness = false
+
+[[bench]]
+name = "ps_anoncreds"
+path = "benches/ps_anoncreds.rs"
 harness = false

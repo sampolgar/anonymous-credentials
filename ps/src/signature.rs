@@ -1,5 +1,6 @@
 use crate::keygen::{PublicKey, SecretKey};
 use crate::publicparams::PublicParams;
+use crate::utils::PSUtils;
 use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::UniformRand;
@@ -9,7 +10,7 @@ use ark_std::{
     rand::Rng,
     One,
 };
-use utils::helpers::Helpers;
+// use utils::helpers::Helpers;
 use utils::pairing::verify_pairing_equation;
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
@@ -17,13 +18,6 @@ pub struct PSSignature<E: Pairing> {
     pub sigma1: E::G1Affine,
     pub sigma2: E::G1Affine,
 }
-
-// pub struct PSSignatureRandomized<E: Pairing> {
-//     pub sigma1: E::G1Affine,
-//     pub sigma2: E::G1Affine,
-//     pub bases_g1: Vec<E::G1Affine>,
-//     pub bases_g2: Vec<E::G2Affine>,
-// }
 
 impl<E: Pairing> PSSignature<E> {
     /// Issues a blind signature on a commitment
@@ -76,7 +70,7 @@ impl<E: Pairing> PSSignature<E> {
         pp: &PublicParams<E>,
         pk: &PublicKey<E>,
     ) -> PairingOutput<E> {
-        let signature_commitment_gt = Helpers::compute_gt::<E>(
+        let signature_commitment_gt = PSUtils::compute_gt::<E>(
             &[self.sigma2, self.sigma1.into_group().neg().into_affine()],
             &[pp.g2, pk.x_g2],
         );
@@ -142,7 +136,7 @@ impl<E: Pairing> PSSignature<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commitment::{compute_commitment_g1, Commitment};
+    use crate::commitment::compute_commitment_g1;
     use crate::keygen::gen_keys;
     use crate::publicparams::PublicParams;
     use ark_bls12_381::{Bls12_381, Fr};

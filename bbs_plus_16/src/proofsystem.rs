@@ -1,6 +1,6 @@
 use crate::keygen::{self, PublicKey};
 use crate::publicparams::PublicParams;
-use crate::signature::{BBSPlusRandomizedSignature, BBSPlusSignature};
+use crate::signature::{BBSPlus16RandomizedSignature, BBSPlus16Signature};
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{Field, UniformRand};
@@ -12,7 +12,7 @@ use ark_std::{
 };
 use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
 use thiserror::Error;
-use utils::helpers::Helpers;
+// use utils::helpers::Helpers;
 
 #[derive(Error, Debug)]
 pub enum ProofError {
@@ -26,7 +26,7 @@ pub enum ProofError {
 
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
 pub struct BBSPlusProofOfKnowledge<E: Pairing> {
-    pub randomized_sig: BBSPlusRandomizedSignature<E>,
+    pub randomized_sig: BBSPlus16RandomizedSignature<E>,
     pub schnorr_commitment_1: SchnorrCommitment<E::G1Affine>,
     pub schnorr_responses_1: SchnorrResponses<E::G1Affine>,
     pub schnorr_commitment_2: SchnorrCommitment<E::G1Affine>,
@@ -44,9 +44,9 @@ pub struct ProofSystem;
 
 impl ProofSystem {
     // Proves Knowledge of a BBS+ Signature
-    pub fn bbs_plus_prove<E: Pairing, R: Rng>(
+    pub fn bbs_plus_16_prove<E: Pairing, R: Rng>(
         pp: &PublicParams<E>,
-        randomized_sig: &BBSPlusRandomizedSignature<E>,
+        randomized_sig: &BBSPlus16RandomizedSignature<E>,
         pk: &PublicKey<E>,
         messages: &[E::ScalarField],
         rng: &mut R,
@@ -116,7 +116,7 @@ impl ProofSystem {
     }
 
     // Verifies knowledge of a BBS+ Signature Proof
-    pub fn bbs_plus_verify_proof<E: Pairing>(
+    pub fn bbs_plus_16_verify_proof<E: Pairing>(
         pp: &PublicParams<E>,
         pk: &PublicKey<E>,
         serialized_proof: &[u8],
@@ -265,7 +265,7 @@ mod tests {
             randomized_signature.verify_pairing(&setup.pp, &setup.pk),
             "Randomized signature verification failed"
         );
-        let proof = ProofSystem::bbs_plus_prove(
+        let proof = ProofSystem::bbs_plus_16_prove(
             &setup.pp,
             &randomized_signature,
             &setup.pk,
@@ -275,8 +275,9 @@ mod tests {
         .expect("Failed to generate proof");
 
         // Verify the proof
-        let verification_result = ProofSystem::bbs_plus_verify_proof(&setup.pp, &setup.pk, &proof)
-            .expect("Failed to verify proof");
+        let verification_result =
+            ProofSystem::bbs_plus_16_verify_proof(&setup.pp, &setup.pk, &proof)
+                .expect("Failed to verify proof");
 
         assert!(verification_result, "Proof verification failed");
     }

@@ -13,14 +13,14 @@ use schnorr::schnorr::SchnorrProtocol;
 use utils::pairing::PairingCheck;
 
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
-pub struct BBSPlusSignature<E: Pairing> {
+pub struct BBSPlus16Signature<E: Pairing> {
     pub A: E::G1Affine,
     pub e: E::ScalarField,
     pub s: E::ScalarField,
 }
 
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct BBSPlusRandomizedSignature<E: Pairing> {
+pub struct BBSPlus16RandomizedSignature<E: Pairing> {
     pub A_prime: E::G1Affine,
     pub A_bar: E::G1Affine,
     pub d: E::G1Affine,
@@ -31,7 +31,7 @@ pub struct BBSPlusRandomizedSignature<E: Pairing> {
     pub r3: E::ScalarField,
 }
 
-impl<E: Pairing> BBSPlusSignature<E> {
+impl<E: Pairing> BBSPlus16Signature<E> {
     // (A \gets pp.g1 . h_0^s . himi)^1/e+x
     pub fn sign(
         pp: &PublicParams<E>,
@@ -55,8 +55,8 @@ impl<E: Pairing> BBSPlusSignature<E> {
         pk: &keygen::PublicKey<E>,
         messages: &[E::ScalarField],
         rng: &mut R,
-    ) -> BBSPlusRandomizedSignature<E> {
-        BBSPlusRandomizedSignature::randomize(self, &pp, &pk, &messages, rng)
+    ) -> BBSPlus16RandomizedSignature<E> {
+        BBSPlus16RandomizedSignature::randomize(self, &pp, &pk, &messages, rng)
     }
 
     pub fn verify(
@@ -106,9 +106,9 @@ impl<E: Pairing> BBSPlusSignature<E> {
     }
 }
 
-impl<E: Pairing> BBSPlusRandomizedSignature<E> {
+impl<E: Pairing> BBSPlus16RandomizedSignature<E> {
     pub(crate) fn randomize<R: Rng>(
-        signature: &BBSPlusSignature<E>,
+        signature: &BBSPlus16Signature<E>,
         pp: &PublicParams<E>,
         pk: &keygen::PublicKey<E>,
         messages: &[E::ScalarField],
@@ -172,7 +172,7 @@ mod tests {
             .map(|_| <Bls12_381 as Pairing>::ScalarField::rand(&mut rng))
             .collect();
 
-        let signature = BBSPlusSignature::sign(&pp, &sk, &pk, &mut rng, &messages);
+        let signature = BBSPlus16Signature::sign(&pp, &sk, &pk, &mut rng, &messages);
         let is_valid = signature.verify(&pp, &pk, &messages);
         assert!(is_valid, "Signature verification failed");
 

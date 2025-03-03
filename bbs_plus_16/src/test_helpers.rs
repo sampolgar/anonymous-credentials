@@ -1,7 +1,7 @@
 // test_helpers.rs
 use crate::keygen::{gen_keys, PublicKey, SecretKey};
 use crate::publicparams::PublicParams;
-use crate::signature::BBSPlusSignature;
+use crate::signature::BBSPlus16Signature;
 use ark_ec::pairing::Pairing;
 use ark_ff::UniformRand;
 use ark_std::rand::Rng;
@@ -11,7 +11,7 @@ pub struct TestSetup<E: Pairing> {
     pub sk: SecretKey<E>,
     pub pk: PublicKey<E>,
     pub messages: Vec<E::ScalarField>,
-    pub signature: BBSPlusSignature<E>,
+    pub signature: BBSPlus16Signature<E>,
 }
 
 impl<E: Pairing> TestSetup<E> {
@@ -24,7 +24,7 @@ impl<E: Pairing> TestSetup<E> {
             .map(|_| E::ScalarField::rand(rng))
             .collect();
 
-        let signature = BBSPlusSignature::sign(&pp, &sk, &pk, rng, &messages);
+        let signature = BBSPlus16Signature::sign(&pp, &sk, &pk, rng, &messages);
 
         TestSetup {
             pp,

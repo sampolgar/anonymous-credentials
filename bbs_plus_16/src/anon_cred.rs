@@ -1,7 +1,7 @@
 use crate::keygen::{PublicKey, SecretKey};
 use crate::proofsystem::{BBSPlusProofOfKnowledge, CommitmentWithProof, ProofError, ProofSystem};
 use crate::publicparams::PublicParams;
-use crate::signature::{BBSPlusRandomizedSignature, BBSPlusSignature};
+use crate::signature::{BBSPlus16RandomizedSignature, BBSPlus16Signature};
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{Field, UniformRand};
@@ -23,9 +23,7 @@ pub struct IssuerResponse<E: Pairing> {
 
 #[derive(Clone)]
 pub struct ShowCredential<E: Pairing> {
-    /// Randomized signature
-    pub randomized_signature: BBSPlusRandomizedSignature<E>,
-    /// Serialized proof of knowledge
+    pub randomized_signature: BBSPlus16RandomizedSignature<E>,
     pub proof: Vec<u8>,
 }
 
@@ -109,12 +107,12 @@ impl AnonCredProtocol {
     pub fn complete_signature<E: Pairing>(
         s_prime: &E::ScalarField,
         issuer_response: &IssuerResponse<E>,
-    ) -> BBSPlusSignature<E> {
+    ) -> BBSPlus16Signature<E> {
         // Compute s = s' + s''
         let s = *s_prime + issuer_response.s_double_prime;
 
         // Construct the signature (A, e, s)
-        BBSPlusSignature {
+        BBSPlus16Signature {
             A: issuer_response.A,
             e: issuer_response.e,
             s,
@@ -135,7 +133,7 @@ impl AnonCredProtocol {
     // pub fn show<E: Pairing, R: Rng>(
     //     pp: &PublicParams<E>,
     //     pk: &PublicKey<E>,
-    //     signature: &BBSPlusSignature<E>,
+    //     signature: &BBSPlus16Signature<E>,
     //     messages: &[E::ScalarField],
     //     rng: &mut R,
     // ) -> Result<(BBSPlusRandomizedSignature<E>, Vec<u8>), ProofError> {
@@ -152,7 +150,7 @@ impl AnonCredProtocol {
     pub fn show<E: Pairing, R: Rng>(
         pp: &PublicParams<E>,
         pk: &PublicKey<E>,
-        signature: &BBSPlusSignature<E>,
+        signature: &BBSPlus16Signature<E>,
         messages: &[E::ScalarField],
         rng: &mut R,
     ) -> Result<ShowCredential<E>, ProofError> {
@@ -160,7 +158,7 @@ impl AnonCredProtocol {
         let randomized_signature = signature.rerandomize(pp, pk, messages, rng);
 
         // Generate the proof
-        let proof = ProofSystem::bbs_plus_prove(pp, &randomized_signature, pk, messages, rng)?;
+        let proof = ProofSystem::bbs_plus_16_prove(pp, &randomized_signature, pk, messages, rng)?;
 
         // Return the randomized signature and the proof
         Ok(ShowCredential {
@@ -184,7 +182,7 @@ impl AnonCredProtocol {
         cred_show: &ShowCredential<E>,
     ) -> Result<bool, ProofError> {
         // Verify the proof
-        if !ProofSystem::bbs_plus_verify_proof(pp, pk, &cred_show.proof)? {
+        if !ProofSystem::bbs_plus_16_verify_proof(pp, pk, &cred_show.proof)? {
             return Ok(false);
         }
 
