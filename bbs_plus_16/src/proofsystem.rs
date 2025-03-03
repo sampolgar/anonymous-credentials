@@ -64,16 +64,16 @@ impl ProofSystem {
         let schnorr_responses_1 =
             SchnorrProtocol::prove(&schnorr_commitment_1, &exponents_1, &challenge);
 
-        // this can be deleted, this is a test to see if it works before creating prover/verifier
-        let proof_1_test = SchnorrProtocol::verify(
-            &bases_1,
-            &public_statement_1,
-            &schnorr_commitment_1,
-            &schnorr_responses_1,
-            &challenge,
-        );
+        // // this can be deleted, this is a test to see if it works before creating prover/verifier
+        // let proof_1_test = SchnorrProtocol::verify(
+        //     &bases_1,
+        //     &public_statement_1,
+        //     &schnorr_commitment_1,
+        //     &schnorr_responses_1,
+        //     &challenge,
+        // );
 
-        assert!(proof_1_test, "proof 1 test isn't valid!");
+        // assert!(proof_1_test, "proof 1 test isn't valid!");
 
         let public_statement_2 = pp.g1;
 
@@ -92,14 +92,14 @@ impl ProofSystem {
         let schnorr_responses_2 =
             SchnorrProtocol::prove(&schnorr_commitment_2, &exponents_2, &challenge);
         // Verify the second proof (this can be removed in production)
-        let proof_2_valid = SchnorrProtocol::verify(
-            &bases_2,
-            &public_statement_2,
-            &schnorr_commitment_2,
-            &schnorr_responses_2,
-            &challenge,
-        );
-        assert!(proof_2_valid, "Proof 2 is not valid!");
+        // let proof_2_valid = SchnorrProtocol::verify(
+        //     &bases_2,
+        //     &public_statement_2,
+        //     &schnorr_commitment_2,
+        //     &schnorr_responses_2,
+        //     &challenge,
+        // );
+        // assert!(proof_2_valid, "Proof 2 is not valid!");
 
         let proof = BBSPlusProofOfKnowledge {
             randomized_sig: randomized_sig.clone(),
