@@ -1,4 +1,3 @@
-// test_helpers.rs
 use crate::keygen::{gen_keys, PublicKey, SecretKey};
 use crate::publicparams::PublicParams;
 use crate::signature::BBSPlus16Signature;

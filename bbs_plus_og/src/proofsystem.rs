@@ -1,6 +1,6 @@
 use crate::keygen::PublicKey;
 use crate::publicparams::PublicParams;
-use crate::signature::BBSPlusSignature;
+use crate::signature::BBSPlusOgSignature;
 use crate::utils::BBSPlusOgUtils;
 use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ec::Group;
@@ -45,6 +45,22 @@ pub struct BBSPlusProofOfKnowledge<E: Pairing> {
     pub pairing_bases_g2: Vec<E::G2Affine>,
     pub challenge: E::ScalarField,
 }
+/// Proof of knowledge of a commitment
+#[derive(CanonicalSerialize, CanonicalDeserialize, Debug, Clone)]
+pub struct CommitmentProof<E: Pairing> {
+    pub commitment: E::G1Affine,
+    pub schnorr_commitment: E::G1Affine,
+    pub bases: Vec<E::G1Affine>,
+    pub challenge: E::ScalarField,
+    pub responses: Vec<E::ScalarField>,
+}
+
+/// Pedersen commitment with proof of knowledge
+// #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
+// pub struct CommitmentWithProof<E: Pairing> {
+//     pub commitment: E::G1Affine,
+//     pub proof: Vec<u8>,
+// }
 
 pub struct ProofSystem;
 
@@ -52,7 +68,7 @@ impl ProofSystem {
     pub fn pok_signature_prove<E: Pairing, R: Rng>(
         pp: &PublicParams<E>,
         pk: &PublicKey<E>,
-        signature: &BBSPlusSignature<E>,
+        signature: &BBSPlusOgSignature<E>,
         messages: &[E::ScalarField],
         rng: &mut R,
     ) -> Result<Vec<u8>, ProofError> {
@@ -207,13 +223,93 @@ impl ProofSystem {
 
         Ok(true)
     }
+
+    /// Create a commitment and proof of knowledge
+    ///
+    /// # Arguments
+    /// * `pp` - Public parameters
+    /// * `pk` - Issuer's public key
+    /// * `messages` - Array of messages to commit to
+    /// * `s` - Blinding factor
+    /// * `rng` - Random number generator
+    ///
+    /// # Returns
+    /// * Commitment with proof
+    pub fn create_commitment_proof<E: Pairing, R: Rng>(
+        pp: &PublicParams<E>,
+        pk: &PublicKey<E>,
+        messages: &[E::ScalarField],
+        s_prime: &E::ScalarField,
+        rng: &mut R,
+    ) -> Result<Vec<u8>, ProofError> {
+        // Validate inputs
+        assert_eq!(messages.len(), pp.L, "Invalid number of messages");
+
+        // Calculate the commitment: C = h0^s * h1^m1 * ... * hL^mL
+        let mut bases = pp.g2_to_L.clone();
+        bases.insert(0, pp.g1);
+
+        let mut exponents = messages.to_vec();
+        exponents.insert(0, *s_prime);
+
+        let commitment = E::G1::msm_unchecked(&bases, &exponents).into_affine();
+
+        // Generate Schnorr proof for the commitment
+        let schnorr_commitment = SchnorrProtocol::commit(&bases, rng);
+        let challenge = E::ScalarField::rand(rng);
+        let responses = SchnorrProtocol::prove(&schnorr_commitment, &exponents, &challenge);
+
+        // Create the proof struct
+        let proof = CommitmentProof::<E> {
+            commitment,
+            schnorr_commitment: schnorr_commitment.commited_blindings,
+            bases: bases.clone(),
+            challenge,
+            responses: responses.0,
+        };
+
+        // Serialize the proof
+        let mut serialized_proof = Vec::new();
+        proof.serialize_compressed(&mut serialized_proof)?;
+        Ok(serialized_proof)
+    }
+
+    /// Verify a commitment proof
+    ///
+    /// # Arguments
+    /// * `pp` - Public parameters
+    /// * `pk` - Issuer's public key
+    /// * `commitment_proof` - Commitment with proof
+    ///
+    /// # Returns
+    /// * Result indicating whether the proof is valid
+    pub fn verify_commitment_proof<E: Pairing>(
+        pp: &PublicParams<E>,
+        pk: &PublicKey<E>,
+        serialized_proof: &[u8],
+    ) -> Result<bool, ProofError> {
+        // Deserialize the proof
+        let proof: CommitmentProof<E> =
+            CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
+
+        // Verify the Schnorr proof
+        let is_valid = SchnorrProtocol::verify_schnorr(
+            &proof.bases,
+            &proof.commitment,
+            &proof.schnorr_commitment,
+            &proof.responses,
+            &proof.challenge,
+        );
+
+        Ok(is_valid)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::keygen::gen_keys;
-    use crate::signature::BBSPlusSignature;
+    use crate::signature::BBSPlusOgSignature;
     use ark_bls12_381::{Bls12_381, Fr};
     use ark_std::test_rng;
 
@@ -233,7 +329,7 @@ mod tests {
         let messages: Vec<Fr> = (0..L).map(|_| Fr::rand(&mut rng)).collect();
 
         // Sign the messages
-        let signature = BBSPlusSignature::sign(&pp, &sk, &messages, &mut rng);
+        let signature = BBSPlusOgSignature::sign(&pp, &sk, &messages, &mut rng);
 
         // Verify the signature directly
         let is_valid = signature.verify(&pp, &pk, &messages);
@@ -248,5 +344,32 @@ mod tests {
             ProofSystem::pok_signature_verify(&pp, &proof).expect("Failed to verify proof");
 
         assert!(is_proof_valid, "Proof verification failed");
+    }
+
+    #[test]
+    fn test_commitment_proof() {
+        // Initialize test environment
+        let mut rng = test_rng();
+        let L = 2; // Support 2 messages
+
+        // Generate public parameters
+        let pp = PublicParams::<Bls12_381>::new(&L, &mut rng);
+
+        // Generate a keypair
+        let (_, pk) = gen_keys(&pp, &mut rng);
+
+        // Create random messages and blinding factor
+        let messages: Vec<Fr> = (0..L).map(|_| Fr::rand(&mut rng)).collect();
+        let s = Fr::rand(&mut rng);
+
+        // Create commitment and proof
+        let proof = ProofSystem::create_commitment_proof(&pp, &pk, &messages, &s, &mut rng)
+            .expect("Failed to create commitment proof");
+
+        // Verify the proof
+        let is_valid = ProofSystem::verify_commitment_proof(&pp, &pk, &proof)
+            .expect("Verification process failed");
+
+        assert!(is_valid, "Commitment proof verification failed");
     }
 }
