@@ -105,6 +105,22 @@ impl SchnorrProtocol {
             (blinding_commitment.commited_blindings + statement.mul(*challenge)).into_affine();
         lhs == rhs
     }
+
+    /// takes input Generators, Statement, Schnorr Commitment \in G, Schnorr responses, challenge
+
+    pub fn verify_schnorr<G: AffineRepr>(
+        public_generators: &[G],
+        statement: &G,
+        schnorr_commitment: &G,
+        schnorr_responses: &[G::ScalarField],
+        challenge: &G::ScalarField,
+    ) -> bool {
+        //e.g.  LHS = g1^(t1 + e*m1) * g2^(t2 + e*m2) * h^(t3 + e*r)
+        let lhs = G::Group::msm_unchecked(public_generators, &schnorr_responses).into_affine();
+        // com^e + com
+        let rhs = (schnorr_commitment.into_group() + statement.mul(*challenge)).into_affine();
+        lhs == rhs
+    }
 }
 
 #[cfg(test)]
