@@ -18,6 +18,7 @@ utils = {default-features = false, path = "../utils" }
 ps = {default-features = false, path = "../ps" }
 ps_utt = {default-features = false, path = "../ps_utt" }
 bbs_plus_16 = {default-features = false, path = "../bbs_plus_16" }
+bbs_plus_og = {default-features = false, path = "../bbs_plus_og" }
 
 
 [dev-dependencies]
@@ -33,6 +34,11 @@ harness = false
 [[bench]]
 name = "bbs_plus_16_anoncreds"
 path = "benches/bbs_plus_16_anoncreds.rs"
+harness = false
+
+[[bench]]
+name = "bbs_plus_og_anoncreds"
+path = "benches/bbs_plus_og_anoncreds.rs"
 harness = false
 
 [[bench]]
