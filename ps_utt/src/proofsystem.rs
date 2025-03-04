@@ -11,20 +11,12 @@ pub enum CommitmentProofError {
     /// The commitment is invalid
     #[error("Invalid commitment")]
     InvalidCommitment,
-
-    /// The proof is invalid
     #[error("Invalid proof")]
     InvalidProof,
-
-    /// The provided index for an equality proof is invalid
     #[error("Invalid index for equality proof")]
     InvalidEqualityIndex,
-
-    /// Commitments in a batch have different lengths
     #[error("Mismatched commitment lengths")]
     MismatchedCommitmentLengths,
-
-    /// An error occurred during serialization or deserialization
     #[error("Serialization error: {0}")]
     SerializationError(#[from] ark_serialize::SerializationError),
 }
@@ -52,19 +44,10 @@ pub struct CommitmentProofG2<E: Pairing> {
 /// Proof that multiple commitments share the same value at a specific index
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommitmentEqualityProof<E: Pairing> {
-    /// The commitments being proven equal at a specific index
     pub commitments: Vec<E::G1Affine>,
-
-    /// The Schnorr commitments for each commitment
     pub schnorr_commitments: Vec<SchnorrCommitment<E::G1Affine>>,
-
-    /// The bases used in each commitment
     pub bases: Vec<Vec<E::G1Affine>>,
-
-    /// Challenge value used in the proof
     pub challenge: E::ScalarField,
-
-    /// Response values used in the proof for each commitment
     pub responses: Vec<Vec<E::ScalarField>>,
 }
 

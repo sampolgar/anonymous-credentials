@@ -20,7 +20,7 @@ pub struct BBSPlusSignature<E: Pairing> {
 impl<E: Pairing> BBSPlusSignature<E> {
     /// Generate a BBS+ signature on a message vector
     /// As per the paper: "Signing block of messages. On input (m₁,...,mₗ) ∈ ℤᵖᴸ,
-    /// choose e and a random number s, compute A = [g₀g₁ᵐ¹g₂ᵐ²...g_{L+1}ˢ]^(1/(e+γ)).
+    /// choose e and a random number s, compute A = [g₀g₁ᵐ¹g₂ᵐ²...g_{L+1}]^(1/(e+γ)).
     /// Signature on (m₁,...,mₗ) is (A,e,s)."
     pub fn sign(
         pp: &PublicParams<E>,
@@ -35,16 +35,17 @@ impl<E: Pairing> BBSPlusSignature<E> {
         let s = E::ScalarField::rand(rng);
 
         let bases = pp.get_all_bases();
-        let mut exponents =
-            BBSPlusOgUtils::add_scalar_to_start_of_vector::<E>(&messages, &E::ScalarField::one());
-        // Compute A = (g₀·Π(g_i^m_i)·g_{L+1}^s)^(1/(e+γ))
-        exponents.push(s);
 
-        // Compute base = g₀·Π(g_i^m_i)·g_{L+1}^s
+        let one = E::ScalarField::one();
+        let lhs_exponents = vec![one, s.clone()];
+        let exponents = BBSPlusOgUtils::concatenate_scalars::<E>(&lhs_exponents, &messages);
+
+        // Compute base = g0 g1s g2m1 ... gL+1mL
         let base = E::G1::msm_unchecked(&bases, &exponents).into_affine();
 
         // Compute exponent = 1/(e+γ)
         let exponent = (e + sk.gamma).inverse().expect("e+γ should be invertible");
+        // let exponent = -(e + sk.gamma);
 
         // Compute A = base^exponent
         let A = base.mul(exponent).into_affine();
@@ -64,10 +65,9 @@ impl<E: Pairing> BBSPlusSignature<E> {
         assert!(messages.len() <= pp.L, "Too many messages");
 
         let bases = pp.get_all_bases();
-        let mut exponents =
-            BBSPlusOgUtils::add_scalar_to_start_of_vector::<E>(&messages, &E::ScalarField::one());
-        // Compute A = (g₀·Π(g_i^m_i)·g_{L+1}^s)^(1/(e+γ))
-        exponents.push(self.s);
+        let one = E::ScalarField::one();
+        let lhs_exponents = vec![one, self.s.clone()];
+        let exponents = BBSPlusOgUtils::concatenate_scalars::<E>(&lhs_exponents, &messages);
 
         // Compute base = g₀·Π(g_i^m_i)·g_{L+1}^s
         let base = E::G1::msm_unchecked(&bases, &exponents).into_affine();
@@ -78,6 +78,30 @@ impl<E: Pairing> BBSPlusSignature<E> {
         let rhs = E::pairing(base, pp.h0);
 
         lhs == rhs
+    }
+
+    pub fn minimal_signature_check(
+        &self,
+        pp: &PublicParams<E>,
+        pk: &PublicKey<E>,
+        signature: &BBSPlusSignature<E>,
+        messages: &[E::ScalarField],
+    ) -> bool {
+        // Simple implementation following the paper exactly
+
+        // Left side: e(A, w * h0^e)
+        let w_plus_h0e = (pk.w.into_group() + pp.h0.mul(signature.e)).into_affine();
+        let left = E::pairing(signature.A, w_plus_h0e);
+
+        // Right side: e(g0 * Π(g2_i^m_i) * g1^s, h0)
+        let mut base = pp.g0.into_group();
+        for i in 0..messages.len() {
+            base += pp.g2_to_L[i].mul(messages[i]);
+        }
+        base += pp.g1.mul(signature.s);
+        let right = E::pairing(base.into_affine(), pp.h0);
+
+        left == right
     }
 
     pub fn randomize(
@@ -138,6 +162,14 @@ impl<E: Pairing> RandomizedSignature<E> {
         let pairing_statement = BBSPlusOgUtils::compute_gt(
             &[A2.into_affine(), pp.g0.into_group().neg().into_affine()],
             &[pk.w, pp.h0],
+        );
+
+        let pair_A2_w = E::pairing(A2, pk.w);
+        let pair_g0_h0 = E::pairing(pp.g0, pp.h0);
+        let left_side = pair_A2_w.0 * pair_g0_h0.0.inverse().expect("pairing is non-zero"); // Correct
+        assert_eq!(
+            pairing_statement.0, left_side,
+            "pairing statements aren't same"
         );
 
         // e(A2,h0) . e(g2,w) . e(g2, h0) . e(g1, h0) . e(g2, h0), ..e(g_L, h0)
@@ -203,6 +235,9 @@ mod tests {
         // Verify the signature
         let is_valid = signature.verify(&pp, &pk, &messages);
         assert!(is_valid, "Signature verification failed");
+
+        let is_valid2 = signature.minimal_signature_check(&pp, &pk, &signature, &messages);
+        assert!(is_valid2, "2222222    Signature verification failed");
 
         // Test with modified messages
         let mut modified_messages = messages.clone();
