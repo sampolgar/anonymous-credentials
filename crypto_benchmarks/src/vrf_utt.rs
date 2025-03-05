@@ -164,20 +164,15 @@ mod tests {
         let r2 = Fr::rand(&mut rng);
         let r3 = Fr::rand(&mut rng);
         let r4 = Fr::rand(&mut rng);
-        let r5 = -(r3 / exponent_s_sn);
-        let r6 = Fr::rand(&mut rng);
-
-        assert!(
-            (r5 + (r3 * exponent_s_sn_inv)).is_zero(),
-            "they shoudl cancel each other out"
-        );
+        let r5 = Fr::rand(&mut rng);
+        let r6 = (r3 / exponent_s_sn) + r5;
 
         // cm1 = g1^pid_sender + g2^s_sender + g^r1     - prove opening of cm1
         // cm2 = g1^pid_sender + g3^sn + g^r2           - prove opening of cm2
         // cm3 = g4^{s_sender + sn} + g^r3              - uses responses from cm1,cm2 to prove exponent is made from it's exponents
         // cm4 = g4^{1/s_sender + sn} + g^r4            - commits to the inverse exponent, can't prove anything with this yet
-        // cm5 = cm3^{1/1/s_sender + sn}}  + g^r5       - (g4^{s_sender + sn} + g^r3)^{1/1/s_sender + sn}   =   g4 + g^{r3/s_sender + sn} + g^r5 where r5 = -{r3/(s_sender + sn)}
-        // cm6 = g^r6
+        // cm5 = cm3^{1/1/s_sender + sn}}  + g^r5       - (g4^{s_sender + sn} + g^r3)^{1/1/s_sender + sn}   =   g4 + g^{r3/s_sender + sn} + g^r5 where r5 = {r3/(s_sender + sn)}
+        // cm6 = g^(r3 / exponent_s_sn) + r5;                                   - (r3 / exponent_s_sn) + r5;
         let c = Fr::rand(&mut rng);
 
         let cm1 = g1.mul(pid_sender) + g2.mul(s_sender) + g.mul(r1);
@@ -241,14 +236,15 @@ mod tests {
         let is_cm6_valid = cm6.mul(c) + T6 == g.mul(z_r6);
         assert!(is_cm6_valid, "cm6 isn't valid");
 
-        // let cm4_inv = cm4.neg();
+        // cm5  = cm3.mul(exponent_s_sn_inv) + g.mul(r5);
+        //      = (g4.mul(exponent_s_sn) + g.mul(r3))^{exponent_s_sn_inv} + g^{r5}
+        //      = g4^{exponent_s_sn * exponent_s_sn_inv} + g^{r3 * exponent_s_sn_inv} + g^r5
 
-        assert_eq!(cm4.add(cm5.neg()), g);
+        // cm6 = g^{-(r3 / exponent_s_sn) + r5}
 
-        // let lhs = cm1.mul(c) + T1;
-        // let rhs = g1.mul(z_pid_sender) + g2.mul(z_s_sender) + g.mul(z_r1);
-        // assert_eq!(lhs, rhs, "defs not is_cm1_valid isn't valid");
+        // cm5 / cm6 = g4^{exponent_s_sn * exponent_s_sn_inv} + g^{r3/(s+sn)} + g^r5 / g^{-(r3 / exponent_s_sn) + r5}
 
-        // let nullif =
+        // let g1_g2_g = g;
+        assert_eq!(cm5.add(cm6.neg()), g4);
     }
 }
