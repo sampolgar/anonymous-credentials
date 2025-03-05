@@ -26,3 +26,5 @@ Currently I am benchmarking Anonymous Credential schemes in the Obtain, Issue, S
 # Credits
 
 - [Lovesh Harchandani](https://github.com/lovesh) as you'll notice the structure of my libraries, proof system/schnorr library is very much inspired/borrowed from him
+
+![Current Benchmarks](30messages.png)
