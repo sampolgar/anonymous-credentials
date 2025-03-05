@@ -4,6 +4,8 @@ use ark_ff::{Field, UniformRand};
 use ark_std::ops::{Add, Mul, Neg};
 use ark_std::rand::Rng;
 use ark_std::test_rng;
+use ark_std::One;
+use ark_std::Zero;
 use schnorr::schnorr::SchnorrProtocol;
 
 // public parameters have g1, g2, \tilde{h},
@@ -43,7 +45,6 @@ impl<E: Pairing> PublicParams<E> {
         let mut bases = Vec::new();
         bases.push(self.g1);
         bases.push(self.g2);
-        // bases.push(self.g3);
         bases.push(self.g);
         bases
     }
@@ -59,7 +60,7 @@ impl<E: Pairing> PublicParams<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::{Bls12_381, Fr};
+    use ark_bls12_381::{Bls12_381, Fr, FrConfig, G1Affine};
     use ark_ec::CurveGroup;
     use ark_ff::UniformRand;
     use serde::ser;
@@ -136,5 +137,118 @@ mod tests {
         let lhs_y = (y * c) + X5;
         let rhs_y = q * a8;
         assert_eq!(lhs_y, rhs_y, "lhs_y neq rhs_y");
+    }
+
+    #[test]
+    pub fn test_my_vrf() {
+        let mut rng = test_rng();
+
+        // generate public parameters
+        // g, h
+        let g1 = G1Affine::rand(&mut rng); //for pid_sender
+        let g2 = G1Affine::rand(&mut rng); //for s_sender
+        let g3 = G1Affine::rand(&mut rng); //for sn (of context credential)
+        let g4 = G1Affine::rand(&mut rng); //for sn (of context credential)
+        let g5 = G1Affine::rand(&mut rng); // for 1/s_sender + sn
+        let g = G1Affine::rand(&mut rng); //for randomness
+
+        let pid_sender = Fr::rand(&mut rng);
+        let s_sender = Fr::rand(&mut rng);
+        let sn = Fr::rand(&mut rng);
+        let exponent_s_sn = s_sender + sn;
+        let exponent_s_sn_inv = exponent_s_sn
+            .inverse()
+            .expect("exponent should be invertible");
+
+        let r1 = Fr::rand(&mut rng);
+        let r2 = Fr::rand(&mut rng);
+        let r3 = Fr::rand(&mut rng);
+        let r4 = Fr::rand(&mut rng);
+        let r5 = -(r3 / exponent_s_sn);
+        let r6 = Fr::rand(&mut rng);
+
+        assert!(
+            (r5 + (r3 * exponent_s_sn_inv)).is_zero(),
+            "they shoudl cancel each other out"
+        );
+
+        // cm1 = g1^pid_sender + g2^s_sender + g^r1     - prove opening of cm1
+        // cm2 = g1^pid_sender + g3^sn + g^r2           - prove opening of cm2
+        // cm3 = g4^{s_sender + sn} + g^r3              - uses responses from cm1,cm2 to prove exponent is made from it's exponents
+        // cm4 = g4^{1/s_sender + sn} + g^r4            - commits to the inverse exponent, can't prove anything with this yet
+        // cm5 = cm3^{1/1/s_sender + sn}}  + g^r5       - (g4^{s_sender + sn} + g^r3)^{1/1/s_sender + sn}   =   g4 + g^{r3/s_sender + sn} + g^r5 where r5 = -{r3/(s_sender + sn)}
+        // cm6 = g^r6
+        let c = Fr::rand(&mut rng);
+
+        let cm1 = g1.mul(pid_sender) + g2.mul(s_sender) + g.mul(r1);
+        let cm2 = g1.mul(pid_sender) + g3.mul(sn) + g.mul(r2);
+        let cm3 = g4.mul(exponent_s_sn) + g.mul(r3);
+        let cm4 = g5.mul(exponent_s_sn_inv) + g.mul(r4);
+        let cm5 = cm3.mul(exponent_s_sn_inv) + g.mul(r5);
+        let cm6 = g.mul(r6);
+
+        let a_pid_sender = Fr::rand(&mut rng);
+        let a_s_sender = Fr::rand(&mut rng);
+        let a_sn = Fr::rand(&mut rng);
+        // let a_exponent_s_sn = Fr::rand(&mut rng);
+        let a_exponent_s_sn_inv = Fr::rand(&mut rng);
+        let a_r1 = Fr::rand(&mut rng);
+        let a_r2 = Fr::rand(&mut rng);
+        let a_r3 = Fr::rand(&mut rng);
+        let a_r4 = Fr::rand(&mut rng);
+        let a_r5 = Fr::rand(&mut rng);
+        let a_r6 = Fr::rand(&mut rng);
+
+        let T1 = g1.mul(a_pid_sender) + g2.mul(a_s_sender) + g.mul(a_r1);
+        let T2 = g1.mul(a_pid_sender) + g3.mul(a_sn) + g.mul(a_r2);
+        let T3 = g4.mul(a_s_sender + a_sn) + g.mul(a_r3);
+        let T4 = g5.mul(a_exponent_s_sn_inv) + g.mul(a_r4);
+        let T5 = cm3.mul(a_exponent_s_sn_inv) + g.mul(a_r5);
+        let T6 = g.mul(a_r6);
+
+        let z_pid_sender = a_pid_sender + c * pid_sender;
+        let z_s_sender = a_s_sender + c * s_sender;
+        let z_r1 = a_r1 + c * r1;
+
+        let z_sn = a_sn + c * sn;
+        let z_r2 = a_r2 + c * r2;
+
+        let z_r3 = a_r3 + c * r3;
+
+        let z_exponent_s_sn_inv = a_exponent_s_sn_inv + c * exponent_s_sn_inv;
+        let z_r4 = a_r4 + c * r4;
+
+        let z_r5 = a_r5 + c * r5;
+        let z_r6 = a_r6 + c * r6;
+
+        // cm1 * c + T1 = g1 * z_pid_sender + g2 * z_s_sender + g * z_r1
+        let is_cm1_valid =
+            cm1.mul(c) + T1 == g1.mul(z_pid_sender) + g2.mul(z_s_sender) + g.mul(z_r1);
+        assert!(is_cm1_valid, "is_cm1_valid isn't valid");
+
+        let is_cm2_valid = cm2.mul(c) + T2 == g1.mul(z_pid_sender) + g3.mul(z_sn) + g.mul(z_r2);
+        assert!(is_cm2_valid, "cm2 isn't valid");
+
+        let is_cm3_valid = cm3.mul(c) + T3 == g4.mul(z_s_sender + z_sn) + g.mul(z_r3);
+        assert!(is_cm3_valid, "cm3 isn't valid");
+
+        let is_cm4_valid = cm4.mul(c) + T4 == g5.mul(z_exponent_s_sn_inv) + g.mul(z_r4);
+        assert!(is_cm4_valid, "cm4 isn't valid");
+
+        let is_cm5_valid = cm5.mul(c) + T5 == cm3.mul(z_exponent_s_sn_inv) + g.mul(z_r5);
+        assert!(is_cm5_valid, "cm5 isn't valid");
+
+        let is_cm6_valid = cm6.mul(c) + T6 == g.mul(z_r6);
+        assert!(is_cm6_valid, "cm6 isn't valid");
+
+        // let cm4_inv = cm4.neg();
+
+        assert_eq!(cm4.add(cm5.neg()), g);
+
+        // let lhs = cm1.mul(c) + T1;
+        // let rhs = g1.mul(z_pid_sender) + g2.mul(z_s_sender) + g.mul(z_r1);
+        // assert_eq!(lhs, rhs, "defs not is_cm1_valid isn't valid");
+
+        // let nullif =
     }
 }

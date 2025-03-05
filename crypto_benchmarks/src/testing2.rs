@@ -328,6 +328,108 @@ mod tests {
         println!("Total test time: {:?}\n", total.elapsed());
     }
 
+    // BLS-12 curve at 128-bit security: for a scalar multiplication in G2, an exponentiation in GT and a pairing, respectively, is about the same as computing 2, 6 and 9 scalar multiplications (M1) in G1.
+    // use ark_bls12_381::{Bls12_381, Fr as Fp, G1Projective as G1, G2Projective as G2};
+    // use ark_std::rand::{Rng, SeedableRng};
+    // use ark_std::time::Instant;
+
+    fn test_operation_times<P: Pairing>(num_iterations: usize) {
+        // Initialize a seeded RNG for reproducibility
+
+        let mut rng = test_rng();
+
+        // Generate random scalars in the scalar field Fr
+        let scalars: Vec<P::ScalarField> = (0..num_iterations)
+            .map(|_| P::ScalarField::rand(&mut rng))
+            .collect();
+
+        // Generate random points in G1
+        let g1_points: Vec<P::G1> = (0..num_iterations).map(|_| P::G1::rand(&mut rng)).collect();
+
+        // Generate random points in G2
+        let g2_points: Vec<P::G2> = (0..num_iterations).map(|_| P::G2::rand(&mut rng)).collect();
+
+        // Generate random elements in GT by computing pairings
+        let gt_elements: Vec<P::TargetField> = (0..num_iterations)
+            .map(|i| P::pairing(g1_points[i], g2_points[i]).0)
+            .collect();
+
+        // Measure time for scalar multiplication in G1
+        let start_g1 = Instant::now();
+        for i in 0..num_iterations {
+            let _ = g1_points[i] * scalars[i]; // Perform scalar multiplication
+        }
+        let duration_g1 = start_g1.elapsed();
+        println!(
+            "Time for {} scalar multiplications in G1: {:?}",
+            num_iterations, duration_g1
+        );
+
+        // Measure time for scalar multiplication in G2
+        let start_g2 = Instant::now();
+        for i in 0..num_iterations {
+            let _ = g2_points[i] * scalars[i];
+        }
+        let duration_g2 = start_g2.elapsed();
+        println!(
+            "Time for {} scalar multiplications in G2: {:?}",
+            num_iterations, duration_g2
+        );
+
+        // Measure time for exponentiation in GT
+        let start_gt = Instant::now();
+        for i in 0..num_iterations {
+            let scalar_i = scalars[i]; // P::ScalarField
+            let scalar_bigint = scalar_i.into_bigint(); // Convert to big integer
+            let _ = gt_elements[i].pow(&scalar_bigint); // Perform exponentiation
+        }
+        let duration_gt = start_gt.elapsed();
+        println!(
+            "Time for {} exponentiations in GT: {:?}",
+            num_iterations, duration_gt
+        );
+
+        // Measure time for pairings
+        let start_pairing = Instant::now();
+        for i in 0..num_iterations {
+            let _ = P::pairing(g1_points[i], g2_points[i]);
+        }
+        let duration_pairing = start_pairing.elapsed();
+        println!(
+            "Time for {} pairings: {:?}",
+            num_iterations, duration_pairing
+        );
+
+        // Compute average time per operation
+        let time_per_g1 = duration_g1.as_secs_f64() / num_iterations as f64;
+        let time_per_g2 = duration_g2.as_secs_f64() / num_iterations as f64;
+        let time_per_gt = duration_gt.as_secs_f64() / num_iterations as f64;
+        let time_per_pairing = duration_pairing.as_secs_f64() / num_iterations as f64;
+
+        println!("\nAverage time per operation:");
+        println!("G1 scalar multiplication: {:.6} s", time_per_g1);
+        println!("G2 scalar multiplication: {:.6} s", time_per_g2);
+        println!("GT exponentiation: {:.6} s", time_per_gt);
+        println!("Pairing: {:.6} s", time_per_pairing);
+
+        // Compute ratios relative to G1 scalar multiplication
+        let ratio_g2 = time_per_g2 / time_per_g1;
+        let ratio_gt = time_per_gt / time_per_g1;
+        let ratio_pairing = time_per_pairing / time_per_g1;
+
+        println!("\nRatios relative to G1 scalar multiplication:");
+        println!("G2 scalar multiplication: {:.2}", ratio_g2);
+        println!("GT exponentiation: {:.2}", ratio_gt);
+        println!("Pairing: {:.2}", ratio_pairing);
+    }
+
+    // Test function to run with BLS12-381
+    #[test]
+    fn test_bls12_381_operation_times() {
+        println!("\n=== Testing BLS12-381 Operation Times ===");
+        test_operation_times::<Bls12_381>(100);
+    }
+
     /// Test 3: Scalar Inverse
     /// Goal: Compute the multiplicative inverse of a scalar.
     /// Expectation: For scalar a, find a^-1 such that a * a^-1 = 1.
