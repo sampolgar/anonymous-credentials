@@ -7,29 +7,23 @@ use ark_ec::pairing::Pairing;
 use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::Rng;
-
-/// User credential containing a secret key and commitment
-pub struct UserCred<E: Pairing> {
-    /// User's secret key
-    pub usk: E::ScalarField,
-    /// Commitment to user attributes
-    pub commitment: Commitment<E>,
-}
+// use std::time::Instant;
 
 /// Presentation of a credential with G1 and G2 elements
 pub struct ShowCredential<E: Pairing> {
-    /// Randomized signature
     pub randomized_signature: PSUTTSignature<E>,
-    /// Commitment in G1
     pub cmg1: E::G1Affine,
-    /// Commitment in G2
     pub cmg2: E::G2Affine,
-    /// Serialized proof of knowledge
     pub proof: Vec<u8>,
 }
 
+/// User credential containing a secret key and commitment
+pub struct UserCred<E: Pairing> {
+    pub usk: E::ScalarField,
+    pub commitment: Commitment<E>,
+}
+
 impl<E: Pairing> UserCred<E> {
-    /// Create a new user credential with provided attributes
     pub fn new(
         pp: &PublicParams<E>,
         messages: &Vec<E::ScalarField>,
@@ -52,11 +46,8 @@ impl<E: Pairing> UserCred<E> {
 
 /// Standard anonymous credential protocol
 pub struct AnonCredProtocol<E: Pairing> {
-    /// Public parameters
     pub pp: PublicParams<E>,
-    /// Issuer's secret key
     sk: SecretKey<E>,
-    /// Issuer's verification key
     vk: VerificationKey<E>,
 }
 
@@ -107,38 +98,47 @@ impl<E: Pairing> AnonCredProtocol<E> {
         rng: &mut R,
     ) -> Result<ShowCredential<E>, CommitmentProofError> {
         // Generate random values for rerandomization
+        // let start_show = Instant::now();
         let r_delta = E::ScalarField::rand(rng);
         let u_delta = E::ScalarField::rand(rng);
 
         // Rerandomize the commitment and signature
         let randomized_commitment = commitment.create_randomized(&r_delta);
+
         let randomized_signature = signature.rerandomize(&self.pp, &r_delta, &u_delta);
 
-        // Create proof of knowledge for the rerandomized commitment
         let serialized_proof = CommitmentProofs::pok_commitment_prove(&randomized_commitment)?;
-
-        Ok(ShowCredential {
+        // Create proof of knowledge for the rerandomized commitment
+        let show_cred = ShowCredential {
             randomized_signature,
             cmg1: randomized_commitment.cmg1,
             cmg2: randomized_commitment.cmg2,
             proof: serialized_proof,
-        })
+        };
+        // let duration = start_show.elapsed();
+        // println!("Time to show PS_UTT_G1: {:?}", duration);
+
+        Ok(show_cred)
     }
 
     /// Verifier checks credential presentation
     pub fn verify(&self, cred_show: &ShowCredential<E>) -> Result<bool, CommitmentProofError> {
         // Verify proof of knowledge
+        // let start_verify = Instant::now();
         if !CommitmentProofs::pok_commitment_verify::<E>(&cred_show.proof)? {
             return Ok(false);
         }
 
         // Verify signature
-        Ok(cred_show.randomized_signature.verify_with_pairing_checker(
+        let is_valid = cred_show.randomized_signature.verify_with_pairing_checker(
             &self.pp,
             &self.vk,
             &cred_show.cmg1,
             &cred_show.cmg2,
-        ))
+        );
+        // let duration = start_verify.elapsed();
+        // println!("Time to verify PS_UTT_G1: {:?}", duration);
+        Ok(is_valid)
     }
 }
 

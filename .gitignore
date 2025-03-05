@@ -6,3 +6,4 @@ Cargo.lock
 */.DS_Store
 z_tex/*
 z_py_tests/
+/*.DS_Store

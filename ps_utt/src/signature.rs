@@ -5,6 +5,7 @@ use crate::keygen::{
 };
 use crate::publicparams::PublicParams;
 use ark_ec::pairing::Pairing;
+use ark_ec::VariableBaseMSM;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::UniformRand;
 use ark_std::rand::Rng;
@@ -39,13 +40,28 @@ impl<E: Pairing> PSUTTSignature<E> {
         r_delta: &E::ScalarField,
         u_delta: &E::ScalarField,
     ) -> Self {
-        let sigma1_prime = self.sigma1.mul(u_delta).into_affine();
-        let temp = self.sigma1.mul(r_delta);
-        let sigma2_prime = (temp.add(self.sigma2)).mul(u_delta).into_affine();
+        let sigma1_prime = self.sigma1.mul(u_delta);
+        let r_times_u = r_delta.mul(u_delta);
+
+        let scalars = vec![r_times_u, *u_delta];
+        let points = vec![self.sigma1, self.sigma2];
+        let sigma2_prime = E::G1::msm_unchecked(&points, &scalars);
+
+        let proj_points = vec![sigma1_prime, sigma2_prime];
+        let affine_points = E::G1::normalize_batch(&proj_points);
+
         Self {
-            sigma1: sigma1_prime,
-            sigma2: sigma2_prime,
+            sigma1: affine_points[0],
+            sigma2: affine_points[1],
         }
+
+        // let sigma1_prime = self.sigma1.mul(u_delta).into_affine();
+        // let temp = self.sigma1.mul(r_delta);
+        // let sigma2_prime = (temp.add(self.sigma2)).mul(u_delta).into_affine();
+        // Self {
+        //     sigma1: sigma1_prime,
+        //     sigma2: sigma2_prime,
+        // }
     }
 
     pub fn verify(
@@ -132,12 +148,25 @@ impl<E: Pairing> PSUTTSignatureImproved<E> {
         r_delta: &E::ScalarField,
         u_delta: &E::ScalarField,
     ) -> Self {
-        let sigma1_prime = self.sigma1.mul(u_delta).into_affine();
-        let temp = self.sigma1.mul(r_delta);
-        let sigma2_prime = (temp.add(self.sigma2)).mul(u_delta).into_affine();
+        // For sigma1: simple scalar multiplication
+        let sigma1_prime = self.sigma1.mul(u_delta);
+
+        // For sigma2: use multi-scalar multiplication
+        // Computing (sigma1 * r_delta + sigma2) * u_delta
+        // = sigma1 * (r_delta * u_delta) + sigma2 * u_delta
+        let r_times_u = r_delta.mul(u_delta);
+
+        let scalars = vec![r_times_u, *u_delta];
+        let points = vec![self.sigma1, self.sigma2];
+        let sigma2_prime = E::G2::msm_unchecked(&points, &scalars);
+
+        // Batch conversion to affine
+        let proj_points = vec![sigma1_prime, sigma2_prime];
+        let affine_points = E::G2::normalize_batch(&proj_points);
+
         Self {
-            sigma1: sigma1_prime,
-            sigma2: sigma2_prime,
+            sigma1: affine_points[0],
+            sigma2: affine_points[1],
         }
     }
 

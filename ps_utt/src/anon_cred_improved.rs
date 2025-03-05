@@ -1,3 +1,5 @@
+// use std::time::Instant;
+
 use crate::commitment::Commitment;
 use crate::keygen::{gen_keys_improved, SecretKeyImproved, VerificationKeyImproved};
 use crate::proofsystem::{
@@ -113,21 +115,28 @@ impl<E: Pairing> AnonCredProtocolImproved<E> {
         rng: &mut R,
     ) -> Result<ShowCredentialImproved<E>, CommitmentProofError> {
         // Generate random values for rerandomization
+        // let start_show = Instant::now();
         let r_delta = E::ScalarField::rand(rng);
         let u_delta = E::ScalarField::rand(rng);
 
         // Rerandomize the commitment and signature
-        let randomized_commitment = commitment.create_randomized(&r_delta);
+        let randomized_commitment = commitment.randomize_commitment_g2(&r_delta);
+
         let randomized_signature = signature.rerandomize(&self.pp, &r_delta, &u_delta);
 
         // Create proof of knowledge for the rerandomized commitment
+
         let serialized_proof = CommitmentProofs::pok_commitment_prove(&randomized_commitment)?;
 
-        Ok(ShowCredentialImproved {
+        let show_cred = ShowCredentialImproved {
             randomized_signature,
             cmg1: randomized_commitment.cmg1,
             proof: serialized_proof,
-        })
+        };
+        // let duration = start_show.elapsed();
+        // println!("Time to show PS_UTT_G2: {:?}", duration);
+
+        Ok(show_cred)
     }
 
     /// Verifier checks credential presentation
@@ -136,14 +145,18 @@ impl<E: Pairing> AnonCredProtocolImproved<E> {
         cred_show: &ShowCredentialImproved<E>,
     ) -> Result<bool, CommitmentProofError> {
         // Verify proof of knowledge
+        // let start_verify = Instant::now();
         if !CommitmentProofs::pok_commitment_verify::<E>(&cred_show.proof)? {
             return Ok(false);
         }
 
-        // Verify signature
-        Ok(cred_show
+        let is_valid = cred_show
             .randomized_signature
-            .verify_with_pairing_checker_improved(&self.pp, &self.vk, &cred_show.cmg1))
+            .verify_with_pairing_checker_improved(&self.pp, &self.vk, &cred_show.cmg1);
+
+        // let duration = start_verify.elapsed();
+        // println!("Time to verify PS_UTT_G2: {:?}", duration);
+        Ok(is_valid)
     }
 }
 

@@ -45,6 +45,19 @@ impl<E: Pairing> Commitment<E> {
         }
     }
 
+    pub fn randomize_commitment_g2(&self, r_delta: &E::ScalarField) -> Self {
+        let new_r = self.r + r_delta;
+        let cmg1_delta = (self.cmg1 + self.pp.g1.mul(r_delta)).into_affine();
+
+        Self {
+            pp: self.pp.clone(),
+            messages: self.messages.clone(),
+            r: new_r,
+            cmg1: cmg1_delta,
+            cmg2: self.cmg2,
+        }
+    }
+
     // get all exponents of the commitment, C([m_1,...,m_n],r)
     pub fn get_exponents(&self) -> Vec<E::ScalarField> {
         let mut exponents: Vec<E::ScalarField> = self.messages.clone();
