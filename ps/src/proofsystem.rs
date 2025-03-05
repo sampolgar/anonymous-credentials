@@ -1,24 +1,15 @@
 use crate::keygen::PublicKey;
 use crate::publicparams::PublicParams;
+use crate::utils::PSUtils;
 use crate::{commitment::Commitment, signature::PSSignature};
 use ark_ec::pairing::{Pairing, PairingOutput};
-use ark_ec::Group;
 use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::PrimeField;
 use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{
-    ops::{Add, Mul, Neg},
-    One, Zero,
-};
+use ark_std::ops::Neg;
 use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
-use schnorr::schnorr_pairing::{
-    SchnorrCommitmentPairing, SchnorrProtocolPairing, SchnorrResponsesPairing,
-};
+use schnorr::schnorr_pairing::SchnorrProtocolPairing;
 use thiserror::Error;
-// use utils::helpers::Helpers;
-use crate::utils::PSUtils;
-use utils::pairing::{create_check, verify_pairing_equation, PairingCheck};
 
 #[derive(Error, Debug)]
 pub enum ProofError {
@@ -57,16 +48,11 @@ impl CommitmentProofs {
         commitment: &Commitment<E>,
     ) -> Result<Vec<u8>, ProofError> {
         let mut rng = ark_std::test_rng();
-        // Get bases and exponents for the proof
         let bases = commitment.get_bases();
         let exponents = commitment.get_exponents();
-        // Generate Schnorr commitment
         let schnorr_commitment = SchnorrProtocol::commit(&bases, &mut rng);
-        // Generate challenge
         let challenge = E::ScalarField::rand(&mut rng);
-        // Generate responses
         let responses = SchnorrProtocol::prove(&schnorr_commitment, &exponents, &challenge);
-        // Create and serialize proof with explicit type annotation
         let proof: CommitmentProof<E> = CommitmentProof {
             statement: commitment.commitment,
             schnorr_commitment,

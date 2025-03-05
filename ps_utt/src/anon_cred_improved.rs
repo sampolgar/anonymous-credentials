@@ -12,22 +12,16 @@ use ark_std::ops::Neg;
 use ark_std::rand::Rng;
 use utils::pairing::verify_pairing_equation;
 
-/// User credential containing a secret key and commitment
-pub struct UserCred<E: Pairing> {
-    /// User's secret key
-    pub usk: E::ScalarField,
-    /// Commitment to user attributes
-    pub commitment: Commitment<E>,
+pub struct ShowCredentialImproved<E: Pairing> {
+    pub randomized_signature: PSUTTSignatureImproved<E>,
+    pub cmg1: E::G1Affine,
+    pub proof: Vec<u8>,
 }
 
-/// Improved presentation of a credential (G1 only)
-pub struct ShowCredentialImproved<E: Pairing> {
-    /// Randomized signature
-    pub randomized_signature: PSUTTSignatureImproved<E>,
-    /// Commitment in G1
-    pub cmg1: E::G1Affine,
-    /// Serialized proof of knowledge
-    pub proof: Vec<u8>,
+/// User credential containing a secret key and commitment
+pub struct UserCred<E: Pairing> {
+    pub usk: E::ScalarField,
+    pub commitment: Commitment<E>,
 }
 
 impl<E: Pairing> UserCred<E> {
@@ -54,11 +48,8 @@ impl<E: Pairing> UserCred<E> {
 
 /// Improved anonymous credential protocol with reduced pairing operations
 pub struct AnonCredProtocolImproved<E: Pairing> {
-    /// Public parameters
     pub pp: PublicParams<E>,
-    /// Issuer's secret key
     sk: SecretKeyImproved<E>,
-    /// Issuer's verification key
     vk: VerificationKeyImproved<E>,
 }
 

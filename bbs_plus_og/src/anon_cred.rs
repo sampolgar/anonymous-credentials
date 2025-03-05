@@ -1,19 +1,12 @@
 use crate::keygen::{PublicKey, SecretKey};
 use crate::proofsystem::{CommitmentProof, ProofError, ProofSystem};
 use crate::publicparams::PublicParams;
-use crate::signature::{BBSPlusOgRandomizedSignature, BBSPlusOgSignature};
-use crate::test_helpers::TestSetup;
+use crate::signature::BBSPlusOgSignature;
 use ark_ec::pairing::Pairing;
-use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
+use ark_ec::CurveGroup;
 use ark_ff::{Field, UniformRand};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::Rng;
-use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
-
-use ark_std::{
-    ops::{Add, Mul, Neg},
-    One, Zero,
-};
 
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct IssuerResponse<E: Pairing> {
@@ -173,8 +166,8 @@ impl AnonCredProtocol {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::TestSetup;
     use ark_bls12_381::Bls12_381;
-    use ark_ec::pairing::Pairing;
     use ark_std::test_rng;
 
     #[test]

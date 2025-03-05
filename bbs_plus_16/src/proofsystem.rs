@@ -1,18 +1,14 @@
-use crate::keygen::{self, PublicKey};
+use crate::keygen::PublicKey;
 use crate::publicparams::PublicParams;
-use crate::signature::{BBSPlus16RandomizedSignature, BBSPlus16Signature};
+use crate::signature::BBSPlus16RandomizedSignature;
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::{Field, UniformRand};
+use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::ops::{Add, Neg};
 use ark_std::rand::Rng;
-use ark_std::{
-    ops::{Add, Mul, Neg},
-    One, Zero,
-};
 use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
 use thiserror::Error;
-// use utils::helpers::Helpers;
 
 #[derive(Error, Debug)]
 pub enum ProofError {
@@ -63,16 +59,6 @@ impl ProofSystem {
         let schnorr_commitment_1 = SchnorrProtocol::commit(&bases_1, rng);
         let schnorr_responses_1 =
             SchnorrProtocol::prove(&schnorr_commitment_1, &exponents_1, &challenge);
-
-        // // this can be deleted, this is a test to see if it works before creating prover/verifier
-        // let proof_1_test = SchnorrProtocol::verify(
-        //     &bases_1,
-        //     &public_statement_1,
-        //     &schnorr_commitment_1,
-        //     &schnorr_responses_1,
-        //     &challenge,
-        // );
-
         // assert!(proof_1_test, "proof 1 test isn't valid!");
 
         let public_statement_2 = pp.g1;
@@ -91,15 +77,6 @@ impl ProofSystem {
         let schnorr_commitment_2 = SchnorrProtocol::commit(&bases_2, rng);
         let schnorr_responses_2 =
             SchnorrProtocol::prove(&schnorr_commitment_2, &exponents_2, &challenge);
-        // Verify the second proof (this can be removed in production)
-        // let proof_2_valid = SchnorrProtocol::verify(
-        //     &bases_2,
-        //     &public_statement_2,
-        //     &schnorr_commitment_2,
-        //     &schnorr_responses_2,
-        //     &challenge,
-        // );
-        // assert!(proof_2_valid, "Proof 2 is not valid!");
 
         let proof = BBSPlusProofOfKnowledge {
             randomized_sig: randomized_sig.clone(),
@@ -124,11 +101,6 @@ impl ProofSystem {
         // Deserialize the proof
         let proof: BBSPlusProofOfKnowledge<E> =
             CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
-
-        // // 1. Verify the randomized signature for sanity
-        // if !proof.randomized_sig.verify_pairing(&pp, &pk) {
-        //     return Ok(false);
-        // }
 
         // 2. Verify the first Schnorr proof: Ābar/d = A'^-e · h0^r2
         // Verifier reconstructs

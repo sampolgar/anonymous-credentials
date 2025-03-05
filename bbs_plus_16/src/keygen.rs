@@ -2,11 +2,8 @@ use crate::publicparams::PublicParams;
 use ark_ec::pairing::Pairing;
 use ark_ec::CurveGroup;
 use ark_ff::UniformRand;
+use ark_std::ops::Mul;
 use ark_std::rand::Rng;
-use ark_std::{
-    ops::{Add, Mul, Neg},
-    One, Zero,
-};
 
 pub struct SecretKey<E: Pairing> {
     pub x: E::ScalarField,
@@ -46,6 +43,7 @@ mod test {
     use super::*;
     use ark_bls12_381::{Bls12_381, Fr};
     use ark_std::test_rng;
+    use ark_std::Zero;
 
     #[test]
     fn test_keygen() {

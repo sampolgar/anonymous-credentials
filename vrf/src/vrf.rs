@@ -1,17 +1,12 @@
-use ark_ec::{
-    pairing::{MillerLoopOutput, Pairing, PairingOutput},
-    AffineRepr, CurveGroup,
-};
-use ark_ff::{Field, PrimeField};
+use ark_ec::{pairing::Pairing, CurveGroup};
+use ark_ff::Field;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
-    ops::{Add, Mul, Neg},
+    ops::{Add, Mul},
     rand::Rng,
-    sync::Mutex,
-    test_rng, One, UniformRand, Zero,
+    UniformRand,
 };
 use core::marker::PhantomData;
-use rayon::prelude::*;
 use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
 
 #[derive(Clone, Debug)]
@@ -85,7 +80,6 @@ impl<E: Pairing> VRF<E> {
         &self,
         input: &VRFInput<E>,
         sk: &SecretKey<E>,
-        output: &VRFOutput<E>,
         rng: &mut R,
     ) -> Result<VrfProof<E>, &'static str> {
         // t_witness = 1/x+sk
@@ -148,7 +142,8 @@ impl<E: Pairing> VRF<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::{Bls12_381, Fr, G1Affine};
+    use ark_bls12_381::{Bls12_381, Fr};
+    use ark_std::test_rng;
     #[test]
     fn test_vrf() {
         let mut rng = test_rng();
@@ -175,7 +170,7 @@ mod tests {
 
         // Generate proof
         let proof = vrf
-            .prove(&input, &sk, &output, &mut rng)
+            .prove(&input, &sk, &mut rng)
             .expect("Failed to generate proof");
 
         // Verify

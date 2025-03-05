@@ -94,14 +94,6 @@ fn benchmark_ps_anoncred_protocol(c: &mut Criterion) {
             })
         });
 
-        // Benchmark Complete (unique to PS AnonCred)
-        let complete_id = BenchmarkId::from_parameter(format!("ps_complete_messages_{}", msg_size));
-        group.bench_function(complete_id, |b| {
-            b.iter(|| {
-                PSAnonCredProtocol::complete_signature(&setup.blind_signature, &setup.user_cred.t)
-            })
-        });
-
         // Benchmark Show
         let show_id = BenchmarkId::from_parameter(format!("ps_show_messages_{}", msg_size));
         group.bench_function(show_id, |b| {
