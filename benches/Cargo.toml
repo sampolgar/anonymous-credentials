@@ -19,6 +19,7 @@ ps = {default-features = false, path = "../ps" }
 ps_utt = {default-features = false, path = "../ps_utt" }
 bbs_plus_16 = {default-features = false, path = "../bbs_plus_16" }
 bbs_plus_og = {default-features = false, path = "../bbs_plus_og" }
+crypto_benchmarks = {default-features = false, path = "../crypto_benchmarks" }
 
 
 [dev-dependencies]
@@ -54,4 +55,9 @@ harness = false
 [[bench]]
 name = "ps_anoncreds"
 path = "benches/ps_anoncreds.rs"
+harness = false
+
+[[bench]]
+name = "vrf_benchmarks"
+path = "benches/vrf_benchmarks.rs"
 harness = false
