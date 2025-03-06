@@ -1,3 +1,4 @@
+pub mod encryption_camenisch_shoup;
 pub mod randomness;
 pub mod testing;
 pub mod testing2;

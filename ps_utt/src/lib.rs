@@ -7,4 +7,3 @@ pub mod proofsystem;
 pub mod publicparams;
 pub mod signature;
 pub mod test_helpers;
-pub mod vrf;
