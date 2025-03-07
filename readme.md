@@ -10,21 +10,27 @@ Currently I am benchmarking Anonymous Credential schemes in the Obtain, Issue, S
 
 # Current
 
-- PS from Short Randomizable Signatures
+- PS OG version from [PS06](https://link.springer.com/chapter/10.1007/978-3-319-29485-8_7)
 - PS from [UTT](https://eprint.iacr.org/2022/452.pdf) + an improvement by Lovesh Harchandani and I
+- BBS+ OG version from [AMS06](https://www.researchgate.net/publication/220337024_Constant-size_dynamic_k-TAA)
 - BBS+ from [CDL16](https://eprint.iacr.org/2016/663)
+- Threshold PS with Shamir SS
 
 # Near Future plans
 
 - SPS-EQ
-- Threshold PS, Threshold BBS+ / Coconut
+- Threshold BBS+
+- Coconut
 
 # Future plans
 
-- not sure
+- compare with PQC constructions
+- make more beautiful reusable shared componenents for the library
+- test with different curves
 
 # Credits
 
 - [Lovesh Harchandani](https://github.com/lovesh) as you'll notice the structure of my libraries, proof system/schnorr library is very much inspired/borrowed from him
+- Claude Sonnet 3.5, 3.7 + reasoning, Grok3 Thinking
 
 ![Current Benchmarks](30messages.png)

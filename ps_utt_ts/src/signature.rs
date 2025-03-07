@@ -1,12 +1,8 @@
 use crate::commitment::Commitment;
-use crate::keygen::{
-    gen_keys, gen_keys_improved, SecretKey, SecretKeyImproved, VerificationKey,
-    VerificationKeyImproved,
-};
+use crate::keygen::{gen_keys, ThresholdKeys, VerificationKey};
 use crate::publicparams::PublicParams;
 use ark_ec::pairing::Pairing;
-use ark_ec::VariableBaseMSM;
-use ark_ec::{AffineRepr, CurveGroup};
+use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::UniformRand;
 use ark_std::rand::Rng;
 use ark_std::{
@@ -16,124 +12,21 @@ use ark_std::{
 use utils::pairing::PairingCheck;
 
 #[derive(Clone, Debug)]
-pub struct PSUTTSignature<E: Pairing> {
-    pub sigma1: E::G1Affine,
-    pub sigma2: E::G1Affine,
-}
-
-impl<E: Pairing> PSUTTSignature<E> {
-    pub fn sign(
-        pp: &PublicParams<E>,
-        sk: &SecretKey<E>,
-        cmg1: &E::G1Affine,
-        rng: &mut impl Rng,
-    ) -> Self {
-        let u = E::ScalarField::rand(rng);
-        let sigma1 = pp.g1.mul(u).into_affine();
-        let sigma2 = (cmg1.add(sk.sk)).mul(u).into_affine();
-        Self { sigma1, sigma2 }
-    }
-
-    pub fn rerandomize(
-        &self,
-        pp: &PublicParams<E>,
-        r_delta: &E::ScalarField,
-        u_delta: &E::ScalarField,
-    ) -> Self {
-        let sigma1_prime = self.sigma1.mul(u_delta);
-        let r_times_u = r_delta.mul(u_delta);
-
-        let scalars = vec![r_times_u, *u_delta];
-        let points = vec![self.sigma1, self.sigma2];
-        let sigma2_prime = E::G1::msm_unchecked(&points, &scalars);
-
-        let proj_points = vec![sigma1_prime, sigma2_prime];
-        let affine_points = E::G1::normalize_batch(&proj_points);
-
-        Self {
-            sigma1: affine_points[0],
-            sigma2: affine_points[1],
-        }
-
-        // previously was this:
-        // let sigma1_prime = self.sigma1.mul(u_delta).into_affine();
-        // let temp = self.sigma1.mul(r_delta);
-        // let sigma2_prime = (temp.add(self.sigma2)).mul(u_delta).into_affine();
-        // Self {
-        //     sigma1: sigma1_prime,
-        //     sigma2: sigma2_prime,
-        // }
-    }
-
-    pub fn verify(
-        &self,
-        pp: &PublicParams<E>,
-        vk: &VerificationKey<E>,
-        cmg1: &E::G1Affine,
-        cmg2: &E::G2Affine,
-    ) -> bool {
-        // Verify: e(sigma2, g2) = e(sigma1, vk · cm)
-        let p1 = E::pairing(self.sigma2, pp.g2);
-        let p2 = E::pairing(self.sigma1, vk.vk.add(cmg2));
-        let is_valid = p1 == p2;
-        assert_eq!(p1, p2);
-
-        // Verify commitment consistency: e(cmg1, g2) = e(g1, cmg2)
-        let p3 = E::pairing(cmg1, pp.g2);
-        let p4 = E::pairing(pp.g1, cmg2);
-        assert_eq!(p3, p4);
-
-        is_valid
-    }
-
-    pub fn verify_with_pairing_checker(
-        &self,
-        pp: &PublicParams<E>,
-        vk: &VerificationKey<E>,
-        cmg1: &E::G1Affine,
-        cmg2: &E::G2Affine,
-    ) -> bool {
-        let mut rng = ark_std::test_rng();
-        let mr = std::sync::Mutex::new(rng);
-
-        // Optimized check: e(sigma2, g2) * e(sigma1, vk + cmg2)^-1 = 1
-        let vk_plus_cmg2 = vk.vk.add(cmg2).into_affine();
-        let check1 = PairingCheck::<E>::rand(
-            &mr,
-            &[
-                (&self.sigma2, &pp.g2),
-                (&self.sigma1.into_group().neg().into_affine(), &vk_plus_cmg2),
-            ],
-            &E::TargetField::one(),
-        );
-
-        // Optimized check: e(cmg1, g2) * e(g1, cmg2)^-1 = 1
-        let check2 = PairingCheck::<E>::rand(
-            &mr,
-            &[
-                (&cmg1, &pp.g2),
-                (&pp.g1.into_group().neg().into_affine(), &cmg2),
-            ],
-            &E::TargetField::one(),
-        );
-
-        let mut final_check = PairingCheck::<E>::new();
-        final_check.merge(&check1);
-        final_check.merge(&check2);
-        final_check.verify()
-    }
+pub struct PartialSignature<E: Pairing> {
+    pub sigma_2_i: E::G2Affine,
+    pub party_index: usize,
 }
 
 #[derive(Clone, Debug)]
-pub struct PSUTTSignatureImproved<E: Pairing> {
+pub struct Signature<E: Pairing> {
     pub sigma1: E::G2Affine,
     pub sigma2: E::G2Affine,
 }
 
-impl<E: Pairing> PSUTTSignatureImproved<E> {
+impl<E: Pairing> Signature<E> {
     pub fn sign(
         pp: &PublicParams<E>,
-        sk: &SecretKeyImproved<E>,
+        sk: &ThresholdKeys<E>,
         cmg2: &E::G2Affine,
         rng: &mut impl Rng,
     ) -> Self {

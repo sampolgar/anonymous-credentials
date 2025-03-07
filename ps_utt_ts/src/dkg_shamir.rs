@@ -1,5 +1,3 @@
-// use ark_ff::to_bytes;
-// use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, PrimeField, UniformRand};
 use ark_std::{rand::Rng, vec::Vec};
