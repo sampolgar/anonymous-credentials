@@ -1,5 +1,5 @@
-// use crate::proofsystem::{CommitmentProof, CommitmentProofError, CommitmentProofs};
-// use crate::publicparams::PublicParams;
+// // use crate::proofsystem::{CommitmentProof, CommitmentProofError, CommitmentProofs};
+// // use crate::publicparams::PublicParams;
 // use ark_ec::pairing::Pairing;
 // use ark_ec::{CurveGroup, VariableBaseMSM};
 // use ark_ff::UniformRand;
