@@ -17,11 +17,8 @@ pub struct PublicParams<E: Pairing> {
 
 impl<E: Pairing> PublicParams<E> {
     pub fn new(n: &usize, context: &E::ScalarField, rng: &mut impl Rng) -> Self {
-        let scalar = E::ScalarField::rand(rng);
-        let mut g1 = E::G1Affine::generator();
-        let mut g2 = E::G2Affine::generator();
-        g1 = g1.mul(scalar).into_affine();
-        g2 = g2.mul(scalar).into_affine();
+        let g1 = E::G1Affine::rand(rng);
+        let g2 = E::G2Affine::rand(rng);
 
         let yi = (0..*n)
             .map(|_| E::ScalarField::rand(rng))

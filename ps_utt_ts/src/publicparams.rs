@@ -1,72 +1,25 @@
-use ark_ec::pairing::Pairing;
-use ark_ec::AffineRepr;
-use ark_ec::CurveGroup;
-use ark_ff::UniformRand;
-use ark_std::ops::{Mul, MulAssign};
-use ark_std::rand::Rng;
+// use ark_ec::pairing::Pairing;
+// use ark_ff::UniformRand;
+// use ark_std::rand::Rng;
 
-#[derive(Clone)]
-pub struct PublicParams<E: Pairing> {
-    pub context: E::ScalarField, //e.g. Hash to Field(dmv)
-    pub n: usize,
-    pub g1: E::G1Affine,
-    pub g2: E::G2Affine,
-    pub ckg1: Vec<E::G1Affine>,
-    pub ckg2: Vec<E::G2Affine>,
-}
+// #[derive(Clone)]
+// pub struct PublicParams<E: Pairing> {
+//     pub context: E::ScalarField,
+//     pub g: E::G1Affine,
+//     pub g_tilde: E::G2Affine,
+// }
 
-impl<E: Pairing> PublicParams<E> {
-    pub fn new(n: &usize, context: &E::ScalarField, rng: &mut impl Rng) -> Self {
-        let scalar = E::ScalarField::rand(rng);
-        let mut g1 = E::G1Affine::generator();
-        let mut g2 = E::G2Affine::generator();
-        g1 = g1.mul(scalar).into_affine();
-        g2 = g2.mul(scalar).into_affine();
-
-        let yi = (0..*n)
-            .map(|_| E::ScalarField::rand(rng))
-            .collect::<Vec<_>>();
-        let ckg1 = yi.iter().map(|yi| g1.mul(*yi)).collect::<Vec<_>>();
-        let ckg1 = E::G1::normalize_batch(&ckg1);
-
-        let ckg2 = yi.iter().map(|yi| g2.mul(*yi)).collect::<Vec<_>>();
-        let ckg2 = E::G2::normalize_batch(&ckg2);
-        PublicParams {
-            context: *context,
-            n: *n,
-            g1,
-            g2,
-            ckg1,
-            ckg2,
-        }
-    }
-
-    // gets all g1 bases, g_1,...,g_n,g
-    pub fn get_g1_bases(&self) -> Vec<E::G1Affine> {
-        // add g1 to end of ckg1
-        let mut g1_bases = self.ckg1.clone();
-        g1_bases.push(self.g1.clone());
-        g1_bases
-    }
-
-    // gets all g2 bases, g_1,...,g_n,g
-    pub fn get_g2_bases(&self) -> Vec<E::G2Affine> {
-        // add g2 to end of ckg2
-        let mut g2_bases = self.ckg2.clone();
-        g2_bases.push(self.g2.clone());
-        g2_bases
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use ark_bls12_381::{Bls12_381, Fr};
-    #[test]
-    fn test_pp_gen() {
-        let n = 4;
-        let mut rng = ark_std::test_rng();
-        let context = Fr::rand(&mut rng);
-        let pp = PublicParams::<Bls12_381>::new(&n, &context, &mut rng);
-    }
-}
+// impl<E: Pairing> PublicParams<E> {
+//     pub fn new(context: &E::ScalarField, rng: &mut impl Rng) -> Self {
+//         // let scalar = E::ScalarField::rand(rng);
+//         // let g1 = E::G1Affine::generator().mul(scalar).into_affine();
+//         // let g2 = E::G2Affine::generator().mul(scalar).into_affine();
+//         let g = E::G1Affine::rand(rng);
+//         let g_tilde = E::G2Affine::rand(rng);
+//         PublicParams {
+//             context: *context,
+//             g,
+//             g_tilde,
+//         }
+//     }
+// }
