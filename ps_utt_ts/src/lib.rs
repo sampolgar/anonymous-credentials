@@ -6,5 +6,5 @@ pub mod protocol;
 pub mod publicparams;
 pub mod signature_ts;
 pub mod signer;
-pub mod user;
+pub mod credential;
 pub mod verification;

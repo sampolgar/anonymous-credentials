@@ -5,6 +5,7 @@ use crate::publicparams::PublicParams;
 use ark_ec::pairing::Pairing;
 use ark_ec::{CurveGroup, VariableBaseMSM};
 use ark_ff::UniformRand;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::ops::{Add, Mul, Neg};
 use ark_std::rand::Rng;
 use schnorr::schnorr::SchnorrProtocol;
@@ -21,7 +22,16 @@ pub enum CommitmentError {
     SerializationError(#[from] ark_serialize::SerializationError),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+pub struct Commitment<E: Pairing> {
+    pub ck: CommitmentKey<E>,
+    pub messages: Vec<E::ScalarField>,
+    pub r: E::ScalarField,
+    pub cm: E::G1Affine,
+    pub cm_tilde: E::G2Affine,
+}
+
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommitmentKey<E: Pairing> {
     pub g: E::G1Affine,
     pub ck: Vec<E::G1Affine>,
@@ -59,15 +69,6 @@ impl<E: Pairing> CommitmentKey<E> {
 
         (bases, bases_tilde)
     }
-}
-
-#[derive(Clone)]
-pub struct Commitment<E: Pairing> {
-    pub ck: CommitmentKey<E>,
-    pub messages: Vec<E::ScalarField>,
-    pub r: E::ScalarField,
-    pub cm: E::G1Affine,
-    pub cm_tilde: E::G2Affine,
 }
 
 // takes in pp, messages, r. creates cm, cm_tilde by 1. exponentiate each pp.ckg1 with mi and pp.g1 with r, msm together
