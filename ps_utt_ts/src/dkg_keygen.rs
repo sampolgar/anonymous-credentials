@@ -1,31 +1,17 @@
+use crate::commitment::CommitmentKey;
 use crate::dkg_shamir::{generate_shares, reconstruct_secret};
-// use crate::publicparams::PublicParams;
+use crate::publicparams::PublicParams;
 use ark_ec::pairing::Pairing;
 use ark_ec::CurveGroup;
 use ark_ff::UniformRand;
 use ark_std::ops::Mul;
 use ark_std::rand::Rng;
 
-pub struct PublicParams<E: Pairing> {
-    pub g: E::G1Affine,
-    pub g_tilde: E::G2Affine,
-}
-pub struct VerificationKey<E: Pairing> {
-    pub g_tilde_x: E::G2Affine,
-}
-
 pub struct SecretKeyShare<E: Pairing> {
     pub index: usize,
     pub x_share: E::ScalarField,
     pub y_shares: Vec<E::ScalarField>,
 }
-
-pub struct VerificationKeyShare<E: Pairing> {
-    pub index: usize,
-    pub g_tilde_x_share: E::G2Affine,
-    pub g_tilde_y_shares: Vec<E::G2Affine>,
-}
-
 pub struct ThresholdKeys<E: Pairing> {
     pub t: usize,
     pub n: usize,
@@ -34,34 +20,14 @@ pub struct ThresholdKeys<E: Pairing> {
     pub vk_shares: Vec<VerificationKeyShare<E>>,
 }
 
-pub struct CommitmentKey<E: Pairing> {
-    pub g: E::G1Affine,
-    pub ck: Vec<E::G1Affine>,
-    pub g_tilde: E::G2Affine,
-    pub ck_tilde: Vec<E::G2Affine>,
+pub struct VerificationKey<E: Pairing> {
+    pub g_tilde_x: E::G2Affine,
 }
 
-impl<E: Pairing> CommitmentKey<E> {
-    pub fn new(pp: &PublicParams<E>, y_values: &[E::ScalarField]) -> Self {
-        let g = pp.g;
-        let g_tilde = pp.g_tilde;
-        let ck = y_values
-            .iter()
-            .map(|y_k| g.mul(y_k).into_affine())
-            .collect();
-
-        let ck_tilde = y_values
-            .iter()
-            .map(|y_k| g_tilde.mul(y_k).into_affine())
-            .collect();
-
-        Self {
-            g,
-            ck,
-            g_tilde,
-            ck_tilde,
-        }
-    }
+pub struct VerificationKeyShare<E: Pairing> {
+    pub index: usize,
+    pub g_tilde_x_share: E::G2Affine,
+    pub g_tilde_y_shares: Vec<E::G2Affine>,
 }
 
 pub fn dkg_keygen<E: Pairing>(
@@ -139,12 +105,6 @@ pub fn dkg_keygen<E: Pairing>(
     (ck, vk, ts_keys)
 }
 
-pub fn init_public_params<E: Pairing>(rng: &mut impl Rng) -> PublicParams<E> {
-    let g = E::G1Affine::rand(rng);
-    let g_tilde = E::G2Affine::rand(rng);
-    PublicParams { g, g_tilde }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,7 +119,7 @@ mod tests {
         let l_attributes = 3;
 
         // Initialize system parameters
-        let params = init_public_params::<Bls12_381>(&mut rng);
+        let params = PublicParams::<Bls12_381>::new(None, &mut rng);
 
         // Generate threshold keys
         let (ck, vk, ts_keys) =
