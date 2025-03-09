@@ -32,8 +32,6 @@ pub struct CredentialCommitments<E: Pairing> {
 pub struct Credential<E: Pairing> {
     pub pp: PublicParams<E>,
     pub ck: CommitmentKey<E>,
-
-    // Credential state
     messages: Vec<E::ScalarField>,
     blinding_factors: Vec<E::ScalarField>,
     h: Option<E::G1Affine>, // Base for the signature
@@ -48,5 +46,25 @@ impl<E: Pairing> Credential<E> {
             blinding_factor: None,
             h: None,
         }
+    }
+
+    pub fn set_attributes(&mut self, messages: Vec<E::ScalarField>) {
+        self.messages = messages;
+    }
+
+    // commit to each message attribute individually for threshold sig
+    pub fn compute_commitments(
+        &self,
+        rng: &mut impl Rng,
+    ) -> Result<CredentialCommitments<E>, CommitmentError> {
+        if self.messages.is_empty() {
+            return Err((CommitmentError::InvalidComputeCommitment));
+        }
+        
+        // create h for sig
+        let h = self.pp.g.mul(E::ScalarField::rand(rng)).into_affine();
+        self.h = Some(h);
+
+        
     }
 }

@@ -14,6 +14,8 @@ use thiserror::Error;
 /// Possible errors that can occur during commitment proof operations
 #[derive(Error, Debug)]
 pub enum CommitmentError {
+    #[error("Invalid Commit Process")]
+    InvalidComputeCommitment,
     #[error("Invalid commitment")]
     InvalidCommitment,
     #[error("Invalid proof")]
