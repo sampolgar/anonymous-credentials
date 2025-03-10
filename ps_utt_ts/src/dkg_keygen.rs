@@ -1,4 +1,4 @@
-use crate::commitment::CommitmentKey;
+use crate::commitment::SymmetricCommitmentKey;
 use crate::dkg_shamir::{generate_shares, reconstruct_secret};
 use crate::publicparams::PublicParams;
 use ark_ec::pairing::Pairing;
@@ -36,7 +36,11 @@ pub fn dkg_keygen<E: Pairing>(
     n: usize,
     l: usize,
     rng: &mut impl Rng,
-) -> (CommitmentKey<E>, VerificationKey<E>, ThresholdKeys<E>) {
+) -> (
+    SymmetricCommitmentKey<E>,
+    VerificationKey<E>,
+    ThresholdKeys<E>,
+) {
     // 1. generate x and xshares
     let x = E::ScalarField::rand(rng);
     let x_shares = generate_shares(&x, t, n, rng);
@@ -53,7 +57,7 @@ pub fn dkg_keygen<E: Pairing>(
         y_shares_by_k.push(generate_shares(&y_k, t, n, rng));
     }
 
-    let ck = CommitmentKey::new(&pp, &y_values);
+    let ck = SymmetricCommitmentKey::new(&pp, &y_values);
 
     let g_tilde_x = pp.g_tilde.mul(x).into_affine();
     let vk = VerificationKey { g_tilde_x };
