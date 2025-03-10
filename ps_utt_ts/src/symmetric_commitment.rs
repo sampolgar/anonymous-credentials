@@ -154,7 +154,6 @@ mod tests {
     #[test]
     fn test_randomized_commitment() {
         let mut rng = ark_std::test_rng();
-        let pp = SymmetricCommitmentKey::<Bls12_381>::new();
         let x = Fr::rand(&mut rng);
         let t = 3;
         let n = 5;
@@ -173,7 +172,8 @@ mod tests {
             y_shares_by_k.push(generate_shares(&y_k, t, n, &mut rng));
         }
 
-        let ck = SymmetricCommitmentKey::new(&pp, &y_values);
+        let ck: SymmetricCommitmentKey<Bls12_381> =
+            SymmetricCommitmentKey::new(&y_values, &mut rng);
 
         // create commitment with messages
         let messages: Vec<Fr> = (0..l).map(|_| Fr::rand(&mut rng)).collect();

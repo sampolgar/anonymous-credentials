@@ -111,7 +111,10 @@ pub fn keygen<E: Pairing>(
 mod tests {
     use super::*;
     use ark_bls12_381::{Bls12_381, Fr};
+    use ark_ec::pairing::Pairing;
+    use ark_ec::CurveGroup;
     use ark_std::test_rng;
+    use ark_std::UniformRand;
 
     #[test]
     fn test_dist_keygen() {
@@ -121,7 +124,12 @@ mod tests {
         let l_attributes = 3;
 
         // Generate threshold keys
-        let (ck, vk, ts_keys) = keygen(threshold, n_participants, l_attributes, &mut rng);
+        // Option 1: Destructuring with type annotation
+        let (ck, vk, ts_keys): (
+            SymmetricCommitmentKey<Bls12_381>,
+            VerificationKey<Bls12_381>,
+            ThresholdKeys<Bls12_381>,
+        ) = keygen(threshold, n_participants, l_attributes, &mut rng);
 
         // Verify number of participants
         assert_eq!(ts_keys.sk_shares.len(), n_participants);
@@ -143,9 +151,9 @@ mod tests {
             .collect();
 
         // Reconstruct x
-        let reconstructed_x: Fr = reconstruct_secret(&x_shares_subset, threshold + 1);
+        let reconstructed_x: <Bls12_381 as Pairing>::ScalarField =
+            reconstruct_secret(&x_shares_subset, threshold + 1);
 
-        // Check against verification key
         let computed_g_tilde_x = ck.g_tilde.mul(reconstructed_x).into_affine();
         assert_eq!(
             computed_g_tilde_x, vk.g_tilde_x,
