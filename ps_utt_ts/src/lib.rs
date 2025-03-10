@@ -1,10 +1,10 @@
 pub mod commitment;
-pub mod dkg_keygen;
-pub mod dkg_shamir;
-pub mod proofsystem;
-pub mod protocol;
-pub mod publicparams;
-pub mod signature_ts;
-pub mod signer;
 pub mod credential;
+pub mod keygen;
+pub mod proofs;
+pub mod protocol;
+pub mod shamir;
+pub mod signature;
+pub mod signer;
+pub mod symmetric_commitment;
 pub mod verification;

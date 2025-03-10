@@ -1,6 +1,5 @@
-use crate::commitment::SymmetricCommitmentKey;
-use crate::dkg_shamir::{generate_shares, reconstruct_secret};
-use crate::publicparams::PublicParams;
+use crate::shamir::{generate_shares, reconstruct_secret};
+use crate::symmetric_commitment::SymmetricCommitmentKey;
 use ark_ec::pairing::Pairing;
 use ark_ec::CurveGroup;
 use ark_ff::UniformRand;
@@ -30,8 +29,7 @@ pub struct VerificationKeyShare<E: Pairing> {
     pub g_tilde_y_shares: Vec<E::G2Affine>,
 }
 
-pub fn dkg_keygen<E: Pairing>(
-    pp: &PublicParams<E>,
+pub fn keygen<E: Pairing>(
     t: usize,
     n: usize,
     l: usize,
@@ -57,10 +55,10 @@ pub fn dkg_keygen<E: Pairing>(
         y_shares_by_k.push(generate_shares(&y_k, t, n, rng));
     }
 
-    let ck = SymmetricCommitmentKey::new(&pp, &y_values);
+    let ck: SymmetricCommitmentKey<E> = SymmetricCommitmentKey::new(&y_values, rng);
 
-    let g_tilde_x = pp.g_tilde.mul(x).into_affine();
-    let vk = VerificationKey { g_tilde_x };
+    let g_tilde_x = ck.g_tilde.mul(x).into_affine();
+    let vk: VerificationKey<E> = VerificationKey { g_tilde_x };
 
     // exponentiate the shares for g1,g2 values of shares
     let mut sk_shares = Vec::with_capacity(n);
@@ -79,7 +77,7 @@ pub fn dkg_keygen<E: Pairing>(
         for k in 0..l {
             let (_, y_share_k_i) = y_shares_by_k[k][i];
             y_shares_i.push(y_share_k_i);
-            g_tilde_y_shares_i.push(pp.g_tilde.mul(y_share_k_i).into_affine());
+            g_tilde_y_shares_i.push(ck.g_tilde.mul(y_share_k_i).into_affine());
         }
 
         let sk_share = SecretKeyShare {
@@ -90,7 +88,7 @@ pub fn dkg_keygen<E: Pairing>(
 
         let vk_share = VerificationKeyShare {
             index: idx,
-            g_tilde_x_share: pp.g_tilde.mul(x_share_i).into_affine(),
+            g_tilde_x_share: ck.g_tilde.mul(x_share_i).into_affine(),
             g_tilde_y_shares: g_tilde_y_shares_i,
         };
 
@@ -122,12 +120,8 @@ mod tests {
         let n_participants = 5;
         let l_attributes = 3;
 
-        // Initialize system parameters
-        let params = PublicParams::<Bls12_381>::new(None, &mut rng);
-
         // Generate threshold keys
-        let (ck, vk, ts_keys) =
-            dkg_keygen(&params, threshold, n_participants, l_attributes, &mut rng);
+        let (ck, vk, ts_keys) = keygen(threshold, n_participants, l_attributes, &mut rng);
 
         // Verify number of participants
         assert_eq!(ts_keys.sk_shares.len(), n_participants);
@@ -149,10 +143,10 @@ mod tests {
             .collect();
 
         // Reconstruct x
-        let reconstructed_x = reconstruct_secret(&x_shares_subset, threshold + 1);
+        let reconstructed_x: Fr = reconstruct_secret(&x_shares_subset, threshold + 1);
 
         // Check against verification key
-        let computed_g_tilde_x = params.g_tilde.mul(reconstructed_x).into_affine();
+        let computed_g_tilde_x = ck.g_tilde.mul(reconstructed_x).into_affine();
         assert_eq!(
             computed_g_tilde_x, vk.g_tilde_x,
             "Reconstructed x verification failed"
@@ -165,8 +159,8 @@ mod tests {
                 .map(|&i| (ts_keys.sk_shares[i].index, ts_keys.sk_shares[i].y_shares[k]))
                 .collect();
 
-            let reconstructed_y_k = reconstruct_secret(&y_k_shares_subset, threshold + 1);
-            let computed_g_tilde_y_k = params.g_tilde.mul(reconstructed_y_k).into_affine();
+            let reconstructed_y_k: Fr = reconstruct_secret(&y_k_shares_subset, threshold + 1);
+            let computed_g_tilde_y_k = ck.g_tilde.mul(reconstructed_y_k).into_affine();
             assert_eq!(
                 computed_g_tilde_y_k, ck.ck_tilde[k],
                 "Reconstructed y_{} verification failed",

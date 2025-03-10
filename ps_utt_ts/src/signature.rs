@@ -1,10 +1,7 @@
 // includes threshold_signature operations
 //
-use crate::commitment::{CommitmentError, SymmetricCommitment, SymmetricCommitmentKey};
-use crate::dkg_keygen::{
-    dkg_keygen, SecretKeyShare, ThresholdKeys, VerificationKey, VerificationKeyShare,
-};
-use crate::publicparams::PublicParams;
+use crate::keygen::{keygen, SecretKeyShare, ThresholdKeys, VerificationKey, VerificationKeyShare};
+use crate::symmetric_commitment::{SymmetricCommitment, SymmetricCommitmentKey};
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{Field, UniformRand};
@@ -52,9 +49,6 @@ pub enum ThresholdSignatureError {
     #[error("Component not initialized")]
     NotInitialized,
 
-    #[error("Commitment error: {0}")]
-    CommitmentError(#[from] CommitmentError),
-
     #[error("Invalid signature")]
     InvalidSignature,
 
@@ -83,7 +77,6 @@ pub fn compute_lagrange_coefficient<F: Field>(indices: &[usize], j: usize) -> F 
 }
 /// Verify a threshold signature against a message and verification key
 pub fn verify_signature<E: Pairing>(
-    params: &PublicParams<E>,
     vk: &VerificationKey<E>,
     message_commitments: &[SymmetricCommitment<E>],
     signature: &ThresholdSignature<E>,

@@ -3,12 +3,9 @@
 // Managing blinding factors
 // Aggregating signature shares
 // Unblinding signatures
-
-use crate::commitment::{
-    Commitment, CommitmentError, CommitmentProof, SymmetricCommitment, SymmetricCommitmentKey,
-};
-use crate::publicparams::PublicParams;
-use crate::signature_ts::{BlindSignature, SignatureShare, ThresholdSignatureError};
+use crate::commitment::{Commitment, CommitmentError, CommitmentProof};
+// use crate::signature::{BlindSignature, SignatureShare, ThresholdSignatureError};
+use crate::symmetric_commitment::{SymmetricCommitment, SymmetricCommitmentKey};
 use ark_ec::pairing::Pairing;
 use ark_ec::CurveGroup;
 use ark_ff::UniformRand;
@@ -26,7 +23,6 @@ pub struct CredentialCommitments<E: Pairing> {
 
 /// Credential with multiple attributes
 pub struct Credential<E: Pairing> {
-    pub pp: PublicParams<E>,
     pub ck: SymmetricCommitmentKey<E>,
     messages: Vec<E::ScalarField>,
     blinding_factors: Vec<E::ScalarField>,
@@ -34,9 +30,8 @@ pub struct Credential<E: Pairing> {
 }
 
 impl<E: Pairing> Credential<E> {
-    pub fn new(pp: PublicParams<E>, ck: SymmetricCommitmentKey<E>) -> Self {
+    pub fn new(ck: SymmetricCommitmentKey<E>) -> Self {
         Self {
-            pp: pp,
             ck: ck,
             messages: Vec::new(),
             blinding_factors: Vec::new(),
@@ -58,7 +53,7 @@ impl<E: Pairing> Credential<E> {
         }
 
         // create h for sig
-        let h = self.pp.g.mul(E::ScalarField::rand(rng)).into_affine();
+        let h = self.ck.g.mul(E::ScalarField::rand(rng)).into_affine();
         self.h = Some(h);
 
         // loop through         // Initialize vectors to store commitments and proofs
@@ -67,7 +62,7 @@ impl<E: Pairing> Credential<E> {
 
         // Generate commitment and proof for each message
         for i in 0..self.messages.len() {
-            let current_cm = Commitment::<E>::new(&h, &self.pp.g, &self.messages[i], None, rng);
+            let current_cm = Commitment::<E>::new(&h, &self.ck.g, &self.messages[i], None, rng);
 
             // Store the commitment
             commitments.push(current_cm.cm);
@@ -86,6 +81,4 @@ impl<E: Pairing> Credential<E> {
             proofs: commitment_proofs,
         })
     }
-
-    
 }
