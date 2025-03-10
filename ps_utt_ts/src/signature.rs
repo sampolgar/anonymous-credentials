@@ -1,11 +1,12 @@
 // includes threshold_signature operations
 //
+use crate::commitment::{Commitment, CommitmentError};
 use crate::keygen::{keygen, SecretKeyShare, ThresholdKeys, VerificationKey, VerificationKeyShare};
 use crate::symmetric_commitment::{SymmetricCommitment, SymmetricCommitmentKey};
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{Field, UniformRand};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::rand::Rng;
 use ark_std::{
     ops::{Add, Mul, Neg},
@@ -16,8 +17,9 @@ use utils::pairing::PairingCheck;
 
 #[derive(Clone, Debug)]
 pub struct PartialSignature<E: Pairing> {
+    pub h: E::G1Affine,
     pub party_index: usize,
-    pub sigma_2_i: E::G1Affine,
+    pub sigma: E::G1Affine,
 }
 
 #[derive(Clone, Debug)]
@@ -32,28 +34,24 @@ pub struct ThresholdSignature<E: Pairing> {
     pub sigma: E::G1Affine,
 }
 
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum ThresholdSignatureError {
-    #[error("Insufficient signature shares: needed {needed}, got {got}")]
-    InsufficientShares { needed: usize, got: usize },
-
-    #[error("Invalid signature share from party {0}")]
+    /// Error in serialization
+    SerializationError(SerializationError),
+    /// Error in commitment
+    CommitmentError(CommitmentError),
+    /// Error from invalid share
     InvalidShare(usize),
+    /// Error from having duplicate shares,
+    DuplicateShare(usize),
+    /// Threshold not met
+    ThresholdNotMet,
+}
 
-    #[error("Inconsistent signature shares")]
-    InconsistentShares,
-
-    #[error("Invalid parameters")]
-    InvalidParameters,
-
-    #[error("Component not initialized")]
-    NotInitialized,
-
-    #[error("Invalid signature")]
-    InvalidSignature,
-
-    #[error("Serialization error: {0}")]
-    SerializationError(#[from] ark_serialize::SerializationError),
+impl From<CommitmentError> for ThresholdSignatureError {
+    fn from(err: CommitmentError) -> Self {
+        ThresholdSignatureError::CommitmentError(err)
+    }
 }
 
 pub fn compute_lagrange_coefficient<F: Field>(indices: &[usize], j: usize) -> F {

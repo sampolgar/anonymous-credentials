@@ -2,9 +2,9 @@
 │ ├── src/
 │ │ ├── lib.rs # Main exports and documentation
 │ │ ├── commitment.rs # Commitment schemes
-│ │ ├── shamir.rs # Secret sharing (from dkg_shamir.rs)
-│ │ ├── keygen.rs # Key generation (from dkg_keygen.rs)
-│ │ ├── signature.rs # Core signature operations (from signature_ts.rs)
+│ │ ├── shamir.rs # Secret sharing 
+│ │ ├── keygen.rs # Key generation 
+│ │ ├── signature.rs # Core signature operations
 │ │ ├── signer.rs # Complete signer implementation
 │ │ ├── credential.rs # User credential operations
 │ │ ├── verification.rs # Complete verification implementation
