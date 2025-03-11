@@ -7,5 +7,5 @@ pub mod shamir;
 pub mod signature;
 pub mod signer;
 pub mod symmetric_commitment;
-pub mod verification;
-
+pub mod tests;
+pub mod verifier;

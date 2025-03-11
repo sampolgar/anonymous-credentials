@@ -8,9 +8,10 @@ use crate::signer::Signer;
 // use crate::signer::Signer;
 use crate::keygen::VerificationKeyShare;
 use crate::symmetric_commitment::SymmetricCommitmentKey;
-use crate::verification::Verifier;
+use crate::verifier::Verifier;
 use ark_ec::pairing::Pairing;
 use ark_std::rand::Rng;
+use thiserror::Error;
 
 pub struct Protocol;
 
@@ -33,9 +34,29 @@ impl Protocol {
     pub fn request_signatures<E: Pairing>(
         credential_requests: &[CredentialCommitments<E>],
         signers: &[Signer<E>],
-        threshold: usize,
+        t: usize,
     ) -> Result<(Vec<(usize, PartialSignature<E>)>, E::G1Affine), ThresholdSignatureError> {
-        // Implementation as before...
+        let h = credential_requests[0].h;
+        let mut shares = Vec::new();
+        for (i, signer) in signers.iter().enumerate().take(t + 1) {
+            // break if we have enough shares
+            if shares.len() == t + 1 {
+                break;
+            }
+
+            let curr_request = &credential_requests[i];
+            let curr_share =
+                signer.sign_share(&curr_request.commitments, &curr_request.proofs, &h)?;
+            shares.push((i, curr_share));
+        }
+
+        if shares.len() < t + 1 {
+            return Err(ThresholdSignatureError::InsufficientShares {
+                needed: t + 1,
+                got: shares.len(),
+            });
+        }
+        Ok((shares, h))
     }
 
     pub fn share_sign<E: Pairing>(
@@ -59,9 +80,28 @@ impl Protocol {
     pub fn aggregate<E: Pairing>(
         ck: &SymmetricCommitmentKey<E>,
         shares: &[(usize, PartialSignature<E>)],
+        blindings: &[E::ScalarField],
         t: usize,
         h: &E::G1Affine,
     ) -> Result<ThresholdSignature<E>, ThresholdSignatureError> {
-        aggregate_signature_shares(ck, shares, t, h)
+        aggregate_signature_shares(ck, shares, blindings, t, h)
+    }
+
+    pub fn verify<E: Pairing>(
+        ck: &SymmetricCommitmentKey<E>,
+        vk: &VerificationKey<E>,
+        messages: &[E::ScalarField],
+        signature: &ThresholdSignature<E>,
+    ) -> bool {
+        Verifier::<E>::verify_signature(ck, vk, messages, signature)
+    }
+
+    pub fn verify_with_commitments<E: Pairing>(
+        ck: &SymmetricCommitmentKey<E>,
+        vk: &VerificationKey<E>,
+        commitments: &[E::G1Affine],
+        signature: &ThresholdSignature<E>,
+    ) -> bool {
+        Verifier::<E>::verify_signature_with_commitments(ck, vk, commitments, signature)
     }
 }

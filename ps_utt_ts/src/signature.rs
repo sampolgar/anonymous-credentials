@@ -17,13 +17,7 @@ use utils::pairing::PairingCheck;
 
 #[derive(Clone, Debug)]
 pub struct PartialSignature<E: Pairing> {
-    pub h: E::G1Affine,
     pub party_index: usize,
-    pub sigma: E::G1Affine,
-}
-
-#[derive(Clone, Debug)]
-pub struct Signature<E: Pairing> {
     pub h: E::G1Affine,
     pub sigma: E::G1Affine,
 }
@@ -32,6 +26,12 @@ pub struct Signature<E: Pairing> {
 pub struct ThresholdSignature<E: Pairing> {
     pub h: E::G1Affine,
     pub sigma: E::G1Affine,
+}
+
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+pub struct RerandomizedThresholdSignature<E: Pairing> {
+    pub h_prime: E::G1Affine,
+    pub sigma_prime: E::G1Affine,
 }
 
 #[derive(Debug)]
@@ -69,26 +69,84 @@ pub fn compute_lagrange_coefficient<F: Field>(indices: &[usize], j: usize) -> F 
 
     result
 }
-/// Verify a threshold signature against a message and verification key
-pub fn verify_signature<E: Pairing>(
-    vk: &VerificationKey<E>,
-    message_commitments: &[SymmetricCommitment<E>],
-    signature: &ThresholdSignature<E>,
-) -> bool {
-    // Pseudocode for verification:
-    // assert e(σ, g̃) = e(h, g̃ᵡ) · ∏ₖ∈[ℓ] e(cmₖ, g̃ʸᵏ)
+// /// Verify a threshold signature against a message and verification key
+// pub fn verify_signature<E: Pairing>(
+//     ck: &SymmetricCommitmentKey<E>,
+//     vk: &VerificationKey<E>,
+//     cm: &E::G1Affine,
+//     cm_tilde: &E::G2Affine,
+//     sig: &RerandomizedThresholdSignature<E>,
+// ) -> bool {
+//     let mut rng = ark_std::test_rng();
+//     let mr = std::sync::Mutex::new(rng);
 
-    // This is just a skeleton - implement the actual pairing check
-    // based on your signature scheme
-    true
-}
+//     // Optimized check: e(sigma2, g2) * e(sigma1, vk + cmg2)^-1 = 1
+//     let vk_plus_cm_tilde = vk.g_tilde_x.add(cm_tilde).into_affine();
+//     let check1 = PairingCheck::<E>::rand(
+//         &mr,
+//         &[
+//             (&sig.sigma_prime, &ck.g_tilde),
+//             (
+//                 &sig.h_prime.into_group().neg().into_affine(),
+//                 &vk_plus_cm_tilde,
+//             ),
+//         ],
+//         &E::TargetField::one(),
+//     );
 
-// To add to signature.rs
+//     // Optimized check: e(cmg1, g2) * e(g1, cmg2)^-1 = 1
+//     let check2 = PairingCheck::<E>::rand(
+//         &mr,
+//         &[
+//             (&cm, &ck.g_tilde),
+//             (&ck.g.into_group().neg().into_affine(), &cm_tilde),
+//         ],
+//         &E::TargetField::one(),
+//     );
+
+//     let mut final_check = PairingCheck::<E>::new();
+//     final_check.merge(&check1);
+//     final_check.merge(&check2);
+//     final_check.verify()
+// }
+
+// //TODO update to include randomizers within the function, returning randomized sig and u_delta?
+// // or create a function that randomizes the signature and commitment together
+// pub fn rerandomize<E: Pairing>(
+//     sig: &ThresholdSignature<E>,
+//     r_delta: &E::ScalarField,
+//     u_delta: &E::ScalarField,
+// ) -> RerandomizedThresholdSignature<E> {
+//     let h_prime = sig.h.mul(u_delta);
+//     let r_times_u = r_delta.mul(u_delta);
+
+//     let scalars = vec![r_times_u, *u_delta];
+//     let points = vec![sig.h, sig.sigma];
+//     let sigma_prime = E::G1::msm_unchecked(&points, &scalars);
+
+//     let proj_points = vec![h_prime, sigma_prime];
+//     let affine_points = E::G1::normalize_batch(&proj_points);
+
+//     RerandomizedThresholdSignature {
+//         h_prime: affine_points[0],
+//         sigma_prime: affine_points[1],
+//     }
+
+//     // previously was this:
+//     // let sigma1_prime = self.sigma1.mul(u_delta).into_affine();
+//     // let temp = self.sigma1.mul(r_delta);
+//     // let sigma2_prime = (temp.add(self.sigma2)).mul(u_delta).into_affine();
+//     // Self {
+//     //     sigma1: sigma1_prime,
+//     //     sigma2: sigma2_prime,
+//     // }
+// }
 
 /// Aggregate signature shares into a complete threshold signature
 pub fn aggregate_signature_shares<E: Pairing>(
     ck: &SymmetricCommitmentKey<E>,
     signature_shares: &[(usize, PartialSignature<E>)],
+    blindings: &[E::ScalarField],
     threshold: usize,
     h: &E::G1Affine,
 ) -> Result<ThresholdSignature<E>, ThresholdSignatureError> {
@@ -120,9 +178,13 @@ pub fn aggregate_signature_shares<E: Pairing>(
         sigma_2 = sigma_2 + sigma_i_2.mul(lagrange_i);
     }
 
+    let g_k_r_k = E::G1::msm_unchecked(&ck.ck, blindings).neg();
+
+    let final_sigma = (sigma_2 + g_k_r_k).into_affine();
+
     // Construct the final signature
     Ok(ThresholdSignature {
         h: *h,
-        sigma: sigma_2.into_affine(),
+        sigma: final_sigma,
     })
 }

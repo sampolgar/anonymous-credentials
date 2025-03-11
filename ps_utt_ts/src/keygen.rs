@@ -6,11 +6,13 @@ use ark_ff::UniformRand;
 use ark_std::ops::Mul;
 use ark_std::rand::Rng;
 
+#[derive(Clone)]
 pub struct SecretKeyShare<E: Pairing> {
     pub index: usize,
     pub x_share: E::ScalarField,
     pub y_shares: Vec<E::ScalarField>,
 }
+#[derive(Clone)]
 pub struct ThresholdKeys<E: Pairing> {
     pub t: usize,
     pub n: usize,
@@ -19,10 +21,12 @@ pub struct ThresholdKeys<E: Pairing> {
     pub vk_shares: Vec<VerificationKeyShare<E>>,
 }
 
+#[derive(Clone)]
 pub struct VerificationKey<E: Pairing> {
     pub g_tilde_x: E::G2Affine,
 }
 
+#[derive(Clone)]
 pub struct VerificationKeyShare<E: Pairing> {
     pub index: usize,
     pub g_tilde_x_share: E::G2Affine,
@@ -124,7 +128,7 @@ mod tests {
         let l_attributes = 3;
 
         // Generate threshold keys
-        // Option 1: Destructuring with type annotation
+        // Destructuring with type annotation
         let (ck, vk, ts_keys): (
             SymmetricCommitmentKey<Bls12_381>,
             VerificationKey<Bls12_381>,

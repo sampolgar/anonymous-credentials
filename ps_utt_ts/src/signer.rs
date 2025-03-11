@@ -6,19 +6,19 @@ use ark_ec::pairing::Pairing;
 use ark_ec::CurveGroup;
 use ark_std::ops::Mul;
 
-/// A signer in the threshold signature scheme
-pub struct Signer<E: Pairing> {
-    pub ck: SymmetricCommitmentKey<E>,
-    pub sk_share: SecretKeyShare<E>,
-    pub vk_share: VerificationKeyShare<E>,
+/// A signer in the threshold signature scheme with lifetime parameters
+pub struct Signer<'a, E: Pairing> {
+    pub ck: &'a SymmetricCommitmentKey<E>,
+    pub sk_share: &'a SecretKeyShare<E>,
+    pub vk_share: &'a VerificationKeyShare<E>,
 }
 
-impl<E: Pairing> Signer<E> {
+impl<'a, E: Pairing> Signer<'a, E> {
     /// Create a new signer with key shares
     pub fn new(
-        ck: SymmetricCommitmentKey<E>,
-        sk_share: SecretKeyShare<E>,
-        vk_share: VerificationKeyShare<E>,
+        ck: &'a SymmetricCommitmentKey<E>,
+        sk_share: &'a SecretKeyShare<E>,
+        vk_share: &'a VerificationKeyShare<E>,
     ) -> Self {
         Self {
             ck,
@@ -57,8 +57,8 @@ impl<E: Pairing> Signer<E> {
         }
 
         Ok(PartialSignature {
-            h: h.clone(),
             party_index: i,
+            h: h.clone(),
             sigma: sigma.into_affine(),
         })
     }

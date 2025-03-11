@@ -43,13 +43,24 @@ impl<E: Pairing> Credential<E> {
         self.messages = messages;
     }
 
+    pub fn get_attributes(&self) -> &Vec<E::ScalarField> {
+        &self.messages
+    }
+
+    pub fn get_blinding_factors(&self) -> &Vec<E::ScalarField> {
+        &self.blinding_factors
+    }
+
     // commit to each message attribute individually for threshold sig
+    //  h_1^m_1 g_1^r_1 * h_2^m_2 g_2^r_2
+    //  m_1, ..., m_L
+    //  r_1, ..., r_L
     pub fn compute_commitments(
         &mut self,
         rng: &mut impl Rng,
     ) -> Result<CredentialCommitments<E>, CommitmentError> {
         if self.messages.is_empty() {
-            return Err((CommitmentError::InvalidComputeCommitment));
+            return Err(CommitmentError::InvalidComputeCommitment);
         }
 
         // create h for sig
@@ -64,6 +75,8 @@ impl<E: Pairing> Credential<E> {
         for i in 0..self.messages.len() {
             let current_cm = Commitment::<E>::new(&h, &self.ck.g, &self.messages[i], None, rng);
 
+            // store the randomness
+            self.blinding_factors.push(current_cm.exponents[1]);
             // Store the commitment
             commitments.push(current_cm.cm);
 
