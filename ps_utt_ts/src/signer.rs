@@ -57,6 +57,7 @@ impl<E: Pairing> Signer<E> {
         }
 
         Ok(PartialSignature {
+            h: h.clone(),
             party_index: i,
             sigma: sigma.into_affine(),
         })

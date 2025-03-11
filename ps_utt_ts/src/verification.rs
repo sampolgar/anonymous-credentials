@@ -5,7 +5,7 @@ use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_std::ops::{Mul, Neg};
 use std::marker::PhantomData;
-use utils::pairing::PairingCheck;
+use utils::pairing::{verify_pairing_equation, PairingCheck};
 
 pub struct Verifier<E: Pairing> {
     _marker: PhantomData<E>,
@@ -27,33 +27,22 @@ impl<E: Pairing> Verifier<E> {
 
         let mut pairs = Vec::new();
 
-        // Calculate lhs side of the equation e(-sigma_i, g̃)
-        let sigma_i = &sig_share.sigma.into_group().neg();
-        pairs.push((sigma_i, &E::G2Prepared::from(ck.g_tilde)));
-
-        // add e(h, g̃^[x]_i)
+        // e(-sigma_i, g̃) = lhs
+        let neg_sigma_i = sig_share.sigma.into_group().neg().into_affine();
+        pairs.push((&neg_sigma_i, &ck.g_tilde));
 
         // Add e(h, g̃^[x]_i)
         let g_tilde_x_share = vk_share.g_tilde_x_share;
-        pairs.push((
-            &sig_share.h.into_group(),
-            &E::G2Prepared::from(g_tilde_x_share),
-        ));
+        pairs.push((&sig_share.h, &g_tilde_x_share));
 
         // Add ∏_{k∈[ℓ]} e(cm_k, g̃^[y_k]_i)
         for (k, commitment) in commitments.iter().enumerate() {
             if k < vk_share.g_tilde_y_shares.len() {
-                pairs.push((
-                    &commitment.into_group(),
-                    &E::G2Prepared::from(vk_share.g_tilde_y_shares[k]),
-                ));
+                pairs.push((commitment, &vk_share.g_tilde_y_shares[k]));
             }
         }
 
-        // Calculate the left-hand side of the equation
-        let sigma_pair = (sigma_i, &E::G2Prepared::from(ck.g_tilde));
-
         // Verify that e(σ_i,2, g̃) = e(h, g̃^[x]_i) · ∏_{k∈[ℓ]} e(cm_k, g̃^[y_k]_i)
-        PairingCheck::<E>::verify_with_negation(&[sigma_pair], &pairs)
+        verify_pairing_equation::<E>(&pairs, None)
     }
 }

@@ -10,7 +10,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError
 use ark_std::rand::Rng;
 use ark_std::{
     ops::{Add, Mul, Neg},
-    One,
+    One, Zero,
 };
 use thiserror::Error;
 use utils::pairing::PairingCheck;
@@ -46,6 +46,8 @@ pub enum ThresholdSignatureError {
     DuplicateShare(usize),
     /// Threshold not met
     ThresholdNotMet,
+    /// Not enough shares provided to reconstruct the signature
+    InsufficientShares { needed: usize, got: usize },
 }
 
 impl From<CommitmentError> for ThresholdSignatureError {
@@ -85,4 +87,48 @@ pub fn verify_signature<E: Pairing>(
     // This is just a skeleton - implement the actual pairing check
     // based on your signature scheme
     true
+}
+
+// To add to signature.rs
+
+/// Aggregate signature shares into a complete threshold signature
+pub fn aggregate_signature_shares<E: Pairing>(
+    ck: &SymmetricCommitmentKey<E>,
+    signature_shares: &[(usize, PartialSignature<E>)],
+    threshold: usize,
+    h: &E::G1Affine,
+) -> Result<ThresholdSignature<E>, ThresholdSignatureError> {
+    // Check that we have enough signature shares
+    if signature_shares.len() < threshold + 1 {
+        return Err(ThresholdSignatureError::InsufficientShares {
+            needed: threshold + 1,
+            got: signature_shares.len(),
+        });
+    }
+
+    // Extract indices and signature components
+    let mut indices = Vec::with_capacity(signature_shares.len());
+    let mut sigma_2_components = Vec::with_capacity(signature_shares.len());
+
+    for (_, share) in signature_shares {
+        indices.push(share.party_index);
+        sigma_2_components.push((share.party_index, share.sigma));
+    }
+
+    // Compute Lagrange coefficients for each party
+    let mut sigma_2 = E::G1::zero();
+
+    for (idx, (i, sigma_i_2)) in sigma_2_components.iter().enumerate().take(threshold + 1) {
+        // Compute Lagrange coefficient for party i
+        let lagrange_i = compute_lagrange_coefficient::<E::ScalarField>(&indices, *i);
+
+        // Add contribution: sigma_i,2^{L_i}
+        sigma_2 = sigma_2 + sigma_i_2.mul(lagrange_i);
+    }
+
+    // Construct the final signature
+    Ok(ThresholdSignature {
+        h: *h,
+        sigma: sigma_2.into_affine(),
+    })
 }
