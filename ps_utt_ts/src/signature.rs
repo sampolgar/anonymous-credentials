@@ -36,17 +36,11 @@ pub struct ThresholdSignature<E: Pairing> {
 
 #[derive(Debug)]
 pub enum ThresholdSignatureError {
-    /// Error in serialization
     SerializationError(SerializationError),
-    /// Error in commitment
     CommitmentError(CommitmentError),
-    /// Error from invalid share
     InvalidShare(usize),
-    /// Error from having duplicate shares,
     DuplicateShare(usize),
-    /// Threshold not met
     ThresholdNotMet,
-    /// Not enough shares provided to reconstruct the signature
     InsufficientShares { needed: usize, got: usize },
 }
 

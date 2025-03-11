@@ -81,4 +81,20 @@ impl<E: Pairing> Credential<E> {
             proofs: commitment_proofs,
         })
     }
+
+    /// Prepare credential requests with unique commitments for each signer
+    pub fn prepare_credential_requests(
+        &mut self,
+        num_signers: usize,
+        rng: &mut impl Rng,
+    ) -> Result<Vec<CredentialCommitments<E>>, CommitmentError> {
+        let mut commitment_requests = Vec::with_capacity(num_signers);
+
+        for _ in 0..num_signers {
+            let commitments = self.compute_commitments(rng)?;
+            commitment_requests.push(commitments);
+        }
+
+        Ok(commitment_requests)
+    }
 }

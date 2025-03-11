@@ -1,20 +1,20 @@
 use crate::commitment::CommitmentError;
 use crate::credential::{Credential, CredentialCommitments};
 use crate::keygen::{keygen, ThresholdKeys, VerificationKey};
-use crate::signature::PartialSignature;
+use crate::signature::{
+    aggregate_signature_shares, PartialSignature, ThresholdSignature, ThresholdSignatureError,
+};
 use crate::signer::Signer;
 // use crate::signer::Signer;
+use crate::keygen::VerificationKeyShare;
 use crate::symmetric_commitment::SymmetricCommitmentKey;
+use crate::verification::Verifier;
 use ark_ec::pairing::Pairing;
 use ark_std::rand::Rng;
 
-pub mod protocol {
-    use crate::{
-        credential, keygen::VerificationKeyShare, signature::{aggregate_signature_shares, ThresholdSignature, ThresholdSignatureError}, verification::Verifier
-    };
+pub struct Protocol;
 
-    use super::*;
-
+impl Protocol {
     /// Runs the distributed key generation protocol
     pub fn run_distributed_key_generation<E: Pairing>(
         threshold: usize,
@@ -27,6 +27,15 @@ pub mod protocol {
         ThresholdKeys<E>,
     ) {
         keygen(threshold, num_signers, num_attributes, rng)
+    }
+
+    /// Request signatures from signers until threshold is reached
+    pub fn request_signatures<E: Pairing>(
+        credential_requests: &[CredentialCommitments<E>],
+        signers: &[Signer<E>],
+        threshold: usize,
+    ) -> Result<(Vec<(usize, PartialSignature<E>)>, E::G1Affine), ThresholdSignatureError> {
+        // Implementation as before...
     }
 
     pub fn share_sign<E: Pairing>(
@@ -55,31 +64,4 @@ pub mod protocol {
     ) -> Result<ThresholdSignature<E>, ThresholdSignatureError> {
         aggregate_signature_shares(ck, shares, t, h)
     }
-
-    pub fn issue<E: Pairing>(
-        credential: &mut Credential<E>,
-        signers: 
-    )
-
-    // // 2. Share signing
-    // pub fn share_sign<E: Pairing>(/* params */
-    // ) -> Result<PartialSignature<E>, ThresholdSignatureError> { /* ... */
-    // }
-
-    // // 3. Share verification
-    // pub fn share_verify<E: Pairing>(/* params */) -> bool { /* ... */
-    // }
-
-    // // 4. Signature aggregation
-    // pub fn aggregate<E: Pairing>(/* params */
-    // ) -> Result<ThresholdSignature<E>, ThresholdSignatureError> { /* ... */
-    // }
 }
-
-// /// Generate credential commitments for attributes
-// pub fn create_credential_commitments<E: Pairing>(
-//     ck: &SymmetricCommitmentKey<E>,
-//     messages: &[E::ScalarField],
-//     rng: &mut impl Rng,
-// ) -> Result<CredentialCommitments<E>, CommitmentError> {
-// }
