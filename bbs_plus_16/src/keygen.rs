@@ -8,7 +8,7 @@ use ark_std::rand::Rng;
 pub struct SecretKey<E: Pairing> {
     pub x: E::ScalarField,
 }
-
+#[allow(non_snake_case)]
 pub struct PublicKey<E: Pairing> {
     pub w: E::G2Affine,
     pub h0: E::G1Affine,
@@ -22,6 +22,7 @@ pub fn gen_keys<E: Pairing>(
     let x = E::ScalarField::rand(rng);
     let w = pp.g2.mul(x).into_affine();
     let h0 = E::G1Affine::rand(rng);
+    #[allow(non_snake_case)]
     let h1hL = (0..pp.L)
         .map(|_| E::G1Affine::rand(rng))
         .collect::<Vec<_>>();
@@ -47,6 +48,7 @@ mod test {
 
     #[test]
     fn test_keygen() {
+        #[allow(non_snake_case)]
         let L = 4;
         let mut rng = test_rng();
         let context = Fr::rand(&mut rng);

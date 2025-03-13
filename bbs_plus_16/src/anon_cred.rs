@@ -9,6 +9,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::Rng;
 
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
+#[allow(non_snake_case)]
 pub struct IssuerResponse<E: Pairing> {
     pub A: E::G1Affine,
     pub e: E::ScalarField,
@@ -81,6 +82,7 @@ impl AnonCredProtocol {
         // Compute A = (g₁ · g₂^s'' · Cm)^(1/(e+x))
         let base = pp.g1 + pk.h0 * s_double_prime + commitment_proof.commitment;
         let exponent = (sk.x + e).inverse().ok_or(ProofError::VerificationFailed)?;
+        #[allow(non_snake_case)]
         let A = (base * exponent).into_affine();
 
         Ok(IssuerResponse {

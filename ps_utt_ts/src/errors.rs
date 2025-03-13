@@ -97,4 +97,6 @@ pub enum CredentialError {
     ProofGenerationFailed(#[from] CommitmentError),
     #[error("Signature randomization failed: {0}")]
     RandomizationFailed(String),
+    #[error("Invalid credential state: {0}")]
+    InvalidState(String),
 }

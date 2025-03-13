@@ -21,7 +21,7 @@ impl User {
         sig_share: &PartialSignature<E>,
     ) -> Result<bool, VerificationError> {
         // 1. First verify the ZKPs for each commitment
-        for (commitment, proof) in commitments.iter().zip(commitment_proofs.iter()) {
+        for (_, proof) in commitments.iter().zip(commitment_proofs.iter()) {
             let is_valid = Commitment::<E>::verify(proof)
                 .map_err(|e| VerificationError::CommitmentError(e))?;
 

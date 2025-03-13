@@ -13,6 +13,13 @@ use ark_std::Zero;
 use std::iter;
 use thiserror::Error;
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum CredentialState {
+    Initialized, // Just created with attributes
+    Committed,   // Commitments generated
+    Signed,      // Has valid signature
+    Randomized,  // Has been shown/randomized
+}
 /// Commitment to a single message with its proof
 pub struct CredentialCommitments<E: Pairing> {
     pub h: E::G1Affine,
@@ -27,6 +34,9 @@ pub struct Credential<E: Pairing> {
     blindings: Vec<E::ScalarField>,
     h: E::G1Affine,
     sig: Option<ThresholdSignature<E>>,
+    pub context: E::ScalarField, // context for the credential like an id
+    pub state: CredentialState,
+    pub metadata: Option<String>, // testing for benchmarking
 }
 
 impl<E: Pairing> Credential<E> {
@@ -55,6 +65,9 @@ impl<E: Pairing> Credential<E> {
             blindings: Vec::new(),
             h,
             sig: None,
+            context: E::ScalarField::rand(rng),
+            state: CredentialState::Initialized,
+            metadata: None,
         }
     }
 
@@ -75,10 +88,6 @@ impl<E: Pairing> Credential<E> {
 
     pub fn get_blinding_factors(&self) -> &Vec<E::ScalarField> {
         &self.blindings
-    }
-
-    pub fn attach_signature(&mut self, sig: ThresholdSignature<E>) {
-        self.sig = Some(sig);
     }
 
     // commit to each message attribute individually for threshold sig
@@ -107,6 +116,8 @@ impl<E: Pairing> Credential<E> {
             // Store the commitment
             commitments.push(current_cm.cm);
 
+            self.state = CredentialState::Committed;
+
             // Generate and store the proof
             match current_cm.prove(rng) {
                 Ok(proof) => commitment_proofs.push(proof),
@@ -122,40 +133,10 @@ impl<E: Pairing> Credential<E> {
         })
     }
 
-    // /// Request signatures from t+1 signers on the same commitments
-    // pub fn request_signatures(
-    //     commitments: &CredentialCommitments<E>,
-    //     signers: &[Signer<E>],
-    //     threshold: usize,
-    // ) -> Result<Vec<(usize, PartialSignature<E>)>, SignatureError> {
-    //     let mut shares = Vec::new();
-
-    //     // Try to get t+1 signature shares
-    //     for signer in signers.iter().take(threshold + 1) {
-    //         let sig_share = signer.sign_share(
-    //             &commitments.commitments,
-    //             &commitments.proofs,
-    //             &commitments.h,
-    //         )?;
-
-    //         shares.push((sig_share.party_index, sig_share));
-
-    //         // Break early if we have enough shares
-    //         if shares.len() == threshold + 1 {
-    //             break;
-    //         }
-    //     }
-
-    //     // Check if we have enough shares
-    //     if shares.len() < threshold + 1 {
-    //         return Err(SignatureError::InsufficientShares {
-    //             needed: threshold + 1,
-    //             got: shares.len(),
-    //         });
-    //     }
-
-    //     Ok(shares)
-    // }
+    pub fn attach_signature(&mut self, sig: ThresholdSignature<E>) {
+        self.state = CredentialState::Signed;
+        self.sig = Some(sig);
+    }
 
     /// this is the anonymous credential `show` protocol. generates proof for commitment
     pub fn show(
@@ -163,10 +144,13 @@ impl<E: Pairing> Credential<E> {
         rng: &mut impl Rng,
     ) -> Result<(ThresholdSignature<E>, E::G1Affine, E::G2Affine, Vec<u8>), CredentialError> {
         // Check signature exists
-        let sig = self.sig.as_ref().ok_or(CredentialError::MissingSignature(
-            "Signature must be attached before randomization".to_string(),
-        ))?;
+        if self.state != CredentialState::Signed {
+            return Err(CredentialError::InvalidState(
+                "Credential must be signed before showing".to_string(),
+            ));
+        }
 
+        let sig = self.sig.as_ref().unwrap();
         // Randomize signature
         let (randomized_sig, r_delta) = sig.randomize(rng);
 
@@ -180,5 +164,11 @@ impl<E: Pairing> Credential<E> {
             .prove(rng)
             .map_err(CredentialError::ProofGenerationFailed)?;
         Ok((randomized_sig, rand_sym_cm.cm, rand_sym_cm.cm_tilde, proof))
+    }
+
+    // Helper methods for multi-credential management
+    pub fn with_metadata(mut self, metadata: String) -> Self {
+        self.metadata = Some(metadata);
+        self
     }
 }
