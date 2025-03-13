@@ -5,7 +5,7 @@ use crate::{
     keygen::{SecretKeyShare, ThresholdKeys, VerificationKey, VerificationKeyShare},
     protocol::Protocol,
     shamir::reconstruct_secret,
-    signature::PartialSignature,
+    signature::{PartialSignature, ThresholdSignature},
     signer::Signer,
     symmetric_commitment::SymmetricCommitmentKey,
     verifier::Verifier,
@@ -239,25 +239,94 @@ mod tests {
         let valid =
             Verifier::<Bls12_381>::verify_signature(&ck, &vk, &messages, &threshold_signature);
         assert!(valid, "Signature verification failed");
+        println!("✅ Signature verification with messages test passed");
 
-        // // Now rerandomize the signature
-        // let mut rng = test_rng();
-        // let r1 = Fr::rand(&mut rng);
-        // let r2 = Fr::rand(&mut rng);
-        // let rerandomized = Protocol::rerandomize_with_factors(&threshold_signature, &r1, &r2);
+        // println!("✅ Signature verification with commitments test passed");
+        // Now rerandomize the signature
+        let mut rng = test_rng();
+        let u_delta = Fr::rand(&mut rng);
+        let r_delta = Fr::rand(&mut rng);
+        let rerandomized =
+            ThresholdSignature::randomize_with_factors(&threshold_signature, &u_delta, &r_delta);
 
-        // // Verify the rerandomized signature
-        // let valid_rerandomized = Verifier::<Bls12_381>::verify_rerandomized_signature(
-        //     &ck,
-        //     &vk,
-        //     &messages,
-        //     &rerandomized,
-        // );
-        // assert!(
-        //     valid_rerandomized,
-        //     "Rerandomized signature verification failed"
-        // );
+        // Verify the rerandomized signature
+        let valid_rerandomized =
+            Verifier::<Bls12_381>::verify_signature(&ck, &vk, &messages, &rerandomized);
+        assert!(
+            valid_rerandomized,
+            "Rerandomized signature verification failed"
+        );
 
-        println!("✅ Signature verification test passed");
+        println!("✅ Signature rerandomized verification with messages test passed");
+    }
+
+    #[test]
+    fn test_credential_show_and_verify() {
+        // Get data from previous tests to have a complete setup
+        let (ck, vk, ts_keys, mut credential, commitments, signature_shares) =
+            signature_share_generation();
+
+        let mut rng = test_rng();
+        let threshold = ts_keys.t;
+
+        // 1. Aggregate signature shares into a threshold signature
+        let blindings = credential.get_blinding_factors();
+        let threshold_signature = ThresholdSignature::aggregate_signature_shares(
+            &ck,
+            &signature_shares,
+            &blindings,
+            threshold,
+            &commitments.h,
+        )
+        .expect("Failed to aggregate signature shares");
+
+        // 2. Attach the signature to the credential
+        credential.attach_signature(threshold_signature.clone());
+
+        // 3. Set up a symmetric commitment for the credential
+        credential.set_symmetric_commitment();
+
+        // 4. Show the credential (generate proof for anonymous presentation)
+        let (sig, cm, cm_tilde, proof_result) = credential.show(&mut rng);
+        let proof = proof_result.expect("Failed to generate credential proof");
+
+        // 5. Verify the blind signature
+        let verification_result =
+            Verifier::verify_blind_signature(&ck, &vk, cm, cm_tilde, sig, &proof);
+
+        match verification_result {
+            Ok(valid) => {
+                assert!(valid, "Blind signature verification failed");
+                println!("✅ Blind signature verification passed");
+            }
+            Err(err) => {
+                panic!("Blind signature verification error: {:?}", err);
+            }
+        }
+
+        // // 6. Optional: Test signature rerandomization
+        // let (rerandomized_sig, u_delta, r_delta) = sig.randomize(&mut rng);
+
+        // // 7. Verify the rerandomized signature
+        // let rerandomized_verification =
+        //     Verifier::verify_blind_signature(&ck, &vk, cm, cm_tilde, &rerandomized_sig, &proof);
+
+        // match rerandomized_verification {
+        //     Ok(valid) => {
+        //         assert!(valid, "Rerandomized blind signature verification failed");
+        //         println!("✅ Rerandomized blind signature verification passed");
+        //     }
+        //     Err(err) => {
+        //         panic!("Rerandomized blind signature verification error: {:?}", err);
+        //     }
+        // }
+
+        // // 8. Test complete flow with message verification (non-blind)
+        // let messages = credential.get_attributes();
+        // let valid_direct = Verifier::verify_signature(&ck, &vk, &messages, sig);
+        // assert!(valid_direct, "Direct signature verification failed");
+        // println!("✅ Direct signature verification passed");
+
+        // println!("✅ Complete credential show and verify test passed");
     }
 }

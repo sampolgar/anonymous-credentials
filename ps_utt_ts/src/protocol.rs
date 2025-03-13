@@ -1,18 +1,13 @@
-use crate::commitment::CommitmentError;
 use crate::credential::{Credential, CredentialCommitments};
-use crate::keygen::{keygen, ThresholdKeys, VerificationKey};
-use crate::signature::{
-    aggregate_signature_shares, PartialSignature, ThresholdSignature, ThresholdSignatureError,
-};
-use crate::signer::Signer;
-// use crate::signer::Signer;
 use crate::keygen::VerificationKeyShare;
+use crate::keygen::{keygen, ThresholdKeys, VerificationKey};
+use crate::signature::compute_lagrange_coefficient;
+use crate::signature::{PartialSignature, ThresholdSignature, ThresholdSignatureError};
+use crate::signer::Signer;
 use crate::symmetric_commitment::SymmetricCommitmentKey;
 use crate::verifier::Verifier;
 use ark_ec::pairing::Pairing;
-use ark_std::rand::Rng;
-use thiserror::Error;
-
+use ark_std::{rand::Rng, UniformRand};
 pub struct Protocol;
 
 impl Protocol {
@@ -59,6 +54,7 @@ impl Protocol {
         Ok((shares, h))
     }
 
+    /// signs 1 share of the threshold signature
     pub fn share_sign<E: Pairing>(
         signer: &Signer<E>,
         commitments: &[E::G1Affine],
@@ -68,15 +64,19 @@ impl Protocol {
         signer.sign_share(&commitments, &commitment_proofs, &h)
     }
 
+    /// Verify a signature share from a specific signer, run by a user to verify their
+    /// share has been signed correctly
     pub fn share_verify<E: Pairing>(
         ck: &SymmetricCommitmentKey<E>,
         vk_share: &VerificationKeyShare<E>,
         commitments: &[E::G1Affine],
         sig_share: &PartialSignature<E>,
     ) -> bool {
-        Verifier::<E>::verify_share(ck, vk_share, commitments, sig_share)
+        ThresholdSignature::<E>::verify_share(ck, vk_share, commitments, sig_share)
     }
 
+    /// Aggregate signature shares into a complete threshold signature
+    /// This is run by a user to combine all the signature shares into a single signature
     pub fn aggregate<E: Pairing>(
         ck: &SymmetricCommitmentKey<E>,
         shares: &[(usize, PartialSignature<E>)],
@@ -84,9 +84,11 @@ impl Protocol {
         t: usize,
         h: &E::G1Affine,
     ) -> Result<ThresholdSignature<E>, ThresholdSignatureError> {
-        aggregate_signature_shares(ck, shares, blindings, t, h)
+        ThresholdSignature::aggregate_signature_shares(ck, shares, blindings, t, h)
     }
 
+    /// Verify a complete threshold signature
+    /// Verifier runs this to verify the final signature
     pub fn verify<E: Pairing>(
         ck: &SymmetricCommitmentKey<E>,
         vk: &VerificationKey<E>,
@@ -96,12 +98,33 @@ impl Protocol {
         Verifier::<E>::verify_signature(ck, vk, messages, signature)
     }
 
-    pub fn verify_with_commitments<E: Pairing>(
-        ck: &SymmetricCommitmentKey<E>,
-        vk: &VerificationKey<E>,
-        commitments: &[E::G1Affine],
-        signature: &ThresholdSignature<E>,
-    ) -> bool {
-        Verifier::<E>::verify_signature_with_commitments(ck, vk, commitments, signature)
-    }
+    // /// Verify a complete threshold signature with commitments
+    // pub fn verify_blind_signature<E: Pairing>(
+    //     ck: &SymmetricCommitmentKey<E>,
+    //     vk: &VerificationKey<E>,
+    //     cm: &E::G1Affine,
+    //     cm_tilde: &E::G2Affine,
+    //     signature: &ThresholdSignature<E>,
+    //     proof: &Vec<u8>,
+    // ) -> bool {
+    //     Verifier::<E>::verify_blind_signature(ck, vk, cm, cm_tilde, signature, proof)
+    // }
+
+    // /// Rerandomize a threshold signature
+    // /// This is run by a user to rerandomize the signature
+    // pub fn rerandomize<E: Pairing>(
+    //     signature: &ThresholdSignature<E>,
+    //     rng: &mut impl Rng,
+    // ) -> RerandomizedThresholdSignature<E> {
+    //     ThresholdSignature::randomize(signature, )
+    // }
+
+    // // With explicit randomness
+    // pub fn rerandomize_with_factors<E: Pairing>(
+    //     signature: &ThresholdSignature<E>,
+    //     r1: &E::ScalarField,
+    //     r2: &E::ScalarField,
+    // ) -> RerandomizedThresholdSignature<E> {
+    //     rerandomize_signature(signature, r1, r2)
+    // }
 }

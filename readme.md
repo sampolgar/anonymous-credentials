@@ -14,7 +14,7 @@ Currently I am benchmarking Anonymous Credential schemes in the Obtain, Issue, S
 - PS from [UTT](https://eprint.iacr.org/2022/452.pdf) + an improvement by Lovesh Harchandani and I
 - BBS+ OG version from [AMS06](https://www.researchgate.net/publication/220337024_Constant-size_dynamic_k-TAA)
 - BBS+ from [CDL16](https://eprint.iacr.org/2016/663)
-- Threshold PS with Shamir SS
+- Threshold PS with Shamir SS .. almost
 
 # Near Future plans
 
@@ -24,6 +24,7 @@ Currently I am benchmarking Anonymous Credential schemes in the Obtain, Issue, S
 
 # Future plans
 
+- clean up, have each file is a component that is responsible for itself. Current object ownership mostly doesn't make sense
 - compare with PQC constructions
 - make more beautiful reusable shared componenents for the library
 - test with different curves

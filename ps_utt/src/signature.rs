@@ -40,9 +40,14 @@ impl<E: Pairing> PSUTTSignature<E> {
         r_delta: &E::ScalarField,
         u_delta: &E::ScalarField,
     ) -> Self {
+        // sigma1 = sigma1 * u_delta
         let sigma1_prime = self.sigma1.mul(u_delta);
+        // r_x_u = r_delta * u_delta
         let r_times_u = r_delta.mul(u_delta);
 
+        // (sigma1.mul(r_delta) + sigma2 ).mul(u_delta)
+        // but this just does
+        // sigma2.mul(r x u)
         let scalars = vec![r_times_u, *u_delta];
         let points = vec![self.sigma1, self.sigma2];
         let sigma2_prime = E::G1::msm_unchecked(&points, &scalars);

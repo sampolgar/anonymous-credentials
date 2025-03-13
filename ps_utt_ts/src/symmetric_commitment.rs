@@ -1,3 +1,4 @@
+use crate::commitment::{CommitmentError, CommitmentProof};
 use crate::shamir::generate_shares;
 use ark_ec::pairing::Pairing;
 use ark_ec::{CurveGroup, VariableBaseMSM};
@@ -110,10 +111,27 @@ impl<E: Pairing> SymmetricCommitment<E> {
         exponents
     }
 
-    // // get pok in g1
-    // pub fn prove_opening(&self) -> Result<Vec<u8>, CommitmentError> {
-    //     CommitmentProofs::pok_commitment_prove(&self)
-    // }
+    pub fn prove(self, rng: &mut impl Rng) -> Result<Vec<u8>, CommitmentError> {
+        let bases = self.ck.get_bases().0;
+        let schnorr_commitment = SchnorrProtocol::commit(&bases, rng);
+        let challenge = E::ScalarField::rand(rng);
+        let responses =
+            SchnorrProtocol::prove(&schnorr_commitment, &self.get_exponents(), &challenge);
+        let proof: CommitmentProof<E> = CommitmentProof {
+            bases,
+            commitment: self.cm,
+            schnorr_commitment,
+            challenge,
+            responses: responses.0,
+        };
+
+        let mut serialized_proof = Vec::new();
+        proof.serialize_compressed(&mut serialized_proof)?;
+
+        Ok(serialized_proof)
+    }
+
+    // pub fun verify
 }
 
 pub fn g1_commit<E: Pairing>(

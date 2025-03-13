@@ -1,51 +1,34 @@
+use crate::commitment::{Commitment, CommitmentProof};
 use crate::keygen::{VerificationKey, VerificationKeyShare};
+use crate::proofs::{CommitmentProofs, ProofError};
 use crate::signature::{PartialSignature, ThresholdSignature, ThresholdSignatureError};
 use crate::symmetric_commitment::SymmetricCommitmentKey;
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup};
-use ark_std::ops::{Mul, Neg};
-use std::marker::PhantomData;
+use ark_serialize::CanonicalDeserialize;
+use ark_std::ops::{Add, Mul, Neg};
+use thiserror::Error;
 use utils::pairing::{verify_pairing_equation, PairingCheck};
 
+#[derive(Error, Debug)]
+pub enum VerificationError {
+    #[error("Proof error: {0}")]
+    ProofError(#[from] ProofError),
+    #[error("Signature verification failed")]
+    SignatureVerificationFailed,
+    #[error("Commitment consistency check failed")]
+    CommitmentConsistencyFailed,
+}
+
 pub struct Verifier<E: Pairing> {
-    _marker: PhantomData<E>,
+    vk: VerificationKey<E>,
+    ck: SymmetricCommitmentKey<E>,
 }
 
 impl<E: Pairing> Verifier<E> {
-    /// Verify a signature share from a specific signer
-    /// Following RS.ShareVer from the protocol
-    pub fn verify_share(
-        ck: &SymmetricCommitmentKey<E>,
-        vk_share: &VerificationKeyShare<E>,
-        commitments: &[E::G1Affine],
-        sig_share: &PartialSignature<E>,
-    ) -> bool {
-        // Verify pairing equation:
-        // e(σ_i,2, g̃) = e(h, g̃^[x]_i) · ∏_{k∈[ℓ]} e(cm_k, g̃^[y_k]_i)
-        // change to
-        // e(-sigma_i, tilde_g) . e(h, g̃^[x]_i) . ∏_{k∈[ℓ]} e(cm_k, g̃^[y_k]_i)
-
-        let mut pairs = Vec::new();
-
-        // e(-sigma_i, g̃) = lhs
-        let neg_sigma_i = sig_share.sigma.into_group().neg().into_affine();
-        pairs.push((&neg_sigma_i, &ck.g_tilde));
-
-        // Add e(h, g̃^[x]_i)
-        let g_tilde_x_share = vk_share.g_tilde_x_share;
-        pairs.push((&sig_share.h, &g_tilde_x_share));
-
-        // Add ∏_{k∈[ℓ]} e(cm_k, g̃^[y_k]_i)
-        for (k, commitment) in commitments.iter().enumerate() {
-            if k < vk_share.g_tilde_y_shares.len() {
-                pairs.push((commitment, &vk_share.g_tilde_y_shares[k]));
-            }
-        }
-
-        // Verify that e(σ_i,2, g̃) = e(h, g̃^[x]_i) · ∏_{k∈[ℓ]} e(cm_k, g̃^[y_k]_i)
-        verify_pairing_equation::<E>(&pairs, None)
+    pub fn new(vk: VerificationKey<E>, ck: SymmetricCommitmentKey<E>) -> Self {
+        Self { vk, ck }
     }
-
     /// Following RS.Ver from the protocol
     pub fn verify_signature(
         ck: &SymmetricCommitmentKey<E>,
@@ -87,29 +70,44 @@ impl<E: Pairing> Verifier<E> {
     }
 
     /// Verify a threshold signature using commitments
-    pub fn verify_signature_with_commitments(
+    pub fn verify_blind_signature(
         ck: &SymmetricCommitmentKey<E>,
         vk: &VerificationKey<E>,
-        commitments: &[E::G1Affine],
-        signature: &ThresholdSignature<E>,
-    ) -> bool {
-        let mut pairs = Vec::new();
+        cm: &E::G1Affine,
+        cm_tilde: &E::G2Affine,
+        sig: &ThresholdSignature<E>,
+        serialized_proof: &[u8],
+    ) -> Result<bool, VerificationError> {
+        let p1 = E::pairing(sig.sigma, ck.g_tilde);
+        let p2 = E::pairing(sig.h, vk.g_tilde_x.add(cm_tilde));
+        assert_eq!(p1, p2, "first pairing not working");
+        // let is_valid = p1 == p2;
 
-        // e(-σ₂, g̃)
-        let neg_sigma = signature.sigma.into_group().neg().into_affine();
-        pairs.push((&neg_sigma, &ck.g_tilde));
+        if p1 != p2 {
+            return Err(VerificationError::SignatureVerificationFailed);
+        }
+        // Second pairing check (commitment consistency)
+        let p3 = E::pairing(cm, ck.g_tilde);
+        let p4 = E::pairing(ck.g, cm_tilde);
 
-        // e(h, g̃^x)
-        pairs.push((&signature.h, &vk.g_tilde_x));
-
-        // ∏k∈[ℓ] e(cm_k, g̃^yk)
-        for (k, commitment) in commitments.iter().enumerate() {
-            if k < ck.ck_tilde.len() {
-                pairs.push((commitment, &ck.ck_tilde[k]));
-            }
+        if p3 != p4 {
+            return Err(VerificationError::CommitmentConsistencyFailed);
         }
 
-        // Verify the pairing equation
-        verify_pairing_equation::<E>(&pairs, None)
+        let is_valid = CommitmentProofs::pok_commitment_verify::<E>(&serialized_proof)?;
+        Ok(is_valid)
+    }
+
+    /// Verify a credential presentation
+    pub fn verify_credential_show(
+        signature: &ThresholdSignature<E>,
+        commitment: &E::G1Affine,
+        commitment_tilde: &E::G2Affine,
+        proof: &[u8],
+    ) -> bool {
+        // verify the signature
+        // verify the commitment
+        // verify the proof
+        false // Placeholder - implement actual verification logic
     }
 }

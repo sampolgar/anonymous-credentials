@@ -1,10 +1,6 @@
-// Includes user operations and aggregation (since users are responsible for combining shares):
-// Creating commitments
-// Managing blinding factors
-// Aggregating signature shares
-// Unblinding signatures
 use crate::commitment::{Commitment, CommitmentError, CommitmentProof};
-// use crate::signature::{BlindSignature, SignatureShare, ThresholdSignatureError};
+use crate::signature::{PartialSignature, ThresholdSignature, ThresholdSignatureError};
+use crate::signer::Signer;
 use crate::symmetric_commitment::{SymmetricCommitment, SymmetricCommitmentKey};
 use ark_ec::pairing::Pairing;
 use ark_ec::CurveGroup;
@@ -12,6 +8,7 @@ use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::ops::Mul;
 use ark_std::rand::Rng;
+use ark_std::Zero;
 use std::iter;
 
 /// Commitment to a single message with its proof
@@ -21,21 +18,24 @@ pub struct CredentialCommitments<E: Pairing> {
     pub proofs: Vec<Vec<u8>>,
 }
 
-/// Credential with multiple attributes
 pub struct Credential<E: Pairing> {
     pub ck: SymmetricCommitmentKey<E>,
+    pub cm: Option<SymmetricCommitment<E>>,
     messages: Vec<E::ScalarField>,
-    blinding_factors: Vec<E::ScalarField>,
-    h: Option<E::G1Affine>, // Base for the signature
+    blindings: Vec<E::ScalarField>,
+    h: Option<E::G1Affine>,
+    sig: Option<ThresholdSignature<E>>,
 }
 
 impl<E: Pairing> Credential<E> {
     pub fn new(ck: SymmetricCommitmentKey<E>) -> Self {
         Self {
             ck: ck,
+            cm: None,
             messages: Vec::new(),
-            blinding_factors: Vec::new(),
+            blindings: Vec::new(),
             h: None,
+            sig: None,
         }
     }
 
@@ -43,12 +43,22 @@ impl<E: Pairing> Credential<E> {
         self.messages = messages;
     }
 
+    pub fn set_symmetric_commitment(&mut self) {
+        let zero = E::ScalarField::zero();
+        let cm = SymmetricCommitment::<E>::new(&self.ck, &self.messages, &zero);
+        self.cm = Some(cm);
+    }
+
     pub fn get_attributes(&self) -> &Vec<E::ScalarField> {
         &self.messages
     }
 
     pub fn get_blinding_factors(&self) -> &Vec<E::ScalarField> {
-        &self.blinding_factors
+        &self.blindings
+    }
+
+    pub fn attach_signature(&mut self, sig: ThresholdSignature<E>) {
+        self.sig = Some(sig);
     }
 
     // commit to each message attribute individually for threshold sig
@@ -76,7 +86,7 @@ impl<E: Pairing> Credential<E> {
             let current_cm = Commitment::<E>::new(&h, &self.ck.g, &self.messages[i], None, rng);
 
             // store the randomness
-            self.blinding_factors.push(current_cm.exponents[1]);
+            self.blindings.push(current_cm.exponents[1]);
             // Store the commitment
             commitments.push(current_cm.cm);
 
@@ -109,5 +119,53 @@ impl<E: Pairing> Credential<E> {
         }
 
         Ok(commitment_requests)
+    }
+
+    /// Request signatures from signers until threshold is reached
+    pub fn request_signatures(
+        credential_requests: &[CredentialCommitments<E>],
+        signers: &[Signer<E>],
+        t: usize,
+    ) -> Result<(Vec<(usize, PartialSignature<E>)>, E::G1Affine), ThresholdSignatureError> {
+        let h = credential_requests[0].h;
+        let mut shares = Vec::new();
+        for (i, signer) in signers.iter().enumerate().take(t + 1) {
+            // break if we have enough shares
+            if shares.len() == t + 1 {
+                break;
+            }
+
+            let curr_request = &credential_requests[i];
+            let curr_share =
+                signer.sign_share(&curr_request.commitments, &curr_request.proofs, &h)?;
+            shares.push((i, curr_share));
+        }
+
+        if shares.len() < t + 1 {
+            return Err(ThresholdSignatureError::InsufficientShares {
+                needed: t + 1,
+                got: shares.len(),
+            });
+        }
+        Ok((shares, h))
+    }
+
+    /// this is the anonymous credential `show` protocol. generates proof for commitment
+    /// first testing without reranodmization
+    pub fn show(
+        &self,
+        rng: &mut impl Rng,
+    ) -> (
+        &ThresholdSignature<E>,
+        &E::G1Affine,
+        &E::G2Affine,
+        Result<Vec<u8>, CommitmentError>,
+    ) {
+        let sig = self.sig.as_ref().unwrap();
+        let symmetric_commitment = self.cm.as_ref().unwrap();
+        let cm = &symmetric_commitment.cm;
+        let cm_tilde = &symmetric_commitment.cm_tilde;
+        let proof = symmetric_commitment.clone().prove(rng);
+        (sig, &cm, &cm_tilde, proof)
     }
 }
