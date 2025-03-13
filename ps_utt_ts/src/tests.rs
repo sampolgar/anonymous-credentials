@@ -3,6 +3,7 @@ use crate::{
     credential::Credential,
     credential::CredentialCommitments,
     errors::VerificationError,
+    keygen::keygen,
     keygen::{SecretKeyShare, ThresholdKeys, VerificationKey, VerificationKeyShare},
     protocol::Protocol,
     shamir::reconstruct_secret,
@@ -35,12 +36,8 @@ mod tests {
         let mut rng = test_rng();
 
         // Generate keys
-        let (ck, vk, ts_keys) = Protocol::run_distributed_key_generation::<Bls12_381>(
-            THRESHOLD,
-            N_PARTICIPANTS,
-            L_ATTRIBUTES,
-            &mut rng,
-        );
+        let (ck, vk, ts_keys) =
+            keygen::<Bls12_381>(THRESHOLD, N_PARTICIPANTS, L_ATTRIBUTES, &mut rng);
 
         // Verify correct number of shares
         assert_eq!(ts_keys.sk_shares.len(), N_PARTICIPANTS);
@@ -77,13 +74,8 @@ mod tests {
         let mut rng = test_rng();
 
         // Generate keys
-        let (ck, _, _) = Protocol::run_distributed_key_generation::<Bls12_381>(
-            THRESHOLD,
-            N_PARTICIPANTS,
-            L_ATTRIBUTES,
-            &mut rng,
-        );
-
+        let (ck, vk, ts_keys) =
+            keygen::<Bls12_381>(THRESHOLD, N_PARTICIPANTS, L_ATTRIBUTES, &mut rng);
         // Create a credential with random attributes
         let messages: Vec<Fr> = (0..L_ATTRIBUTES).map(|_| Fr::rand(&mut rng)).collect();
         let credential = Credential::new(ck, Some(&messages), &mut rng);
@@ -102,13 +94,8 @@ mod tests {
         let mut rng = test_rng();
 
         // Generate keys
-        let (ck, _, ts_keys) = Protocol::run_distributed_key_generation::<Bls12_381>(
-            THRESHOLD,
-            N_PARTICIPANTS,
-            L_ATTRIBUTES,
-            &mut rng,
-        );
-
+        let (ck, vk, ts_keys) =
+            keygen::<Bls12_381>(THRESHOLD, N_PARTICIPANTS, L_ATTRIBUTES, &mut rng);
         // Create signers
         let signers: Vec<_> = ts_keys
             .sk_shares
@@ -165,13 +152,8 @@ mod tests {
     fn test_signature_aggregation() {
         let mut rng = test_rng();
 
-        // Generate keys
-        let (ck, vk, ts_keys) = Protocol::run_distributed_key_generation::<Bls12_381>(
-            THRESHOLD,
-            N_PARTICIPANTS,
-            L_ATTRIBUTES,
-            &mut rng,
-        );
+        let (ck, vk, ts_keys) =
+            keygen::<Bls12_381>(THRESHOLD, N_PARTICIPANTS, L_ATTRIBUTES, &mut rng);
 
         // Create signers
         let signers: Vec<_> = ts_keys
@@ -215,34 +197,29 @@ mod tests {
             .map(|(idx, share)| (*idx, share.clone()))
             .collect::<Vec<_>>();
 
-        // Aggregate the signature shares
-        let threshold_signature = Protocol::aggregate::<Bls12_381>(
+        // aggregate_shares the signature shares
+        let threshold_signature = ThresholdSignature::<Bls12_381>::aggregate_signature_shares(
             &ck,
             &sufficient_shares,
             &blindings,
             THRESHOLD,
             &commitments.h,
         )
-        .expect("Failed to aggregate signature shares");
+        .expect("Failed to aggregate_shares signature shares");
 
-        // Verify the aggregated signature
+        // Verify the aggregate_sharesd signature
         let valid =
             Verifier::<Bls12_381>::verify_signature(&ck, &vk, &messages, &threshold_signature);
 
-        assert!(valid, "Aggregated signature verification failed");
+        assert!(valid, "aggregate_sharesd signature verification failed");
     }
 
     #[test]
     fn test_signature_rerandomization() {
         let mut rng = test_rng();
 
-        // Generate keys
-        let (ck, vk, ts_keys) = Protocol::run_distributed_key_generation::<Bls12_381>(
-            THRESHOLD,
-            N_PARTICIPANTS,
-            L_ATTRIBUTES,
-            &mut rng,
-        );
+        let (ck, vk, ts_keys) =
+            keygen::<Bls12_381>(THRESHOLD, N_PARTICIPANTS, L_ATTRIBUTES, &mut rng);
 
         // Create signers
         let signers: Vec<_> = ts_keys
@@ -275,16 +252,16 @@ mod tests {
             signature_shares.push((sig_share.party_index, sig_share));
         }
 
-        // Aggregate signatures
+        // aggregate_shares signatures
         let blindings = credential.get_blinding_factors();
-        let threshold_signature = Protocol::aggregate::<Bls12_381>(
+        let threshold_signature = ThresholdSignature::<Bls12_381>::aggregate_signature_shares(
             &ck,
             &signature_shares,
             &blindings,
             THRESHOLD,
             &commitments.h,
         )
-        .expect("Failed to aggregate signature shares");
+        .expect("Failed to aggregate_shares signature shares");
 
         // Attach the signature to the credential
         credential.attach_signature(threshold_signature.clone());
@@ -312,5 +289,78 @@ mod tests {
                 panic!("Blind signature verification error: {:?}", err);
             }
         }
+    }
+
+    #[test]
+    fn test_complete_credential_flow() {
+        let mut rng = test_rng();
+
+        // 1. SETUP: Generate system parameters and keys
+        let (ck, vk, ts_keys) =
+            keygen::<Bls12_381>(THRESHOLD, N_PARTICIPANTS, L_ATTRIBUTES, &mut rng);
+
+        // Create signers from key shares
+        // Create signers
+        let signers: Vec<_> = ts_keys
+            .sk_shares
+            .iter()
+            .zip(ts_keys.vk_shares.iter())
+            .map(|(sk_share, vk_share)| Signer::new(&ck, sk_share, vk_share))
+            .collect();
+
+        // 2. USER: Create credential with random attributes
+        let attributes: Vec<Fr> = (0..L_ATTRIBUTES).map(|_| Fr::rand(&mut rng)).collect();
+        let mut credential = Credential::new(ck.clone(), Some(&attributes), &mut rng);
+
+        let (mut credential, credential_request) =
+            Protocol::request_credential(ck.clone(), Some(&attributes), &mut rng)
+                .expect("Failed to create credential request");
+
+        // 3. ISSUERS: Each issuer signs the credential request
+        let signature_shares =
+            Protocol::collect_signature_shares(&signers, &credential_request, THRESHOLD)
+                .expect("Failed to collect signature shares");
+
+        // 4. USER: Verify the signature shares before aggregation
+        let verified_shares = Protocol::verify_signature_shares(
+            &ck,
+            &ts_keys.vk_shares,
+            &credential_request,
+            &signature_shares,
+            THRESHOLD,
+        )
+        .expect("Failed to verify signature shares");
+
+        // 5. USER: Aggregate verified signature shares
+        let blindings = credential.get_blinding_factors();
+        let threshold_signature = Protocol::aggregate_shares(
+            &ck,
+            &verified_shares,
+            &blindings,
+            THRESHOLD,
+            &credential_request.h,
+        )
+        .expect("Failed to aggregate signature shares");
+
+        // 6. USER: Attach signature to credential
+        credential.attach_signature(threshold_signature);
+
+        // 7. USER: Generate a credential presentation (zero-knowledge proof)
+        let (randomized_sig, commitment, commitment_tilde, proof) =
+            Protocol::show(&credential, &mut rng)
+                .expect("Failed to generate credential presentation");
+
+        // 8. VERIFIER: Verify the credential presentation
+        let is_valid = Protocol::verify(
+            &ck,
+            &vk,
+            &commitment,
+            &commitment_tilde,
+            &randomized_sig,
+            &proof,
+        )
+        .expect("Verification failed");
+
+        assert!(is_valid, "Credential verification should succeed");
     }
 }

@@ -65,6 +65,9 @@ pub enum VerificationError {
 
     #[error("Signature error: {0}")]
     SignatureError(#[from] SignatureError),
+
+    #[error("Invalid protocol state: {0}")]
+    InvalidState(String),
 }
 
 /// Errors that can occur during protocol operations

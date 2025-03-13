@@ -1,19 +1,20 @@
 use crate::credential::{Credential, CredentialCommitments};
-use crate::errors::SignatureError;
+use crate::errors::{CredentialError, SignatureError, VerificationError};
 use crate::keygen::VerificationKeyShare;
 use crate::keygen::{keygen, ThresholdKeys, VerificationKey};
 use crate::signature::compute_lagrange_coefficient;
 use crate::signature::{PartialSignature, ThresholdSignature};
 use crate::signer::Signer;
 use crate::symmetric_commitment::SymmetricCommitmentKey;
+use crate::user::User;
 use crate::verifier::Verifier;
 use ark_ec::pairing::Pairing;
 use ark_std::{rand::Rng, UniformRand};
 pub struct Protocol;
 
 impl Protocol {
-    /// Runs the distributed key generation protocol
-    pub fn run_distributed_key_generation<E: Pairing>(
+    /// Setup generates the system parameters and keys
+    pub fn setup<E: Pairing>(
         threshold: usize,
         num_signers: usize,
         num_attributes: usize,
@@ -26,106 +27,133 @@ impl Protocol {
         keygen(threshold, num_signers, num_attributes, rng)
     }
 
-    /// Request signatures from signers until threshold is reached
-    pub fn request_signatures<E: Pairing>(
-        credential_requests: &[CredentialCommitments<E>],
-        signers: &[Signer<E>],
-        t: usize,
-    ) -> Result<(Vec<(usize, PartialSignature<E>)>, E::G1Affine), SignatureError> {
-        let h = credential_requests[0].h;
-        let mut shares = Vec::new();
-        for (i, signer) in signers.iter().enumerate().take(t + 1) {
-            // break if we have enough shares
-            if shares.len() == t + 1 {
-                break;
-            }
-
-            let curr_request = &credential_requests[i];
-            let curr_share =
-                signer.sign_share(&curr_request.commitments, &curr_request.proofs, &h)?;
-            shares.push((i, curr_share));
-        }
-
-        if shares.len() < t + 1 {
-            return Err(SignatureError::InsufficientShares {
-                needed: t + 1,
-                got: shares.len(),
-            });
-        }
-        Ok((shares, h))
+    /// doesn't feel like a protocol thing because a user does this by themself?
+    /// User creates a credential request
+    /// # Returns
+    /// * A new credential with commitments to attributes
+    pub fn request_credential<E: Pairing>(
+        commitment_key: SymmetricCommitmentKey<E>,
+        attributes: Option<&[E::ScalarField]>,
+        rng: &mut impl Rng,
+    ) -> Result<(Credential<E>, CredentialCommitments<E>), CredentialError> {
+        let mut credential = Credential::new(commitment_key, attributes, rng);
+        let commitments = credential.compute_commitments_per_m(rng)?;
+        Ok((credential, commitments))
     }
 
-    /// signs 1 share of the threshold signature
-    pub fn share_sign<E: Pairing>(
+    /// Issuer signs a credential request
+    /// # Returns
+    /// * A partial signature from this signer
+    pub fn issue_share<E: Pairing>(
         signer: &Signer<E>,
         commitments: &[E::G1Affine],
         commitment_proofs: &[Vec<u8>],
         h: &E::G1Affine,
     ) -> Result<PartialSignature<E>, SignatureError> {
-        signer.sign_share(&commitments, &commitment_proofs, &h)
+        signer.sign_share(commitments, commitment_proofs, h)
     }
 
-    /// Verify a signature share from a specific signer, run by a user to verify their
-    /// share has been signed correctly
-    pub fn share_verify<E: Pairing>(
-        ck: &SymmetricCommitmentKey<E>,
-        vk_share: &VerificationKeyShare<E>,
-        commitments: &[E::G1Affine],
-        sig_share: &PartialSignature<E>,
-    ) -> bool {
-        ThresholdSignature::<E>::verify_share(ck, vk_share, commitments, sig_share)
+    /// User collects signatures from multiple issuers
+    pub fn collect_signature_shares<E: Pairing>(
+        signers: &[Signer<E>],
+        credential_request: &CredentialCommitments<E>,
+        threshold: usize,
+    ) -> Result<Vec<(usize, PartialSignature<E>)>, SignatureError> {
+        let mut shares = Vec::new();
+
+        // Request signatures from enough signers
+        for signer in signers.iter().take(threshold + 1) {
+            let sig_share = signer.sign_share(
+                &credential_request.commitments,
+                &credential_request.proofs,
+                &credential_request.h,
+            )?;
+
+            shares.push((sig_share.party_index, sig_share));
+
+            if shares.len() >= threshold + 1 {
+                break;
+            }
+        }
+
+        // Check if we have enough shares
+        if shares.len() < threshold + 1 {
+            return Err(SignatureError::InsufficientShares {
+                needed: threshold + 1,
+                got: shares.len(),
+            });
+        }
+
+        Ok(shares)
+    }
+
+    /// User verifies signature shares before aggregation (implements RS.ShareVer)
+    pub fn verify_signature_shares<E: Pairing>(
+        commitment_key: &SymmetricCommitmentKey<E>,
+        vk_shares: &[VerificationKeyShare<E>],
+        credential_request: &CredentialCommitments<E>,
+        signature_shares: &[(usize, PartialSignature<E>)],
+        threshold: usize,
+    ) -> Result<Vec<(usize, PartialSignature<E>)>, VerificationError> {
+        // Use the UserVerification module to verify shares
+        User::process_signature_shares(
+            commitment_key,
+            vk_shares,
+            &credential_request.commitments,
+            &credential_request.proofs,
+            signature_shares,
+            threshold,
+        )
     }
 
     /// Aggregate signature shares into a complete threshold signature
-    /// This is run by a user to combine all the signature shares into a single signature
-    pub fn aggregate<E: Pairing>(
-        ck: &SymmetricCommitmentKey<E>,
+    /// run by a user to combine all the signature shares
+    /// # Returns
+    /// * A complete threshold signature
+    pub fn aggregate_shares<E: Pairing>(
+        commitment_key: &SymmetricCommitmentKey<E>,
         shares: &[(usize, PartialSignature<E>)],
         blindings: &[E::ScalarField],
-        t: usize,
+        threshold: usize,
         h: &E::G1Affine,
     ) -> Result<ThresholdSignature<E>, SignatureError> {
-        ThresholdSignature::aggregate_signature_shares(ck, shares, blindings, t, h)
+        ThresholdSignature::aggregate_signature_shares(
+            commitment_key,
+            shares,
+            blindings,
+            threshold,
+            h,
+        )
     }
 
-    /// Verify a complete threshold signature
-    /// Verifier runs this to verify the final signature
+    /// User shows credential without revealing attributes
+    /// # Returns
+    /// * A ZKP presentation of the credential
+    pub fn show<E: Pairing>(
+        credential: &Credential<E>,
+        rng: &mut impl Rng,
+    ) -> Result<(ThresholdSignature<E>, E::G1Affine, E::G2Affine, Vec<u8>), CredentialError> {
+        credential.show(rng)
+    }
+
+    /// Verify a credential presentation
+    /// # Returns
+    /// * Whether the credential is valid
     pub fn verify<E: Pairing>(
-        ck: &SymmetricCommitmentKey<E>,
-        vk: &VerificationKey<E>,
-        messages: &[E::ScalarField],
+        commitment_key: &SymmetricCommitmentKey<E>,
+        verification_key: &VerificationKey<E>,
+        commitment: &E::G1Affine,
+        commitment_tilde: &E::G2Affine,
         signature: &ThresholdSignature<E>,
-    ) -> bool {
-        Verifier::<E>::verify_signature(ck, vk, messages, signature)
+        proof: &Vec<u8>,
+    ) -> Result<bool, VerificationError> {
+        Verifier::<E>::verify(
+            commitment_key,
+            verification_key,
+            commitment,
+            commitment_tilde,
+            signature,
+            proof,
+        )
     }
-
-    // /// Verify a complete threshold signature with commitments
-    // pub fn verify_blind_signature<E: Pairing>(
-    //     ck: &SymmetricCommitmentKey<E>,
-    //     vk: &VerificationKey<E>,
-    //     cm: &E::G1Affine,
-    //     cm_tilde: &E::G2Affine,
-    //     signature: &ThresholdSignature<E>,
-    //     proof: &Vec<u8>,
-    // ) -> bool {
-    //     Verifier::<E>::verify_blind_signature(ck, vk, cm, cm_tilde, signature, proof)
-    // }
-
-    // /// Rerandomize a threshold signature
-    // /// This is run by a user to rerandomize the signature
-    // pub fn rerandomize<E: Pairing>(
-    //     signature: &ThresholdSignature<E>,
-    //     rng: &mut impl Rng,
-    // ) -> RerandomizedThresholdSignature<E> {
-    //     ThresholdSignature::randomize(signature, )
-    // }
-
-    // // With explicit randomness
-    // pub fn rerandomize_with_factors<E: Pairing>(
-    //     signature: &ThresholdSignature<E>,
-    //     r1: &E::ScalarField,
-    //     r2: &E::ScalarField,
-    // ) -> RerandomizedThresholdSignature<E> {
-    //     rerandomize_signature(signature, r1, r2)
-    // }
 }

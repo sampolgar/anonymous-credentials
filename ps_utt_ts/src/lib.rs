@@ -8,4 +8,5 @@ pub mod signature;
 pub mod signer;
 pub mod symmetric_commitment;
 pub mod tests;
+pub mod user;
 pub mod verifier;

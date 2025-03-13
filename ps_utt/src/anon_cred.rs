@@ -23,8 +23,7 @@ pub struct UserCred<E: Pairing> {
     pub commitment: Commitment<E>,
 }
 
-impl<E: Pairing> UserCred<E> {
-    pub fn new(
+impl<E: Pairing> UserCred<E> {    pub fn new(
         pp: &PublicParams<E>,
         messages: &Vec<E::ScalarField>,
         usk: E::ScalarField,

@@ -62,6 +62,7 @@ impl<E: Pairing> Credential<E> {
         self.messages = messages;
     }
 
+    // set the symmetric commitment, at the start it will be CM.Com([m_1, ..., m_L], 0)
     pub fn set_symmetric_commitment(&mut self) {
         let zero = E::ScalarField::zero();
         let cm = SymmetricCommitment::<E>::new(&self.ck, &self.messages, &zero);
@@ -121,50 +122,40 @@ impl<E: Pairing> Credential<E> {
         })
     }
 
-    /// Prepare credential requests with unique commitments for each signer
-    pub fn prepare_credential_requests(
-        &mut self,
-        num_signers: usize,
-        rng: &mut impl Rng,
-    ) -> Result<Vec<CredentialCommitments<E>>, CommitmentError> {
-        let mut commitment_requests = Vec::with_capacity(num_signers);
+    // /// Request signatures from t+1 signers on the same commitments
+    // pub fn request_signatures(
+    //     commitments: &CredentialCommitments<E>,
+    //     signers: &[Signer<E>],
+    //     threshold: usize,
+    // ) -> Result<Vec<(usize, PartialSignature<E>)>, SignatureError> {
+    //     let mut shares = Vec::new();
 
-        for _ in 0..num_signers {
-            let commitments = self.compute_commitments_per_m(rng)?;
-            commitment_requests.push(commitments);
-        }
+    //     // Try to get t+1 signature shares
+    //     for signer in signers.iter().take(threshold + 1) {
+    //         let sig_share = signer.sign_share(
+    //             &commitments.commitments,
+    //             &commitments.proofs,
+    //             &commitments.h,
+    //         )?;
 
-        Ok(commitment_requests)
-    }
+    //         shares.push((sig_share.party_index, sig_share));
 
-    /// Request signatures from signers until threshold is reached
-    pub fn request_signatures(
-        credential_requests: &[CredentialCommitments<E>],
-        signers: &[Signer<E>],
-        t: usize,
-    ) -> Result<(Vec<(usize, PartialSignature<E>)>, E::G1Affine), SignatureError> {
-        let h = credential_requests[0].h;
-        let mut shares = Vec::new();
-        for (i, signer) in signers.iter().enumerate().take(t + 1) {
-            // break if we have enough shares
-            if shares.len() == t + 1 {
-                break;
-            }
+    //         // Break early if we have enough shares
+    //         if shares.len() == threshold + 1 {
+    //             break;
+    //         }
+    //     }
 
-            let curr_request = &credential_requests[i];
-            let curr_share =
-                signer.sign_share(&curr_request.commitments, &curr_request.proofs, &h)?;
-            shares.push((i, curr_share));
-        }
+    //     // Check if we have enough shares
+    //     if shares.len() < threshold + 1 {
+    //         return Err(SignatureError::InsufficientShares {
+    //             needed: threshold + 1,
+    //             got: shares.len(),
+    //         });
+    //     }
 
-        if shares.len() < t + 1 {
-            return Err(SignatureError::InsufficientShares {
-                needed: t + 1,
-                got: shares.len(),
-            });
-        }
-        Ok((shares, h))
-    }
+    //     Ok(shares)
+    // }
 
     /// this is the anonymous credential `show` protocol. generates proof for commitment
     pub fn show(
