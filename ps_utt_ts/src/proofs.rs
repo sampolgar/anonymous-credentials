@@ -11,6 +11,8 @@ use thiserror::Error;
 pub enum ProofError {
     #[error("Invalid proof")]
     InvalidProof,
+    #[error("Invalid share from party {0}")]
+    InvalidShare(usize),
     #[error("Serialization error: {0}")]
     SerializationError(#[from] SerializationError),
     #[error("Failed to deserialize proof")]

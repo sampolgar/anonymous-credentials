@@ -1,5 +1,6 @@
 use crate::commitment::{Commitment, CommitmentError};
 use crate::keygen::{keygen, SecretKeyShare, ThresholdKeys, VerificationKey, VerificationKeyShare};
+use crate::proofs::{CommitmentProofs, ProofError};
 use crate::symmetric_commitment::{SymmetricCommitment, SymmetricCommitmentKey};
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
@@ -20,6 +21,13 @@ pub enum ThresholdSignatureError {
     DuplicateShare(usize),
     ThresholdNotMet,
     InsufficientShares { needed: usize, got: usize },
+    ProofError(ProofError),
+}
+
+impl From<ProofError> for ThresholdSignatureError {
+    fn from(error: ProofError) -> Self {
+        ThresholdSignatureError::ProofError(error)
+    }
 }
 
 impl From<CommitmentError> for ThresholdSignatureError {
@@ -123,17 +131,10 @@ impl<E: Pairing> ThresholdSignature<E> {
         })
     }
 
-    pub fn randomize(
-        &self,
-        rng: &mut impl Rng,
-    ) -> (ThresholdSignature<E>, E::ScalarField, E::ScalarField) {
+    pub fn randomize(&self, rng: &mut impl Rng) -> (ThresholdSignature<E>, E::ScalarField) {
         let u_delta = E::ScalarField::rand(rng);
         let r_delta: <E as Pairing>::ScalarField = E::ScalarField::rand(rng);
-        (
-            self.randomize_with_factors(&u_delta, &r_delta),
-            u_delta,
-            r_delta,
-        )
+        (self.randomize_with_factors(&u_delta, &r_delta), r_delta)
     }
 
     /// u_delta randomizes sigma1 (h)

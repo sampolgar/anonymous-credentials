@@ -29,48 +29,10 @@ impl<E: Pairing> Verifier<E> {
     pub fn new(vk: VerificationKey<E>, ck: SymmetricCommitmentKey<E>) -> Self {
         Self { vk, ck }
     }
-    /// Following RS.Ver from the protocol
-    pub fn verify_signature(
-        ck: &SymmetricCommitmentKey<E>,
-        vk: &VerificationKey<E>,
-        messages: &[E::ScalarField],
-        signature: &ThresholdSignature<E>,
-    ) -> bool {
-        if messages.len() > ck.ck_tilde.len() {
-            return false; // Too many messages
-        }
-
-        let mut pairs = Vec::new();
-
-        // e(-σ₂, g̃)
-        let neg_sigma = signature.sigma.into_group().neg().into_affine();
-        pairs.push((&neg_sigma, &ck.g_tilde));
-
-        // e(h, g̃^x)
-        pairs.push((&signature.h, &vk.g_tilde_x));
-
-        // ∏k∈[ℓ] e(h^mk, g̃^yk)
-        // Store all h^mk values so they live long enough
-        let h_to_mk_vec: Vec<E::G1Affine> = messages
-            .iter()
-            .enumerate()
-            .filter(|(k, _)| *k < ck.ck_tilde.len())
-            .map(|(_, &message)| signature.h.mul(message).into_affine())
-            .collect();
-
-        // Add pairs to the pairing check
-        for (k, h_to_mk) in h_to_mk_vec.iter().enumerate() {
-            if k < ck.ck_tilde.len() {
-                pairs.push((h_to_mk, &ck.ck_tilde[k]));
-            }
-        }
-
-        // Verify the pairing equation
-        verify_pairing_equation::<E>(&pairs, None)
-    }
 
     /// Verify a threshold signature using commitments
-    pub fn verify_blind_signature(
+    /// Following RS.Ver from the protocol
+    pub fn verify(
         ck: &SymmetricCommitmentKey<E>,
         vk: &VerificationKey<E>,
         cm: &E::G1Affine,
@@ -98,16 +60,42 @@ impl<E: Pairing> Verifier<E> {
         Ok(is_valid)
     }
 
-    /// Verify a credential presentation
-    pub fn verify_credential_show(
+    /// Following RS.Ver from the protocol
+    pub fn verify_signature(
+        ck: &SymmetricCommitmentKey<E>,
+        vk: &VerificationKey<E>,
+        messages: &[E::ScalarField],
         signature: &ThresholdSignature<E>,
-        commitment: &E::G1Affine,
-        commitment_tilde: &E::G2Affine,
-        proof: &[u8],
     ) -> bool {
-        // verify the signature
-        // verify the commitment
-        // verify the proof
-        false // Placeholder - implement actual verification logic
+        if messages.len() > ck.ck_tilde.len() {
+            return false; // Too many messages
+        }
+
+        let mut pairs = Vec::new();
+
+        // e(-σ₂, g̃)
+        let neg_sigma = signature.sigma.into_group().neg().into_affine();
+        pairs.push((&neg_sigma, &ck.g_tilde));
+
+        // e(h, g̃^x)
+        pairs.push((&signature.h, &vk.g_tilde_x));
+
+        // Store all h^mk values so they live long enough
+        let h_to_mk_vec: Vec<E::G1Affine> = messages
+            .iter()
+            .enumerate()
+            .filter(|(k, _)| *k < ck.ck_tilde.len())
+            .map(|(_, &message)| signature.h.mul(message).into_affine())
+            .collect();
+
+        // Add pairs to the pairing check
+        for (k, h_to_mk) in h_to_mk_vec.iter().enumerate() {
+            if k < ck.ck_tilde.len() {
+                pairs.push((h_to_mk, &ck.ck_tilde[k]));
+            }
+        }
+
+        // Verify the pairing equation
+        verify_pairing_equation::<E>(&pairs, None)
     }
 }

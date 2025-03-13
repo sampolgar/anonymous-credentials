@@ -1,5 +1,6 @@
 use crate::commitment::{Commitment, CommitmentError};
 use crate::keygen::{SecretKeyShare, VerificationKeyShare};
+use crate::proofs::ProofError;
 use crate::signature::{PartialSignature, ThresholdSignatureError};
 use crate::symmetric_commitment::SymmetricCommitmentKey;
 use ark_ec::pairing::Pairing;
@@ -36,9 +37,9 @@ impl<'a, E: Pairing> Signer<'a, E> {
     ) -> Result<PartialSignature<E>, ThresholdSignatureError> {
         // Verify all commitment proofs
         for (_, proof) in commitments.iter().zip(commitment_proofs.iter()) {
-            let valid = Commitment::<E>::pok_commitment_verify(proof)?;
+            let valid = Commitment::<E>::verify(proof)?;
             if !valid {
-                return Err(ThresholdSignatureError::InvalidShare(self.sk_share.index));
+                return Err(ProofError::InvalidShare(self.sk_share.index).into());
             }
         }
 

@@ -10,6 +10,17 @@ use ark_std::ops::Mul;
 use ark_std::rand::Rng;
 use ark_std::Zero;
 use std::iter;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum CredentialError {
+    #[error("Missing signature: {0}")]
+    MissingSignature(String),
+    #[error("Proof generation failed: {0}")]
+    ProofGenerationFailed(#[from] CommitmentError),
+    #[error("Signature randomization failed: {0}")]
+    RandomizationFailed(String),
+}
 
 /// Commitment to a single message with its proof
 pub struct CredentialCommitments<E: Pairing> {
@@ -20,7 +31,7 @@ pub struct CredentialCommitments<E: Pairing> {
 
 pub struct Credential<E: Pairing> {
     pub ck: SymmetricCommitmentKey<E>,
-    pub cm: Option<SymmetricCommitment<E>>,
+    pub cm: SymmetricCommitment<E>,
     messages: Vec<E::ScalarField>,
     blindings: Vec<E::ScalarField>,
     h: E::G1Affine,
@@ -34,17 +45,21 @@ impl<E: Pairing> Credential<E> {
         rng: &mut impl Rng,
     ) -> Self {
         let num_messages = ck.ck.len();
+        // Generate random messages if none are provided
         let messages = match messages {
             Some(msgs) => msgs.to_vec(),
             None => iter::repeat_with(|| E::ScalarField::rand(rng))
                 .take(num_messages)
                 .collect(),
         };
+        // gen h
         let h = E::G1Affine::rand(rng);
+        // gen cm
+        let cm = SymmetricCommitment::<E>::new(&ck, &messages, &E::ScalarField::zero());
 
         Self {
             ck,
-            cm: None,
+            cm,
             messages,
             blindings: Vec::new(),
             h,
@@ -59,7 +74,7 @@ impl<E: Pairing> Credential<E> {
     pub fn set_symmetric_commitment(&mut self) {
         let zero = E::ScalarField::zero();
         let cm = SymmetricCommitment::<E>::new(&self.ck, &self.messages, &zero);
-        self.cm = Some(cm);
+        self.cm = cm;
     }
 
     pub fn get_messages(&self) -> &Vec<E::ScalarField> {
@@ -161,21 +176,27 @@ impl<E: Pairing> Credential<E> {
     }
 
     /// this is the anonymous credential `show` protocol. generates proof for commitment
-    /// first testing without reranodmization
     pub fn show(
         &self,
         rng: &mut impl Rng,
-    ) -> (
-        &ThresholdSignature<E>,
-        &E::G1Affine,
-        &E::G2Affine,
-        Result<Vec<u8>, CommitmentError>,
-    ) {
-        let sig = self.sig.as_ref().unwrap();
-        let symmetric_commitment = self.cm.as_ref().unwrap();
-        let cm = &symmetric_commitment.cm;
-        let cm_tilde = &symmetric_commitment.cm_tilde;
-        let proof = symmetric_commitment.clone().prove(rng);
-        (sig, &cm, &cm_tilde, proof)
+    ) -> Result<(ThresholdSignature<E>, E::G1Affine, E::G2Affine, Vec<u8>), CredentialError> {
+        // Check signature exists
+        let sig = self.sig.as_ref().ok_or(CredentialError::MissingSignature(
+            "Signature must be attached before randomization".to_string(),
+        ))?;
+
+        // Randomize signature
+        let (randomized_sig, r_delta) = sig.randomize(rng);
+
+        // Randomize commitment
+        let sym_cm = self.cm.clone();
+        let rand_sym_cm = sym_cm.randomize(&r_delta);
+
+        // Generate proof
+        let proof = rand_sym_cm
+            .clone()
+            .prove(rng)
+            .map_err(CredentialError::ProofGenerationFailed)?;
+        Ok((randomized_sig, rand_sym_cm.cm, rand_sym_cm.cm_tilde, proof))
     }
 }
