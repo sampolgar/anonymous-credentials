@@ -118,7 +118,6 @@ mod tests {
     use ark_ec::pairing::Pairing;
     use ark_ec::CurveGroup;
     use ark_std::test_rng;
-    use ark_std::UniformRand;
 
     #[test]
     fn test_dist_keygen() {

@@ -1,5 +1,6 @@
-use crate::commitment::{Commitment, CommitmentError, CommitmentProof};
-use crate::signature::{PartialSignature, ThresholdSignature, ThresholdSignatureError};
+use crate::commitment::{Commitment, CommitmentProof};
+use crate::errors::{CommitmentError, CredentialError, SignatureError};
+use crate::signature::{PartialSignature, ThresholdSignature};
 use crate::signer::Signer;
 use crate::symmetric_commitment::{SymmetricCommitment, SymmetricCommitmentKey};
 use ark_ec::pairing::Pairing;
@@ -11,16 +12,6 @@ use ark_std::rand::Rng;
 use ark_std::Zero;
 use std::iter;
 use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum CredentialError {
-    #[error("Missing signature: {0}")]
-    MissingSignature(String),
-    #[error("Proof generation failed: {0}")]
-    ProofGenerationFailed(#[from] CommitmentError),
-    #[error("Signature randomization failed: {0}")]
-    RandomizationFailed(String),
-}
 
 /// Commitment to a single message with its proof
 pub struct CredentialCommitments<E: Pairing> {
@@ -151,7 +142,7 @@ impl<E: Pairing> Credential<E> {
         credential_requests: &[CredentialCommitments<E>],
         signers: &[Signer<E>],
         t: usize,
-    ) -> Result<(Vec<(usize, PartialSignature<E>)>, E::G1Affine), ThresholdSignatureError> {
+    ) -> Result<(Vec<(usize, PartialSignature<E>)>, E::G1Affine), SignatureError> {
         let h = credential_requests[0].h;
         let mut shares = Vec::new();
         for (i, signer) in signers.iter().enumerate().take(t + 1) {
@@ -167,7 +158,7 @@ impl<E: Pairing> Credential<E> {
         }
 
         if shares.len() < t + 1 {
-            return Err(ThresholdSignatureError::InsufficientShares {
+            return Err(SignatureError::InsufficientShares {
                 needed: t + 1,
                 got: shares.len(),
             });

@@ -1,4 +1,5 @@
-use crate::commitment::{CommitmentError, CommitmentProof};
+use crate::commitment::CommitmentProof;
+use crate::errors::CommitmentError;
 use crate::shamir::generate_shares;
 use ark_ec::pairing::Pairing;
 use ark_ec::{CurveGroup, VariableBaseMSM};
@@ -28,14 +29,19 @@ pub struct SymmetricCommitmentKey<E: Pairing> {
 }
 
 impl<E: Pairing> SymmetricCommitmentKey<E> {
+    /// Create a new symmetric commitment key
     pub fn new(y_values: &[E::ScalarField], rng: &mut impl Rng) -> Self {
+        // Generate random base points
         let g = E::G1Affine::rand(rng);
         let g_tilde = E::G2Affine::rand(rng);
+
+        // Compute commitment bases in G1
         let ck = y_values
             .iter()
             .map(|y_k| g.mul(y_k).into_affine())
             .collect();
 
+        // Compute commitment bases in G2
         let ck_tilde = y_values
             .iter()
             .map(|y_k| g_tilde.mul(y_k).into_affine())
@@ -49,9 +55,11 @@ impl<E: Pairing> SymmetricCommitmentKey<E> {
         }
     }
 
+    /// Get all bases for proving
     pub fn get_bases(&self) -> (Vec<E::G1Affine>, Vec<E::G2Affine>) {
         let mut bases = self.ck.clone();
         bases.push(self.g);
+
         let mut bases_tilde = self.ck_tilde.clone();
         bases_tilde.push(self.g_tilde);
 
@@ -66,11 +74,15 @@ impl<E: Pairing> SymmetricCommitment<E> {
         messages: &Vec<E::ScalarField>,
         r: &E::ScalarField,
     ) -> Self {
-        let cm = g1_commit::<E>(&ck, messages, r);
-        let cm_tilde = g2_commit::<E>(&ck, messages, r);
-        SymmetricCommitment {
-            ck: ck.clone(),              // this clones pp for the commitment
-            messages: messages.to_vec(), // this creates its own messages
+        // Compute commitment in G1
+        let cm = g1_commit::<E>(ck, messages, r);
+
+        // Compute commitment in G2
+        let cm_tilde = g2_commit::<E>(ck, messages, r);
+
+        Self {
+            ck: ck.clone(),
+            messages: messages.to_vec(),
             r: *r,
             cm,
             cm_tilde,
@@ -118,9 +130,9 @@ impl<E: Pairing> SymmetricCommitment<E> {
         let responses =
             SchnorrProtocol::prove(&schnorr_commitment, &self.get_exponents(), &challenge);
         let proof: CommitmentProof<E> = CommitmentProof {
-            bases,
             commitment: self.cm,
-            schnorr_commitment,
+            schnorr_commitment: schnorr_commitment.commited_blindings,
+            bases: bases,
             challenge,
             responses: responses.0,
         };
@@ -129,6 +141,23 @@ impl<E: Pairing> SymmetricCommitment<E> {
         proof.serialize_compressed(&mut serialized_proof)?;
 
         Ok(serialized_proof)
+    }
+
+    // Verify PoK
+    pub fn verify(serialized_proof: &[u8]) -> Result<bool, CommitmentError> {
+        let proof: CommitmentProof<E> =
+            CanonicalDeserialize::deserialize_compressed(serialized_proof)?;
+
+        // Verify using Schnorr protocol
+        let is_valid = SchnorrProtocol::verify_schnorr(
+            &proof.bases,
+            &proof.commitment,
+            &proof.schnorr_commitment,
+            &proof.responses,
+            &proof.challenge,
+        );
+
+        Ok(is_valid)
     }
 
     // pub fun verify

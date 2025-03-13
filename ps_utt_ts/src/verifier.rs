@@ -1,7 +1,7 @@
 use crate::commitment::{Commitment, CommitmentProof};
+use crate::errors::{CommitmentError, SignatureError, VerificationError};
 use crate::keygen::{VerificationKey, VerificationKeyShare};
-use crate::proofs::{CommitmentProofs, ProofError};
-use crate::signature::{PartialSignature, ThresholdSignature, ThresholdSignatureError};
+use crate::signature::{PartialSignature, ThresholdSignature};
 use crate::symmetric_commitment::SymmetricCommitmentKey;
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup};
@@ -9,16 +9,6 @@ use ark_serialize::CanonicalDeserialize;
 use ark_std::ops::{Add, Mul, Neg};
 use thiserror::Error;
 use utils::pairing::{verify_pairing_equation, PairingCheck};
-
-#[derive(Error, Debug)]
-pub enum VerificationError {
-    #[error("Proof error: {0}")]
-    ProofError(#[from] ProofError),
-    #[error("Signature verification failed")]
-    SignatureVerificationFailed,
-    #[error("Commitment consistency check failed")]
-    CommitmentConsistencyFailed,
-}
 
 pub struct Verifier<E: Pairing> {
     vk: VerificationKey<E>,
@@ -56,7 +46,8 @@ impl<E: Pairing> Verifier<E> {
             return Err(VerificationError::CommitmentConsistencyFailed);
         }
 
-        let is_valid = CommitmentProofs::pok_commitment_verify::<E>(&serialized_proof)?;
+        // Verify the proof
+        let is_valid = Commitment::<E>::verify(&serialized_proof)?;
         Ok(is_valid)
     }
 

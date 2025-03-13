@@ -2,6 +2,7 @@ use crate::{
     commitment::Commitment,
     credential::Credential,
     credential::CredentialCommitments,
+    errors::VerificationError,
     keygen::{SecretKeyShare, ThresholdKeys, VerificationKey, VerificationKeyShare},
     protocol::Protocol,
     shamir::reconstruct_secret,
@@ -299,7 +300,7 @@ mod tests {
             .expect("Failed to generate credential presentation");
 
         // Verify the blind signature
-        let verification_result: Result<bool, crate::verifier::VerificationError> =
+        let verification_result: Result<bool, VerificationError> =
             Verifier::verify(&ck, &vk, &cm, &cm_tilde, &rand_sig, &proof);
 
         match verification_result {

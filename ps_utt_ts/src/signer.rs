@@ -1,7 +1,7 @@
-use crate::commitment::{Commitment, CommitmentError};
+use crate::commitment::Commitment;
+use crate::errors::{CommitmentError, SignatureError};
 use crate::keygen::{SecretKeyShare, VerificationKeyShare};
-use crate::proofs::ProofError;
-use crate::signature::{PartialSignature, ThresholdSignatureError};
+use crate::signature::PartialSignature;
 use crate::symmetric_commitment::SymmetricCommitmentKey;
 use ark_ec::pairing::Pairing;
 use ark_ec::CurveGroup;
@@ -34,12 +34,12 @@ impl<'a, E: Pairing> Signer<'a, E> {
         commitments: &[E::G1Affine],
         commitment_proofs: &[Vec<u8>],
         h: &E::G1Affine,
-    ) -> Result<PartialSignature<E>, ThresholdSignatureError> {
+    ) -> Result<PartialSignature<E>, SignatureError> {
         // Verify all commitment proofs
         for (_, proof) in commitments.iter().zip(commitment_proofs.iter()) {
             let valid = Commitment::<E>::verify(proof)?;
             if !valid {
-                return Err(ProofError::InvalidShare(self.sk_share.index).into());
+                return Err(SignatureError::InvalidShare(self.sk_share.index).into());
             }
         }
 

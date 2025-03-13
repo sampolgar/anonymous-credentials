@@ -1,6 +1,6 @@
-use crate::commitment::{Commitment, CommitmentError};
+use crate::commitment::Commitment;
+use crate::errors::SignatureError;
 use crate::keygen::{keygen, SecretKeyShare, ThresholdKeys, VerificationKey, VerificationKeyShare};
-use crate::proofs::{CommitmentProofs, ProofError};
 use crate::symmetric_commitment::{SymmetricCommitment, SymmetricCommitmentKey};
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
@@ -12,29 +12,6 @@ use ark_std::{
     One, Zero,
 };
 use utils::pairing::{verify_pairing_equation, PairingCheck};
-
-#[derive(Debug)]
-pub enum ThresholdSignatureError {
-    SerializationError(SerializationError),
-    CommitmentError(CommitmentError),
-    InvalidShare(usize),
-    DuplicateShare(usize),
-    ThresholdNotMet,
-    InsufficientShares { needed: usize, got: usize },
-    ProofError(ProofError),
-}
-
-impl From<ProofError> for ThresholdSignatureError {
-    fn from(error: ProofError) -> Self {
-        ThresholdSignatureError::ProofError(error)
-    }
-}
-
-impl From<CommitmentError> for ThresholdSignatureError {
-    fn from(err: CommitmentError) -> Self {
-        ThresholdSignatureError::CommitmentError(err)
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct PartialSignature<E: Pairing> {
@@ -91,10 +68,10 @@ impl<E: Pairing> ThresholdSignature<E> {
         blindings: &[E::ScalarField],
         threshold: usize,
         h: &E::G1Affine,
-    ) -> Result<ThresholdSignature<E>, ThresholdSignatureError> {
+    ) -> Result<ThresholdSignature<E>, SignatureError> {
         // Check that we have enough signature shares
         if signature_shares.len() < threshold + 1 {
-            return Err(ThresholdSignatureError::InsufficientShares {
+            return Err(SignatureError::InsufficientShares {
                 needed: threshold + 1,
                 got: signature_shares.len(),
             });

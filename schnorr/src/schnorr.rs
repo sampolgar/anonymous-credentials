@@ -88,7 +88,7 @@ impl SchnorrProtocol {
         SchnorrResponses(schnorr_responsess)
     }
 
-    // y = g1^m1 * g2^m2 * h^r the public commitment
+    // this shouldn't be used, taking in SchnorrResponses is silly because it has randomness
     pub fn verify<G: AffineRepr>(
         public_generators: &[G],
         statement: &G,
@@ -105,7 +105,6 @@ impl SchnorrProtocol {
     }
 
     /// takes input Generators, Statement, Schnorr Commitment \in G, Schnorr responses, challenge
-
     pub fn verify_schnorr<G: AffineRepr>(
         public_generators: &[G],
         statement: &G,

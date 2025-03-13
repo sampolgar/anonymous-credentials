@@ -1,7 +1,7 @@
 pub mod commitment;
 pub mod credential;
+pub mod errors;
 pub mod keygen;
-pub mod proofs;
 pub mod protocol;
 pub mod shamir;
 pub mod signature;

@@ -1,8 +1,9 @@
 use crate::credential::{Credential, CredentialCommitments};
+use crate::errors::SignatureError;
 use crate::keygen::VerificationKeyShare;
 use crate::keygen::{keygen, ThresholdKeys, VerificationKey};
 use crate::signature::compute_lagrange_coefficient;
-use crate::signature::{PartialSignature, ThresholdSignature, ThresholdSignatureError};
+use crate::signature::{PartialSignature, ThresholdSignature};
 use crate::signer::Signer;
 use crate::symmetric_commitment::SymmetricCommitmentKey;
 use crate::verifier::Verifier;
@@ -30,7 +31,7 @@ impl Protocol {
         credential_requests: &[CredentialCommitments<E>],
         signers: &[Signer<E>],
         t: usize,
-    ) -> Result<(Vec<(usize, PartialSignature<E>)>, E::G1Affine), ThresholdSignatureError> {
+    ) -> Result<(Vec<(usize, PartialSignature<E>)>, E::G1Affine), SignatureError> {
         let h = credential_requests[0].h;
         let mut shares = Vec::new();
         for (i, signer) in signers.iter().enumerate().take(t + 1) {
@@ -46,7 +47,7 @@ impl Protocol {
         }
 
         if shares.len() < t + 1 {
-            return Err(ThresholdSignatureError::InsufficientShares {
+            return Err(SignatureError::InsufficientShares {
                 needed: t + 1,
                 got: shares.len(),
             });
@@ -60,7 +61,7 @@ impl Protocol {
         commitments: &[E::G1Affine],
         commitment_proofs: &[Vec<u8>],
         h: &E::G1Affine,
-    ) -> Result<PartialSignature<E>, ThresholdSignatureError> {
+    ) -> Result<PartialSignature<E>, SignatureError> {
         signer.sign_share(&commitments, &commitment_proofs, &h)
     }
 
@@ -83,7 +84,7 @@ impl Protocol {
         blindings: &[E::ScalarField],
         t: usize,
         h: &E::G1Affine,
-    ) -> Result<ThresholdSignature<E>, ThresholdSignatureError> {
+    ) -> Result<ThresholdSignature<E>, SignatureError> {
         ThresholdSignature::aggregate_signature_shares(ck, shares, blindings, t, h)
     }
 
