@@ -1,13 +1,11 @@
 use crate::credential::{Credential, CredentialCommitments};
-use crate::errors::{CredentialError, SignatureError, VerificationError};
+use crate::errors::{CredentialError, SignatureError};
 use crate::keygen::VerificationKeyShare;
 use crate::keygen::{keygen, ThresholdKeys, VerificationKey};
-use crate::signature::compute_lagrange_coefficient;
 use crate::signature::{PartialSignature, ThresholdSignature};
 use crate::signer::Signer;
 use crate::symmetric_commitment::SymmetricCommitmentKey;
 use crate::user::User;
-use crate::verifier::Verifier;
 use ark_ec::pairing::Pairing;
 use ark_std::{rand::Rng, UniformRand};
 
@@ -94,7 +92,7 @@ impl UserProtocol {
         credential_request: &CredentialCommitments<E>,
         signature_shares: &[(usize, PartialSignature<E>)],
         threshold: usize,
-    ) -> Result<Vec<(usize, PartialSignature<E>)>, VerificationError> {
+    ) -> Result<Vec<(usize, PartialSignature<E>)>, SignatureError> {
         User::process_signature_shares(
             commitment_key,
             vk_shares,
@@ -140,8 +138,8 @@ impl VerifierProtocol {
         commitment_tilde: &E::G2Affine,
         signature: &ThresholdSignature<E>,
         proof: &Vec<u8>,
-    ) -> Result<bool, VerificationError> {
-        Verifier::<E>::verify(
+    ) -> Result<bool, SignatureError> {
+        ThresholdSignature::<E>::verify(
             commitment_key,
             verification_key,
             commitment,

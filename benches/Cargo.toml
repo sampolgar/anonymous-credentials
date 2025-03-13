@@ -20,6 +20,7 @@ ps_utt = {default-features = false, path = "../ps_utt" }
 bbs_plus_16 = {default-features = false, path = "../bbs_plus_16" }
 bbs_plus_og = {default-features = false, path = "../bbs_plus_og" }
 crypto_benchmarks = {default-features = false, path = "../crypto_benchmarks" }
+ps_utt_ts = {default-features = false, path = "../ps_utt_ts" }
 
 
 [dev-dependencies]
@@ -60,4 +61,9 @@ harness = false
 [[bench]]
 name = "vrf_benchmarks"
 path = "benches/vrf_benchmarks.rs"
+harness = false
+
+[[bench]]
+name = "ps_utt_ts_std"
+path = "benches/ps_utt_ts_std.rs"
 harness = false

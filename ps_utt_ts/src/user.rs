@@ -1,5 +1,5 @@
 use crate::commitment::Commitment;
-use crate::errors::{SignatureError, VerificationError};
+use crate::errors::SignatureError;
 use crate::keygen::VerificationKeyShare;
 use crate::signature::PartialSignature;
 use crate::symmetric_commitment::SymmetricCommitmentKey;
@@ -19,11 +19,11 @@ impl User {
         commitments: &[E::G1Affine],
         commitment_proofs: &[Vec<u8>],
         sig_share: &PartialSignature<E>,
-    ) -> Result<bool, VerificationError> {
+    ) -> Result<bool, SignatureError> {
         // 1. First verify the ZKPs for each commitment
         for (_, proof) in commitments.iter().zip(commitment_proofs.iter()) {
-            let is_valid = Commitment::<E>::verify(proof)
-                .map_err(|e| VerificationError::CommitmentError(e))?;
+            let is_valid =
+                Commitment::<E>::verify(proof).map_err(|e| SignatureError::CommitmentError(e))?;
 
             if !is_valid {
                 return Ok(false);
@@ -64,14 +64,19 @@ impl User {
         commitment_proofs: &[Vec<u8>],
         signature_shares: &[(usize, PartialSignature<E>)],
         threshold: usize,
-    ) -> Result<Vec<(usize, PartialSignature<E>)>, VerificationError> {
+    ) -> Result<Vec<(usize, PartialSignature<E>)>, SignatureError> {
         let mut valid_shares = Vec::new();
 
         for (i, sig_share) in signature_shares {
             // Find the corresponding verification key share
-            let vk_share = vk_shares.iter().find(|vk| vk.index == *i).ok_or(
-                VerificationError::InvalidState(format!("No verification key for signer {}", i)),
-            )?;
+            let vk_share =
+                vk_shares
+                    .iter()
+                    .find(|vk| vk.index == *i)
+                    .ok_or(SignatureError::InvalidState(format!(
+                        "No verification key for signer {}",
+                        i
+                    )))?;
 
             // Verify this signature share
             let is_valid = Self::verify_signature_share(
@@ -89,12 +94,10 @@ impl User {
 
         // Check if we have enough valid shares
         if valid_shares.len() < threshold + 1 {
-            return Err(VerificationError::from(
-                SignatureError::InsufficientShares {
-                    needed: threshold + 1,
-                    got: valid_shares.len(),
-                },
-            ));
+            return Err(SignatureError::from(SignatureError::InsufficientShares {
+                needed: threshold + 1,
+                got: valid_shares.len(),
+            }));
         }
 
         Ok(valid_shares)

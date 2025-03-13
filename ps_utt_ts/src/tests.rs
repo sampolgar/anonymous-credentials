@@ -2,7 +2,7 @@ use crate::{
     commitment::Commitment,
     credential::Credential,
     credential::CredentialCommitments,
-    errors::VerificationError,
+    errors::SignatureError,
     keygen::keygen,
     keygen::{SecretKeyShare, ThresholdKeys, VerificationKey, VerificationKeyShare},
     protocol::{IssuerProtocol, UserProtocol, VerifierProtocol},
@@ -10,7 +10,6 @@ use crate::{
     signature::{PartialSignature, ThresholdSignature},
     signer::Signer,
     symmetric_commitment::SymmetricCommitmentKey,
-    verifier::Verifier,
 };
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_ec::pairing::Pairing;

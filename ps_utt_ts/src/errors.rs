@@ -46,13 +46,6 @@ pub enum SignatureError {
 
     #[error("User error: {0}")]
     UserError(String),
-}
-
-/// Errors that can occur during verification
-#[derive(Error, Debug)]
-pub enum VerificationError {
-    #[error("Proof error: {0}")]
-    ProofError(String),
 
     #[error("Signature verification failed")]
     SignatureVerificationFailed,
@@ -60,13 +53,7 @@ pub enum VerificationError {
     #[error("Commitment consistency check failed")]
     CommitmentConsistencyFailed,
 
-    #[error("Commitment error: {0}")]
-    CommitmentError(#[from] CommitmentError),
-
-    #[error("Signature error: {0}")]
-    SignatureError(#[from] SignatureError),
-
-    #[error("Invalid protocol state: {0}")]
+    #[error("Invalid credential state: {0}")]
     InvalidState(String),
 }
 
@@ -76,9 +63,8 @@ pub enum ProtocolError {
     #[error("Signature error: {0}")]
     SignatureError(#[from] SignatureError),
 
-    #[error("Verification error: {0}")]
-    VerificationError(#[from] VerificationError),
-
+    // #[error("Verification error: {0}")]
+    // VerificationError(#[from] SignatureError),
     #[error("Commitment error: {0}")]
     CommitmentError(#[from] CommitmentError),
 

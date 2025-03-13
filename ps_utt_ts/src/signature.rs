@@ -133,6 +133,50 @@ impl<E: Pairing> ThresholdSignature<E> {
             sigma: sigma_prime,
         }
     }
+
+    /// Verify a threshold signature using commitments
+    /// Following RS.Ver from the protocol
+    pub fn verify(
+        ck: &SymmetricCommitmentKey<E>,
+        vk: &VerificationKey<E>,
+        cm: &E::G1Affine,
+        cm_tilde: &E::G2Affine,
+        sig: &ThresholdSignature<E>,
+        serialized_proof: &[u8],
+    ) -> Result<bool, SignatureError> {
+        let mut rng = ark_std::test_rng();
+        let mr = std::sync::Mutex::new(rng);
+        // Optimized check: e(sigma2, g2) * e(sigma1, vk + cmg2)^-1 = 1
+        let vk_plus_cm_tilde = vk.g_tilde_x.add(cm_tilde).into_affine();
+        let check1 = PairingCheck::<E>::rand(
+            &mr,
+            &[
+                (&sig.sigma, &ck.g_tilde),
+                (&sig.h.into_group().neg().into_affine(), &vk_plus_cm_tilde),
+            ],
+            &E::TargetField::one(),
+        );
+
+        // Optimized check: e(cmg1, g2) * e(g1, cmg2)^-1 = 1
+        let check2 = PairingCheck::<E>::rand(
+            &mr,
+            &[
+                (cm, &ck.g_tilde),
+                (&ck.g.into_group().neg().into_affine(), cm_tilde),
+            ],
+            &E::TargetField::one(),
+        );
+
+        let mut final_check = PairingCheck::<E>::new();
+        final_check.merge(&check1);
+        final_check.merge(&check2);
+        let is_valid = final_check.verify();
+        if !is_valid {
+            return Err(SignatureError::SignatureVerificationFailed);
+        }
+
+        Ok(is_valid)
+    }
 }
 
 pub fn compute_lagrange_coefficient<F: Field>(indices: &[usize], j: usize) -> F {
@@ -151,6 +195,5 @@ pub fn compute_lagrange_coefficient<F: Field>(indices: &[usize], j: usize) -> F 
         // Compute i/(j-i)
         result *= numerator * denominator.inverse().expect("indices should be distinct");
     }
-
     result
 }
