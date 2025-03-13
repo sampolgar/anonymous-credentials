@@ -23,18 +23,31 @@ pub struct Credential<E: Pairing> {
     pub cm: Option<SymmetricCommitment<E>>,
     messages: Vec<E::ScalarField>,
     blindings: Vec<E::ScalarField>,
-    h: Option<E::G1Affine>,
+    h: E::G1Affine,
     sig: Option<ThresholdSignature<E>>,
 }
 
 impl<E: Pairing> Credential<E> {
-    pub fn new(ck: SymmetricCommitmentKey<E>) -> Self {
+    pub fn new(
+        ck: SymmetricCommitmentKey<E>,
+        messages: Option<&[E::ScalarField]>,
+        rng: &mut impl Rng,
+    ) -> Self {
+        let num_messages = ck.ck.len();
+        let messages = match messages {
+            Some(msgs) => msgs.to_vec(),
+            None => iter::repeat_with(|| E::ScalarField::rand(rng))
+                .take(num_messages)
+                .collect(),
+        };
+        let h = E::G1Affine::rand(rng);
+
         Self {
-            ck: ck,
+            ck,
             cm: None,
-            messages: Vec::new(),
+            messages,
             blindings: Vec::new(),
-            h: None,
+            h,
             sig: None,
         }
     }
@@ -49,7 +62,7 @@ impl<E: Pairing> Credential<E> {
         self.cm = Some(cm);
     }
 
-    pub fn get_attributes(&self) -> &Vec<E::ScalarField> {
+    pub fn get_messages(&self) -> &Vec<E::ScalarField> {
         &self.messages
     }
 
@@ -65,7 +78,7 @@ impl<E: Pairing> Credential<E> {
     //  h_1^m_1 g_1^r_1 * h_2^m_2 g_2^r_2
     //  m_1, ..., m_L
     //  r_1, ..., r_L
-    pub fn compute_commitments(
+    pub fn compute_commitments_per_m(
         &mut self,
         rng: &mut impl Rng,
     ) -> Result<CredentialCommitments<E>, CommitmentError> {
@@ -73,17 +86,14 @@ impl<E: Pairing> Credential<E> {
             return Err(CommitmentError::InvalidComputeCommitment);
         }
 
-        // create h for sig
-        let h = self.ck.g.mul(E::ScalarField::rand(rng)).into_affine();
-        self.h = Some(h);
-
         // loop through         // Initialize vectors to store commitments and proofs
         let mut commitments: Vec<E::G1Affine> = Vec::with_capacity(self.messages.len());
         let mut commitment_proofs: Vec<Vec<u8>> = Vec::with_capacity(self.messages.len());
 
         // Generate commitment and proof for each message
         for i in 0..self.messages.len() {
-            let current_cm = Commitment::<E>::new(&h, &self.ck.g, &self.messages[i], None, rng);
+            let current_cm =
+                Commitment::<E>::new(&self.h, &self.ck.g, &self.messages[i], None, rng);
 
             // store the randomness
             self.blindings.push(current_cm.exponents[1]);
@@ -99,7 +109,7 @@ impl<E: Pairing> Credential<E> {
 
         // Return the commitments and proofs in a CredentialCommitments struct
         Ok(CredentialCommitments {
-            h,
+            h: self.h,
             commitments,
             proofs: commitment_proofs,
         })
@@ -114,7 +124,7 @@ impl<E: Pairing> Credential<E> {
         let mut commitment_requests = Vec::with_capacity(num_signers);
 
         for _ in 0..num_signers {
-            let commitments = self.compute_commitments(rng)?;
+            let commitments = self.compute_commitments_per_m(rng)?;
             commitment_requests.push(commitments);
         }
 
