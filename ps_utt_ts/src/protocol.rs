@@ -60,7 +60,7 @@ impl UserProtocol {
         let mut shares = Vec::new();
 
         // Request signatures from enough signers
-        for signer in signers.iter().take(threshold + 1) {
+        for signer in signers.iter().take(threshold) {
             let sig_share = signer.sign_share(
                 &credential_request.commitments,
                 &credential_request.proofs,
@@ -69,15 +69,15 @@ impl UserProtocol {
 
             shares.push((sig_share.party_index, sig_share));
 
-            if shares.len() >= threshold + 1 {
+            if shares.len() == threshold {
                 break;
             }
         }
 
         // Check if we have enough shares
-        if shares.len() < threshold + 1 {
+        if shares.len() < threshold {
             return Err(SignatureError::InsufficientShares {
-                needed: threshold + 1,
+                needed: threshold,
                 got: shares.len(),
             });
         }

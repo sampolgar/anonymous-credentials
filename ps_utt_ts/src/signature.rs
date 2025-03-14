@@ -70,9 +70,9 @@ impl<E: Pairing> ThresholdSignature<E> {
         h: &E::G1Affine,
     ) -> Result<ThresholdSignature<E>, SignatureError> {
         // Check that we have enough signature shares
-        if signature_shares.len() < threshold + 1 {
+        if signature_shares.len() < threshold {
             return Err(SignatureError::InsufficientShares {
-                needed: threshold + 1,
+                needed: threshold,
                 got: signature_shares.len(),
             });
         }
@@ -89,7 +89,7 @@ impl<E: Pairing> ThresholdSignature<E> {
         // Compute Lagrange coefficients for each party
         let mut sigma_2 = E::G1::zero();
 
-        for (idx, (i, sigma_i_2)) in sigma_2_components.iter().enumerate().take(threshold + 1) {
+        for (idx, (i, sigma_i_2)) in sigma_2_components.iter().enumerate().take(threshold) {
             // Compute Lagrange coefficient for party i
             let lagrange_i = compute_lagrange_coefficient::<E::ScalarField>(&indices, *i);
 
@@ -97,8 +97,8 @@ impl<E: Pairing> ThresholdSignature<E> {
             sigma_2 = sigma_2 + sigma_i_2.mul(lagrange_i);
         }
 
+        // Compute g_k^{r_k}
         let g_k_r_k = E::G1::msm_unchecked(&ck.ck, blindings).neg();
-
         let final_sigma = (sigma_2 + g_k_r_k).into_affine();
 
         // Construct the final signature

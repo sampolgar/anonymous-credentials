@@ -93,7 +93,7 @@ impl User {
         }
 
         // Check if we have enough valid shares
-        if valid_shares.len() < threshold + 1 {
+        if valid_shares.len() < threshold {
             return Err(SignatureError::from(SignatureError::InsufficientShares {
                 needed: threshold + 1,
                 got: valid_shares.len(),
