@@ -31,7 +31,7 @@ pub struct Credential<E: Pairing> {
     pub ck: SymmetricCommitmentKey<E>,
     pub cm: SymmetricCommitment<E>,
     messages: Vec<E::ScalarField>,
-    blindings: Vec<E::ScalarField>,
+    pub blindings: Vec<E::ScalarField>, //public for testing
     h: E::G1Affine,
     sig: Option<ThresholdSignature<E>>,
     pub context: E::ScalarField, // context for the credential like an id
