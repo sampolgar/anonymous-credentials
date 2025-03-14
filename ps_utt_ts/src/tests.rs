@@ -56,9 +56,13 @@ mod tests {
                 .expect("Failed to create credential request");
 
         // 3. ISSUERS: Each issuer signs the credential request
-        let signature_shares =
-            UserProtocol::collect_signature_shares(&signers, &credential_request, THRESHOLD)
-                .expect("Failed to collect signature shares");
+        let signature_shares = UserProtocol::collect_signature_shares(
+            &signers,
+            &credential_request,
+            THRESHOLD,
+            &mut rng,
+        )
+        .expect("Failed to collect signature shares");
 
         // 4. USER: Verify the signature shares before aggregation
         let verified_shares = UserProtocol::verify_signature_shares(

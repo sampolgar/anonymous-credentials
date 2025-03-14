@@ -115,6 +115,7 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
                                     &credential_request.commitments,
                                     &credential_request.proofs,
                                     &credential_request.h,
+                                    &mut setup_rng,
                                 )
                                 .expect("Failed to generate signature share")
                         })
@@ -171,6 +172,7 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
                             &credential_request.commitments,
                             &credential_request.proofs,
                             &credential_request.h,
+                            &mut setup_rng,
                         )
                         .expect("Failed to generate signature share");
                     (sig.party_index, sig)
@@ -190,6 +192,85 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
                     )
                     .expect("Failed to verify signature shares");
 
+                    // Aggregate shares
+                    let blindings = credential.get_blinding_factors();
+                    UserProtocol::aggregate_shares(
+                        &ck,
+                        &verified_shares,
+                        &blindings,
+                        threshold,
+                        &credential_request.h,
+                    )
+                })
+            });
+        }
+
+        group.finish();
+    }
+
+    // aggregate_no_verify benchmarks
+    {
+        let mut group = c.benchmark_group("ps_utt_ts_std");
+        group
+            .sample_size(10)
+            .measurement_time(Duration::from_secs(20));
+
+        for &(n_participants, threshold, l_attributes) in &configs {
+            let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
+
+            // Complete setup outside the benchmark
+            let mut setup_rng = ark_std::test_rng();
+
+            // Setup keys
+            let (ck, _, ts_keys) =
+                keygen::<Bls12_381>(threshold, n_participants, l_attributes, &mut setup_rng);
+
+            // Create signers
+            let signers: Vec<_> = ts_keys
+                .sk_shares
+                .iter()
+                .zip(ts_keys.vk_shares.iter())
+                .map(|(sk_share, vk_share)| Signer::new(&ck, sk_share, vk_share))
+                .collect();
+
+            // Create credential and request
+            let attributes: Vec<Fr> = (0..l_attributes)
+                .map(|_| Fr::rand(&mut setup_rng))
+                .collect();
+            let (mut credential, credential_request) =
+                UserProtocol::request_credential(ck.clone(), Some(&attributes), &mut setup_rng)
+                    .expect("Failed to create credential request");
+
+            // Generate signature shares
+            let signature_shares: Vec<(usize, PartialSignature<Bls12_381>)> = signers
+                .iter()
+                .take(threshold)
+                .map(|signer| {
+                    let sig = signer
+                        .sign_share(
+                            &credential_request.commitments,
+                            &credential_request.proofs,
+                            &credential_request.h,
+                            &mut setup_rng,
+                        )
+                        .expect("Failed to generate signature share");
+                    (sig.party_index, sig)
+                })
+                .collect();
+
+            // Verify signature shares
+            let verified_shares = UserProtocol::verify_signature_shares(
+                &ck,
+                &ts_keys.vk_shares,
+                &credential_request,
+                &signature_shares,
+                threshold,
+            )
+            .expect("Failed to verify signature shares");
+
+            // Benchmark user verification and aggregation
+            group.bench_function(BenchmarkId::new("aggregate_no_verify", id_suffix), |b| {
+                b.iter(|| {
                     // Aggregate shares
                     let blindings = credential.get_blinding_factors();
                     UserProtocol::aggregate_shares(
@@ -248,6 +329,7 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
                             &credential_request.commitments,
                             &credential_request.proofs,
                             &credential_request.h,
+                            &mut setup_rng,
                         )
                         .expect("Failed to generate signature share");
                     (sig.party_index, sig)
@@ -325,9 +407,13 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
                     .expect("Failed to create credential request");
 
             // Generate signature shares
-            let signature_shares =
-                UserProtocol::collect_signature_shares(&signers, &credential_request, threshold)
-                    .expect("Failed to collect signature shares");
+            let signature_shares = UserProtocol::collect_signature_shares(
+                &signers,
+                &credential_request,
+                threshold,
+                &mut setup_rng,
+            )
+            .expect("Failed to collect signature shares");
 
             // Process signature shares
             let verified_shares = UserProtocol::verify_signature_shares(

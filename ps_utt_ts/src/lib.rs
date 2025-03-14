@@ -3,6 +3,7 @@ pub mod credential;
 pub mod errors;
 pub mod keygen;
 pub mod protocol;
+pub mod schnorr_batch;
 pub mod shamir;
 pub mod signature;
 pub mod signer;

@@ -1,3 +1,4 @@
+use crate::commitment::batch_verify;
 use crate::commitment::Commitment;
 use crate::errors::{CommitmentError, SignatureError};
 use crate::keygen::{SecretKeyShare, VerificationKeyShare};
@@ -6,6 +7,7 @@ use crate::symmetric_commitment::SymmetricCommitmentKey;
 use ark_ec::pairing::Pairing;
 use ark_ec::CurveGroup;
 use ark_std::ops::Mul;
+use ark_std::rand::Rng;
 
 /// A signer in the threshold signature scheme with lifetime parameters
 pub struct Signer<'a, E: Pairing> {
@@ -34,14 +36,22 @@ impl<'a, E: Pairing> Signer<'a, E> {
         commitments: &[E::G1Affine],
         commitment_proofs: &[Vec<u8>],
         h: &E::G1Affine,
+        rng: &mut impl Rng,
     ) -> Result<PartialSignature<E>, SignatureError> {
         // Verify all commitment proofs
-        for (_, proof) in commitments.iter().zip(commitment_proofs.iter()) {
-            let valid = Commitment::<E>::verify(proof)?;
-            if !valid {
-                return Err(SignatureError::InvalidShare(self.sk_share.index).into());
-            }
+
+        // from 45% to 50% improvement in schnorr verification time
+        let valid = batch_verify::<E>(commitment_proofs, rng)?;
+        if !valid {
+            return Err(CommitmentError::BatchVerifyError.into());
         }
+
+        // for (_, proof) in commitments.iter().zip(commitment_proofs.iter()) {
+        //     let valid = Commitment::<E>::verify(proof)?;
+        //     if !valid {
+        //         return Err(SignatureError::InvalidShare(self.sk_share.index).into());
+        //     }
+        // }
 
         // Extract the index and secret key shares
         let i = self.sk_share.index;

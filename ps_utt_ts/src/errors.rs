@@ -18,6 +18,9 @@ pub enum CommitmentError {
 
     #[error("Proof verification failed")]
     ProofVerificationFailed,
+
+    #[error("Batch Proof verification failed")]
+    BatchVerifyError,
 }
 
 /// Errors that can occur during signature operations

@@ -34,8 +34,9 @@ impl IssuerProtocol {
         commitments: &[E::G1Affine],
         commitment_proofs: &[Vec<u8>],
         h: &E::G1Affine,
+        rng: &mut impl Rng,
     ) -> Result<PartialSignature<E>, SignatureError> {
-        signer.sign_share(commitments, commitment_proofs, h)
+        signer.sign_share(commitments, commitment_proofs, h, rng)
     }
 }
 
@@ -56,6 +57,7 @@ impl UserProtocol {
         signers: &[Signer<E>],
         credential_request: &CredentialCommitments<E>,
         threshold: usize,
+        rng: &mut impl Rng,
     ) -> Result<Vec<(usize, PartialSignature<E>)>, SignatureError> {
         let mut shares = Vec::new();
 
@@ -65,6 +67,7 @@ impl UserProtocol {
                 &credential_request.commitments,
                 &credential_request.proofs,
                 &credential_request.h,
+                rng,
             )?;
 
             shares.push((sig_share.party_index, sig_share));

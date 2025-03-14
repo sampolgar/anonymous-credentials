@@ -84,6 +84,68 @@ impl<E: Pairing> Commitment<E> {
     }
 }
 
+pub fn batch_verify<E: Pairing>(
+    serialized_proofs: &[Vec<u8>],
+    rng: &mut impl Rng,
+) -> Result<bool, CommitmentError> {
+    if serialized_proofs.is_empty() {
+        return Ok(true); // No proofs to verify
+    }
+
+    // Step 1: Deserialize all proofs
+    let mut deserialized_proofs = Vec::with_capacity(serialized_proofs.len());
+
+    for proof_bytes in serialized_proofs {
+        match CommitmentProof::<E>::deserialize_compressed(&proof_bytes[..]) {
+            Ok(proof) => deserialized_proofs.push(proof),
+            Err(e) => return Err(CommitmentError::SerializationError(e)),
+        }
+    }
+
+    // Step 2: Perform batch verification using random linear combination
+    // Generate a random scalar for each proof
+    let random_scalars: Vec<E::ScalarField> = (0..deserialized_proofs.len())
+        .map(|_| E::ScalarField::rand(rng))
+        .collect();
+
+    // For each proof, compute LHS = g^(r + e*m) and RHS = T * C^e
+    let mut all_bases = Vec::new();
+    let mut all_scalars = Vec::new();
+
+    // Calculate combined LHS
+    for (i, proof) in deserialized_proofs.iter().enumerate() {
+        // Add this proof's bases and responses to the combined MSM operation
+        // We scale by the random scalar for this proof
+        for (base_idx, base) in proof.bases.iter().enumerate() {
+            all_bases.push(*base);
+            all_scalars.push(proof.responses[base_idx] * random_scalars[i]);
+        }
+    }
+
+    // Calculate LHS using a single multi-scalar multiplication
+    let lhs = E::G1::msm_unchecked(&all_bases, &all_scalars).into_affine();
+
+    // Optimize RHS calculation with a single MSM operation
+    let mut rhs_bases = Vec::with_capacity(deserialized_proofs.len() * 2);
+    let mut rhs_scalars = Vec::with_capacity(deserialized_proofs.len() * 2);
+
+    for (i, proof) in deserialized_proofs.iter().enumerate() {
+        // Add T (schnorr_commitment) with random scalar
+        rhs_bases.push(proof.schnorr_commitment);
+        rhs_scalars.push(random_scalars[i]);
+
+        // Add C^e (commitment * challenge) with random scalar
+        rhs_bases.push(proof.commitment);
+        rhs_scalars.push(random_scalars[i] * proof.challenge);
+    }
+
+    // Calculate RHS using a single efficient MSM operation
+    let rhs = E::G1::msm_unchecked(&rhs_bases, &rhs_scalars).into_affine();
+
+    // Check if LHS == RHS
+    Ok(lhs == rhs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
