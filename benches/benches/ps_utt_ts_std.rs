@@ -8,52 +8,42 @@ use ps_utt_ts::protocol::{IssuerProtocol, UserProtocol, VerifierProtocol};
 use ps_utt_ts::signer::Signer;
 use std::time::Duration;
 
-// Constants for benchmarking
-const THRESHOLD: usize = 2;
-const N_PARTICIPANTS: usize = 5;
-const L_ATTRIBUTES: usize = 3;
-
 /// Benchmark function for threshold PS protocol
 fn benchmark_threshold_ps(c: &mut Criterion) {
     // Test configurations to match tACT paper's parameters
     let configs = [
-        // Basic test case configuration
-        (N_PARTICIPANTS, THRESHOLD, L_ATTRIBUTES),
         // N=4, t=N/2+1=3, with varying attribute sizes
         (4, 3, 10),
-        // (4, 3, 30),
-        // (4, 3, 40),
-        // (4, 3, 128),
+        (4, 3, 30),
+        (4, 3, 40),
+        (4, 3, 128),
         // N=64, t=N/2+1=33, with varying attribute sizes
-        // (64, 33, 10),
-        // (64, 33, 30),
-        // (64, 33, 40),
-        // (64, 33, 128),
+        (64, 33, 10),
+        (64, 33, 30),
+        (64, 33, 40),
+        (64, 33, 128),
     ];
 
     // TokenRequest benchmarks
     {
-        let mut group = c.benchmark_group("TokenRequest");
+        let mut group = c.benchmark_group("ps_utt_ts_std");
         group
             .sample_size(10)
-            .measurement_time(Duration::from_secs(5));
+            .measurement_time(Duration::from_secs(20));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
 
-            group.bench_function(
-                BenchmarkId::from_parameter(format!("TokenRequest_{}", id_suffix)),
-                |b| {
-                    b.iter(|| {
-                        let mut rng = ark_std::test_rng();
-                        let (ck, _, _) =
-                            keygen::<Bls12_381>(threshold, n_participants, l_attributes, &mut rng);
-                        let attributes: Vec<Fr> =
-                            (0..l_attributes).map(|_| Fr::rand(&mut rng)).collect();
-                        UserProtocol::request_credential(ck.clone(), Some(&attributes), &mut rng)
-                    })
-                },
-            );
+            group.bench_function(BenchmarkId::new("token_request", id_suffix), |b| {
+                b.iter(|| {
+                    let mut rng = ark_std::test_rng();
+                    let (ck, _, _) =
+                        keygen::<Bls12_381>(threshold, n_participants, l_attributes, &mut rng);
+                    let attributes: Vec<Fr> =
+                        (0..l_attributes).map(|_| Fr::rand(&mut rng)).collect();
+                    UserProtocol::request_credential(ck.clone(), Some(&attributes), &mut rng)
+                })
+            });
         }
 
         group.finish();
@@ -61,16 +51,17 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
 
     // tIssue benchmarks
     {
-        let mut group = c.benchmark_group("tIssue");
+        let mut group = c.benchmark_group("ps_utt_ts_std");
         group
             .sample_size(10)
-            .measurement_time(Duration::from_secs(5));
+            .measurement_time(Duration::from_secs(20));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
 
             group.bench_function(
-                BenchmarkId::from_parameter(format!("tIssue_{}", id_suffix)),
+                // BenchmarkId::from_parameter(format!("tIssue_{}", id_suffix)),
+                BenchmarkId::new("t_issue", id_suffix),
                 |b| {
                     b.iter(|| {
                         let mut rng = ark_std::test_rng();
@@ -135,16 +126,17 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
 
     // Prove benchmarks
     {
-        let mut group = c.benchmark_group("Prove");
+        let mut group = c.benchmark_group("ps_utt_ts_std");
         group
             .sample_size(10)
-            .measurement_time(Duration::from_secs(5));
+            .measurement_time(Duration::from_secs(20));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
 
             group.bench_function(
-                BenchmarkId::from_parameter(format!("Prove_{}", id_suffix)),
+                // BenchmarkId::from_parameter(format!("Prove_{}", id_suffix)),
+                BenchmarkId::new("prove", id_suffix),
                 |b| {
                     b.iter(|| {
                         let mut rng = ark_std::test_rng();
@@ -216,10 +208,10 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
 
     // Verify benchmarks
     {
-        let mut group = c.benchmark_group("Verify");
+        let mut group = c.benchmark_group("ps_utt_ts_std");
         group
             .sample_size(10)
-            .measurement_time(Duration::from_secs(5));
+            .measurement_time(Duration::from_secs(20));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
@@ -303,6 +295,7 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
                 verified_shares.len(),
                 threshold
             );
+            let blindings = credential.get_blinding_factors();
             let threshold_signature = match UserProtocol::aggregate_shares(
                 &ck,
                 &verified_shares,
@@ -346,31 +339,28 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
             }
 
             // Now benchmark only the verification with fresh presentations each time
-            group.bench_function(
-                BenchmarkId::from_parameter(format!("Verify_{}", id_suffix)),
-                |b| {
-                    b.iter_with_setup(
-                        // Setup generates a fresh presentation each time
-                        || {
-                            let mut rng = ark_std::test_rng();
-                            UserProtocol::show(&credential, &mut rng)
-                                .expect("Failed to generate presentation")
-                        },
-                        // Use the fresh presentation for verification
-                        |(randomized_sig, commitment, commitment_tilde, proof)| {
-                            VerifierProtocol::verify(
-                                &ck,
-                                &vk,
-                                &commitment,
-                                &commitment_tilde,
-                                &randomized_sig,
-                                &proof,
-                            )
-                            .expect("Failed to verify credential")
-                        },
-                    )
-                },
-            );
+            group.bench_function(BenchmarkId::new("verify", id_suffix), |b| {
+                b.iter_with_setup(
+                    // Setup generates a fresh presentation each time
+                    || {
+                        let mut rng = ark_std::test_rng();
+                        UserProtocol::show(&credential, &mut rng)
+                            .expect("Failed to generate presentation")
+                    },
+                    // Use the fresh presentation for verification
+                    |(randomized_sig, commitment, commitment_tilde, proof)| {
+                        VerifierProtocol::verify(
+                            &ck,
+                            &vk,
+                            &commitment,
+                            &commitment_tilde,
+                            &randomized_sig,
+                            &proof,
+                        )
+                        .expect("Failed to verify credential")
+                    },
+                )
+            });
         }
 
         group.finish();

@@ -189,10 +189,10 @@ pub fn compute_lagrange_coefficient<F: Field>(indices: &[usize], j: usize) -> F 
         }
 
         let i_field = F::from(i as u64);
-        let numerator = i_field;
-        let denominator = j_field - i_field;
+        let numerator = F::zero() - i_field; // Corrected: (0 - x_i) for interpolation at x=0
+        let denominator = j_field - i_field; // (x_j - x_i)
 
-        // Compute i/(j-i)
+        // Compute (0 - x_i)/(x_j - x_i)
         result *= numerator * denominator.inverse().expect("indices should be distinct");
     }
     result
