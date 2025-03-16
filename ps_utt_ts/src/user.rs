@@ -1,5 +1,6 @@
+use crate::commitment::batch_verify;
 use crate::commitment::Commitment;
-use crate::errors::SignatureError;
+use crate::errors::{CommitmentError, SignatureError};
 use crate::keygen::VerificationKeyShare;
 use crate::signature::PartialSignature;
 use crate::symmetric_commitment::SymmetricCommitmentKey;
@@ -7,6 +8,7 @@ use ark_ec::pairing::Pairing;
 use ark_ec::AffineRepr;
 use ark_ec::CurveGroup;
 use ark_std::ops::Neg;
+use ark_std::rand::Rng;
 use utils::pairing::{verify_pairing_equation, PairingCheck};
 
 pub struct User;
@@ -19,16 +21,23 @@ impl User {
         commitments: &[E::G1Affine],
         commitment_proofs: &[Vec<u8>],
         sig_share: &PartialSignature<E>,
+        rng: &mut impl Rng,
     ) -> Result<bool, SignatureError> {
         // 1. First verify the ZKPs for each commitment
-        for (_, proof) in commitments.iter().zip(commitment_proofs.iter()) {
-            let is_valid =
-                Commitment::<E>::verify(proof).map_err(|e| SignatureError::CommitmentError(e))?;
-
-            if !is_valid {
-                return Ok(false);
-            }
+        // We can use the optimised version of batch_verify
+        let valid = batch_verify::<E>(commitment_proofs, rng)?;
+        if !valid {
+            return Err(CommitmentError::BatchVerifyError.into());
         }
+
+        // for (_, proof) in commitments.iter().zip(commitment_proofs.iter()) {
+        //     let is_valid =
+        //         Commitment::<E>::verify(proof).map_err(|e| SignatureError::CommitmentError(e))?;
+
+        //     if !is_valid {
+        //         return Ok(false);
+        //     }
+        // }
 
         // 2. Verify the signature share using the pairing equation
         // e([σ*]_i,2, g̃) = e(h, g̃^[x]_i) · ∏_{k∈[ℓ]} e(cm_k, g̃^[y_k]_i)
@@ -85,6 +94,7 @@ impl User {
                 commitments,
                 commitment_proofs,
                 sig_share,
+                &mut ark_std::test_rng(),
             )?;
 
             if is_valid {
