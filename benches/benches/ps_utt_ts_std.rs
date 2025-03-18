@@ -15,15 +15,15 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
     // Test configurations to match tACT paper's parameters
     let configs = [
         // N=4, t=N/2+1=3, with varying attribute sizes
-        (4, 3, 10),
-        (4, 3, 30),
-        (4, 3, 40),
+        // (4, 3, 10),
+        // (4, 3, 30),
+        // (4, 3, 40),
         (4, 3, 128),
         // N=64, t=N/2+1=33, with varying attribute sizes
-        (64, 33, 10),
-        (64, 33, 30),
-        (64, 33, 40),
-        (64, 33, 128),
+        // (64, 33, 10),
+        // (64, 33, 30),
+        // (64, 33, 40),
+        // (64, 33, 128),
     ];
 
     // TokenRequest benchmarks
