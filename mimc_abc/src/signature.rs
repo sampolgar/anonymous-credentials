@@ -43,7 +43,7 @@ impl<E: Pairing> VerificationKey<E> {
         let right1 = E::pairing(signature.sigma1, self.vk_tilde.add(commitment.cm_tilde));
         assert!(left1 == right1, "Pairing check failed!");
 
-        let left2 = E::pairing(commitment.cm, self.vk_tilde);
+        let left2 = E::pairing(commitment.cm, pp.g_tilde);
         let right2 = E::pairing(pp.g, commitment.cm_tilde);
         assert!(left2 == right2, "Commitment Pairing check fail!");
         true
@@ -111,11 +111,11 @@ pub struct Signature<E: Pairing> {
 }
 
 impl<E: Pairing> Signature<E> {
-    pub fn randomize(&self, r_delta: &E::ScalarField, u_delta: &E::ScalarField) -> Self {
-        let sigma1_prime = self.sigma1.mul(u_delta).into_affine();
-        let r_times_u = r_delta.mul(u_delta);
+    pub fn randomize(&self, delta_r: &E::ScalarField, delta_u: &E::ScalarField) -> Self {
+        let sigma1_prime = self.sigma1.mul(delta_u).into_affine();
+        let r_times_u = delta_r.mul(delta_u);
 
-        let scalars = vec![r_times_u, *u_delta];
+        let scalars = vec![r_times_u, *delta_u];
         let points = vec![self.sigma1, self.sigma2];
         let sigma2_prime = E::G1::msm_unchecked(&points, &scalars).into_affine();
 

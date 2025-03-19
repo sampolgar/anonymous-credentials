@@ -41,6 +41,13 @@ impl<E: Pairing> PublicParams<E> {
         self.ck.iter().cloned().chain(iter::once(self.g)).collect()
     }
 
+    pub fn get_g1_basesv2(&self) -> Vec<E::G1Affine> {
+        // add g1 to end of ckg1
+        let mut g1_bases = self.ck.clone();
+        g1_bases.push(self.g.clone());
+        g1_bases
+    }
+
     pub fn get_g_tilde_bases(&self) -> Vec<E::G2Affine> {
         self.ck_tilde
             .iter()

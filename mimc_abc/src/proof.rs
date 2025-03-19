@@ -30,19 +30,20 @@ impl<E: Pairing> CommitmentProof<E> {
         // Get bases and exponents for the proof
         let bases = pp.get_g1_bases();
 
-        let mut exponents = messages.to_vec(); // Create a new vector with copies of messages
-        exponents.push(*r); // Add r to the end (dereferenced)
+        // Create a new vector with copies of messages and add r at the end
+        let mut exponents = messages.to_vec();
+        exponents.push(*r);
 
-        // Generate Schnorr commitment - add & to borrow the bases
+        // Generate Schnorr commitment
         let schnorr_commitment = SchnorrProtocol::commit(&bases, rng);
 
         // Generate challenge
         let challenge = E::ScalarField::rand(rng);
 
-        // Generate responses
-        let responses = SchnorrProtocol::prove(&schnorr_commitment, &messages, &challenge);
+        // Generate responses - use exponents which includes r, not just messages
+        let responses = SchnorrProtocol::prove(&schnorr_commitment, &exponents, &challenge);
 
-        // create COmmitmentProof
+        // Create CommitmentProof
         let proof: CommitmentProof<E> = CommitmentProof {
             commitment: commitment.clone(),
             schnorr_commitment: schnorr_commitment.commited_blindings,
@@ -50,6 +51,7 @@ impl<E: Pairing> CommitmentProof<E> {
             challenge,
             responses: responses.0,
         };
+
         proof
     }
 

@@ -68,3 +68,56 @@ impl<E: Pairing> MimcAbc<E> {
         show_cred.verify(&self.pp, vk)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::credential::Credential;
+    use ark_bls12_381::{Bls12_381, Fr};
+    use ark_ff::UniformRand;
+
+    #[test]
+    fn test_mimc_abc_credential_lifecycle() {
+        // Setup protocol with parameters and keys
+        let mut rng = ark_std::test_rng();
+        let n = 4; // Number of attributes
+        let (protocol, issuer_sk, issuer_vk) = MimcAbc::<Bls12_381>::setup(n, &mut rng);
+
+        // Create user attributes with ID as first attribute
+        let user_id = Fr::rand(&mut rng);
+        let attributes: Vec<Fr> = (0..n - 1).map(|_| Fr::rand(&mut rng)).collect();
+        let mut attributes_with_id = vec![user_id];
+        attributes_with_id.extend(attributes);
+        println!("Attributes: {:?}", attributes_with_id.len());
+
+        // Create credential
+        let r = Fr::rand(&mut rng);
+        let mut credential = Credential::new(&protocol.ck, &protocol.pp, &attributes_with_id, r);
+
+        // User creates proof for credential
+        let proof = protocol.obtain(&credential, &mut rng);
+
+        // Issuer issues signature
+        let signature = protocol
+            .issue(&proof, &issuer_sk, &mut rng)
+            .expect("Issuance failed");
+
+        // Add signature to credential
+        credential.add_signature(signature);
+
+        // Verify the original credential
+        assert!(
+            credential.verify(&protocol.pp, &issuer_vk),
+            "Original credential verification failed"
+        );
+
+        // User shows credential
+        let presentation = protocol.show(&credential, &mut rng);
+
+        // Verifier checks presentation
+        assert!(
+            protocol.verify(presentation, &issuer_vk),
+            "Credential presentation verification failed"
+        );
+    }
+}
