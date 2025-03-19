@@ -10,9 +10,9 @@ use ark_std::rand::Rng;
 use schnorr::schnorr::SchnorrProtocol;
 use thiserror::Error;
 
-#[derive(CanonicalSerialize, CanonicalDeserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct CommitmentProof<E: Pairing> {
-    pub commitment: E::G1Affine,
+    pub commitment: Commitment<E>,
     pub schnorr_commitment: E::G1Affine,
     pub bases: Vec<E::G1Affine>,
     pub challenge: E::ScalarField,
@@ -44,7 +44,7 @@ impl<E: Pairing> CommitmentProof<E> {
 
         // create COmmitmentProof
         let proof: CommitmentProof<E> = CommitmentProof {
-            commitment: commitment.cm,
+            commitment: commitment.clone(),
             schnorr_commitment: schnorr_commitment.commited_blindings,
             bases,
             challenge,
@@ -57,7 +57,7 @@ impl<E: Pairing> CommitmentProof<E> {
         // Verify using Schnorr protocol
         let is_valid = SchnorrProtocol::verify_schnorr(
             &self.bases,
-            &self.commitment,
+            &self.commitment.cm,
             &self.schnorr_commitment,
             &self.responses,
             &self.challenge,

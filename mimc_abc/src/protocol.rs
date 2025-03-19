@@ -1,5 +1,6 @@
 use crate::commitment::{Commitment, CommitmentKey};
-use crate::credential::Credential;
+use crate::credential::ShowCredential;
+use crate::credential::{self, Credential};
 use crate::error::Error;
 use crate::proof::CommitmentProof;
 use crate::public_params::PublicParams;
@@ -39,28 +40,13 @@ impl<E: Pairing> MimcAbc<E> {
         (protocol, sk, vk)
     }
 
-    // User creates a credential
-    pub fn generate_credential(
-        &self,
-        messages: &[E::ScalarField],
-        r: E::ScalarField,
-    ) -> Credential<E> {
-        Credential::new(&self.ck, &self.pp, messages, r)
-    }
-
-    // User generates proof for issuance
-    pub fn prove_credential(
-        &self,
-        credential: &Credential<E>,
-        rng: &mut impl Rng,
-    ) -> CommitmentProof<E> {
+    pub fn obtain(&self, credential: &Credential<E>, rng: &mut impl Rng) -> CommitmentProof<E> {
         credential.prove_commitment(&self.pp, rng)
     }
 
     // Issuer issues a signature
     pub fn issue(
         &self,
-        commitment: &Commitment<E>,
         proof: &CommitmentProof<E>,
         sk: &SecretKey<E>,
         rng: &mut impl Rng,
@@ -68,18 +54,17 @@ impl<E: Pairing> MimcAbc<E> {
         if !proof.verify() {
             return Err(Error::InvalidProof);
         }
-        Ok(sk.sign(commitment, &self.pp, rng))
+        Ok(sk.sign(&proof.commitment, &self.pp, rng))
+    }
+
+    pub fn show(&self, credential: &Credential<E>, rng: &mut impl Rng) -> ShowCredential<E> {
+        let delta_r = E::ScalarField::rand(rng);
+        let delta_u = E::ScalarField::rand(rng);
+        credential.show(&self.pp, &delta_r, &delta_u, rng)
     }
 
     // Verifier checks a credential
-    pub fn verify(
-        &self,
-        commitment: &Commitment<E>,
-        signature: &Signature<E>,
-        vk: &VerificationKey<E>,
-    ) -> bool {
-        vk.verify(signature, commitment, &self.pp)
+    pub fn verify(&self, show_cred: ShowCredential<E>, vk: &VerificationKey<E>) -> bool {
+        show_cred.verify(&self.pp, vk)
     }
-
-    // Show/verify protocols would follow similar patterns
 }

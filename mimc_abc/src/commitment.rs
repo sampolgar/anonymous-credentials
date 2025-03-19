@@ -6,6 +6,7 @@ use ark_std::ops::{Add, Mul, Neg};
 use ark_std::rand::Rng;
 use schnorr::schnorr::SchnorrProtocol;
 
+#[derive(Debug, Clone)]
 pub struct Commitment<E: Pairing> {
     pub cm: E::G1Affine,
     pub cm_tilde: E::G2Affine,
