@@ -1,6 +1,6 @@
 // use crate::commitment::Commitment;
 use crate::commitment::Commitment;
-use crate::error::CommitmentError;
+use crate::error::Error;
 use crate::public_params::PublicParams;
 use ark_ec::pairing::Pairing;
 use ark_ec::AffineRepr;

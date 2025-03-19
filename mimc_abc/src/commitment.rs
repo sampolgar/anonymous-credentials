@@ -11,6 +11,15 @@ pub struct Commitment<E: Pairing> {
     pub cm_tilde: E::G2Affine,
 }
 
+impl<E: Pairing> Commitment<E> {
+    pub fn randomize(&self, pp: &PublicParams<E>, delta_r: &E::ScalarField) -> Self {
+        Self {
+            cm: self.cm.add(pp.g.mul(delta_r)).into_affine(),
+            cm_tilde: self.cm_tilde.add(pp.g_tilde.mul(delta_r)).into_affine(),
+        }
+    }
+}
+
 pub struct CommitmentKey<E: Pairing> {
     pub ck: Vec<E::G1Affine>,
     pub ck_tilde: Vec<E::G2Affine>,

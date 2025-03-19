@@ -1,4 +1,6 @@
 use crate::commitment::{Commitment, CommitmentKey};
+use crate::credential::Credential;
+use crate::error::Error;
 use crate::proof::CommitmentProof;
 use crate::public_params::PublicParams;
 use crate::signature::{generate_keys, SecretKey, Signature, VerificationKey};
@@ -10,7 +12,6 @@ use ark_std::ops::{Add, Mul, Neg};
 use ark_std::rand::Rng;
 use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
 use thiserror::Error;
-
 // We can speedup multi credential verification by batching the signature pairings into a pairing checker.
 // Then implement the schnorr efficiency improvement from the threshold variant I made
 
@@ -39,7 +40,7 @@ impl<E: Pairing> MimcAbc<E> {
     }
 
     // User creates a credential
-    pub fn create_credential(
+    pub fn generate_credential(
         &self,
         messages: &[E::ScalarField],
         r: E::ScalarField,
@@ -53,7 +54,7 @@ impl<E: Pairing> MimcAbc<E> {
         credential: &Credential<E>,
         rng: &mut impl Rng,
     ) -> CommitmentProof<E> {
-        credential.prove(&self.pp, rng)
+        credential.prove_commitment(&self.pp, rng)
     }
 
     // Issuer issues a signature
@@ -67,8 +68,7 @@ impl<E: Pairing> MimcAbc<E> {
         if !proof.verify() {
             return Err(Error::InvalidProof);
         }
-
-        Ok(Signature::sign(commitment, sk, &self.pp, rng))
+        Ok(sk.sign(commitment, &self.pp, rng))
     }
 
     // Verifier checks a credential
@@ -78,7 +78,7 @@ impl<E: Pairing> MimcAbc<E> {
         signature: &Signature<E>,
         vk: &VerificationKey<E>,
     ) -> bool {
-        signature.verify(commitment, vk, &self.pp)
+        vk.verify(signature, commitment, &self.pp)
     }
 
     // Show/verify protocols would follow similar patterns
