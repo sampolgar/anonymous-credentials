@@ -78,7 +78,8 @@ impl<E: Pairing> Credential<E> {
         let randomized_commitment = self.commitment.randomize(pp, delta_r);
 
         // Create proof for randomized credential
-        let proof = CommitmentProof::prove(&pp, &self.commitment, &self.messages, &new_r, rng);
+        let proof =
+            CommitmentProof::prove(&pp, &randomized_commitment, &self.messages, &new_r, rng);
 
         // Return presentation object
         ShowCredential {
@@ -116,10 +117,15 @@ impl<E: Pairing> ShowCredential<E> {
     pub fn verify(&self, pp: &PublicParams<E>, vk: &VerificationKey<E>) -> bool {
         // First verify the proof
         if !self.proof.verify() {
+            println!("Show Cred Proof failed");
             return false;
         }
 
         // Then verify the signature
-        vk.verify(&self.randomized_signature, &self.randomized_commitment, &pp)
+        if !vk.verify(&self.randomized_signature, &self.randomized_commitment, &pp) {
+            println!("Signature failed");
+            return false;
+        }
+        true
     }
 }
