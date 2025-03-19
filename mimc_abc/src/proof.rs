@@ -1,3 +1,4 @@
+// use crate::commitment::Commitment;
 use crate::commitment::Commitment;
 use crate::error::CommitmentError;
 use crate::public_params::PublicParams;
