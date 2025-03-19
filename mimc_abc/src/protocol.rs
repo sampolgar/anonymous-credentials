@@ -5,6 +5,7 @@ use crate::error::Error;
 use crate::proof::CommitmentProof;
 use crate::public_params::PublicParams;
 use crate::signature::{generate_keys, SecretKey, Signature, VerificationKey};
+use crate::verkey::{VerKey, VerKeyProof};
 use ark_ec::pairing::Pairing;
 use ark_ec::{CurveGroup, VariableBaseMSM};
 use ark_ff::UniformRand;
@@ -67,6 +68,20 @@ impl<E: Pairing> MimcAbc<E> {
     pub fn verify(&self, show_cred: ShowCredential<E>, vk: &VerificationKey<E>) -> bool {
         show_cred.verify(&self.pp, vk)
     }
+
+    pub fn verify_key_correctness(
+        &self,
+        proof: &VerKeyProof<E>,
+        sk: &E::G1Affine,
+        vk: &VerificationKey<E>,
+    ) -> bool {
+        VerKey::verify(proof, &self.pp, sk, &vk.vk_tilde)
+    }
+
+    /// This corresponds to RS.VerKey in the protocol specification
+    pub fn prove_key_correctness(&self, sk: &SecretKey<E>, rng: &mut impl Rng) -> VerKeyProof<E> {
+        VerKey::prove(&self.pp, &sk.get_x(), &self.pp.get_y_values(), rng)
+    }
 }
 
 #[cfg(test)]
@@ -118,6 +133,41 @@ mod tests {
         assert!(
             protocol.verify(presentation, &issuer_vk),
             "Credential presentation verification failed"
+        );
+    }
+
+    #[test]
+    fn test_issuer_key_verification() {
+        // Initialize random number generator
+        let mut rng = ark_std::test_rng();
+
+        // Setup protocol with parameters and keys
+        let n = 4; // Number of message attributes
+        let (protocol, _, vk) = MimcAbc::<Bls12_381>::setup(n, &mut rng);
+
+        // Generate secret exponent x and y values
+        let x = Fr::rand(&mut rng);
+        let y_values: Vec<Fr> = (0..n).map(|_| Fr::rand(&mut rng)).collect();
+
+        // Manually create secret key using x
+        let sk = protocol.pp.g.mul(x).into_affine();
+        let secret_key = SecretKey::new(sk, x);
+
+        // 1. Generate proof of key correctness
+        let key_proof = protocol.prove_key_correctness(&secret_key, &mut rng);
+
+        // 2. Verify the key proof
+        let is_key_valid = protocol.verify_key_correctness(&key_proof, &sk, &vk);
+        assert!(is_key_valid, "Valid issuer key verification should succeed");
+
+        // 3. Attempt verification with wrong secret key
+        let wrong_x = Fr::rand(&mut rng);
+        let wrong_sk = protocol.pp.g.mul(wrong_x).into_affine();
+
+        let is_invalid_key_valid = protocol.verify_key_correctness(&key_proof, &wrong_sk, &vk);
+        assert!(
+            !is_invalid_key_valid,
+            "Invalid issuer key verification should fail"
         );
     }
 }

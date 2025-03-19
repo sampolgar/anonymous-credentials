@@ -5,13 +5,14 @@ use ark_std::ops::Mul;
 use ark_std::rand::Rng;
 use std::iter;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PublicParams<E: Pairing> {
     pub n: usize,
     pub g: E::G1Affine,
     pub g_tilde: E::G2Affine,
     pub ck: Vec<E::G1Affine>,
     pub ck_tilde: Vec<E::G2Affine>,
+    y_values: Vec<E::ScalarField>, // Store the y values
 }
 
 impl<E: Pairing> PublicParams<E> {
@@ -19,13 +20,16 @@ impl<E: Pairing> PublicParams<E> {
         let g = E::G1Affine::rand(rng);
         let g_tilde = E::G2Affine::rand(rng);
 
-        let yi = (0..*n)
+        let y_values = (0..*n)
             .map(|_| E::ScalarField::rand(rng))
             .collect::<Vec<_>>();
-        let ck = yi.iter().map(|yi| g.mul(*yi)).collect::<Vec<_>>();
+        let ck = y_values.iter().map(|yi| g.mul(*yi)).collect::<Vec<_>>();
         let ck = E::G1::normalize_batch(&ck);
 
-        let ck_tilde = yi.iter().map(|yi| g_tilde.mul(*yi)).collect::<Vec<_>>();
+        let ck_tilde = y_values
+            .iter()
+            .map(|yi| g_tilde.mul(*yi))
+            .collect::<Vec<_>>();
         let ck_tilde = E::G2::normalize_batch(&ck_tilde);
         PublicParams {
             n: *n,
@@ -33,6 +37,7 @@ impl<E: Pairing> PublicParams<E> {
             g_tilde,
             ck,
             ck_tilde,
+            y_values,
         }
     }
 
@@ -54,6 +59,10 @@ impl<E: Pairing> PublicParams<E> {
             .cloned()
             .chain(iter::once(self.g_tilde))
             .collect()
+    }
+
+    pub fn get_y_values(&self) -> Vec<E::ScalarField> {
+        self.y_values.clone()
     }
 }
 

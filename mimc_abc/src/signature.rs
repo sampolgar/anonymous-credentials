@@ -13,6 +13,7 @@ use utils::pairing::PairingCheck;
 // Secret and verification keys
 pub struct SecretKey<E: Pairing> {
     pub sk: E::G1Affine,
+    x: E::ScalarField,
 }
 
 impl<E: Pairing> SecretKey<E> {
@@ -26,6 +27,13 @@ impl<E: Pairing> SecretKey<E> {
         let sigma1 = pp.g.mul(u).into_affine();
         let sigma2 = (commitment.cm.add(self.sk)).mul(u).into_affine();
         Signature { sigma1, sigma2 }
+    }
+    pub fn get_x(&self) -> E::ScalarField {
+        self.x
+    }
+
+    pub fn new(sk: E::G1Affine, x: E::ScalarField) -> Self {
+        Self { sk, x }
     }
 }
 pub struct VerificationKey<E: Pairing> {
@@ -101,7 +109,7 @@ pub fn generate_keys<E: Pairing>(
     let x = E::ScalarField::rand(rng);
     let sk = pp.g.mul(x).into_affine();
     let vk_tilde = pp.g_tilde.mul(x).into_affine();
-    (SecretKey { sk }, VerificationKey { vk_tilde })
+    (SecretKey { sk, x }, VerificationKey { vk_tilde })
 }
 
 pub struct Signature<E: Pairing> {
