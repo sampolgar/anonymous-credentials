@@ -2,7 +2,7 @@ use thiserror::Error;
 
 /// Possible errors that can occur during commitment proof operations
 #[derive(Error, Debug)]
-pub enum CommitmentProofError {
+pub enum CommitmentError {
     /// The commitment is invalid
     #[error("Invalid commitment")]
     InvalidCommitment,

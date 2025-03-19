@@ -3,6 +3,7 @@ use ark_ec::CurveGroup;
 use ark_ff::UniformRand;
 use ark_std::ops::Mul;
 use ark_std::rand::Rng;
+use std::iter;
 
 #[derive(Clone)]
 pub struct PublicParams<E: Pairing> {
@@ -35,15 +36,16 @@ impl<E: Pairing> PublicParams<E> {
         }
     }
 
-    /// returns g_1,...,g_n,h
-    pub fn get_g1_bases(&self) -> Vec<&E::G1Affine> {
-        self.ck.iter().chain(std::iter::once(&self.g)).collect()
+    /// returns g_1,...,g_n,g
+    pub fn get_g1_bases(&self) -> Vec<E::G1Affine> {
+        self.ck.iter().cloned().chain(iter::once(self.g)).collect()
     }
 
-    pub fn get_g_tilde_bases(&self) -> Vec<&E::G2Affine> {
+    pub fn get_g_tilde_bases(&self) -> Vec<E::G2Affine> {
         self.ck_tilde
             .iter()
-            .chain(std::iter::once(&self.g_tilde))
+            .cloned()
+            .chain(iter::once(self.g_tilde))
             .collect()
     }
 }

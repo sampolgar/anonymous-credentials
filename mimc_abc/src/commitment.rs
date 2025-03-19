@@ -6,18 +6,9 @@ use ark_std::ops::{Add, Mul, Neg};
 use ark_std::rand::Rng;
 use schnorr::schnorr::SchnorrProtocol;
 
-#[derive(Clone)]
 pub struct Commitment<E: Pairing> {
-    pub messages: Vec<E::ScalarField>,
-    pub r: E::ScalarField,
     pub cm: E::G1Affine,
     pub cm_tilde: E::G2Affine,
-}
-
-impl<E: Pairing> Commitment<E> {
-    pub fn prove(&self, &mut impl Rng) -> CommitmentProof<E> {
-        CommitmentProofs::pok_commitment_prove(&self)
-    }
 }
 
 pub struct CommitmentKey<E: Pairing> {
@@ -38,21 +29,74 @@ impl<E: Pairing> CommitmentKey<E> {
         let cm_tilde = E::G2::msm_unchecked(&self.ck_tilde, messages)
             .add(pp.g_tilde.mul(r))
             .into_affine();
-        Commitment {
-            messages: messages.to_vec(),
-            r: *r,
-            cm,
-            cm_tilde,
-        }
+        Commitment { cm, cm_tilde }
     }
 }
 
+// #[derive(Clone)]
+// pub struct Commitment<E: Pairing> {
+//     pub messages: Vec<E::ScalarField>,
+//     pub r: E::ScalarField,
+//     pub cm: E::G1Affine,
+//     pub cm_tilde: E::G2Affine,
+// }
 
+// pub struct Commitment<E: Pairing> {
+//     pub cm: E::G1Affine,
+//     pub cm_tilde: E::G2Affine,
+// }
 
+// impl<E: Pairing> Commitment<E> {
+//     pub fn prove(&self, &mut impl Rng) -> CommitmentProof<E> {
+//         // CommitmentProofs::pok_commitment_prove(&self)
+//     }
+// }
 
+// pub struct CommitmentKey<E: Pairing> {
+//     pub ck: Vec<E::G1Affine>,
+//     pub ck_tilde: Vec<E::G2Affine>,
+// }
 
+// impl<E: Pairing> CommitmentKey<E> {
+//     pub fn commit(
+//         &self,
+//         pp: &PublicParams<E>,
+//         messages: &[E::ScalarField],
+//         r: &E::ScalarField,
+//     ) -> Commitment<E> {
+//         let cm = E::G1::msm_unchecked(&self.ck, messages)
+//             .add(pp.g.mul(r))
+//             .into_affine();
+//         let cm_tilde = E::G2::msm_unchecked(&self.ck_tilde, messages)
+//             .add(pp.g_tilde.mul(r))
+//             .into_affine();
+//         Commitment { cm, cm_tilde }
+//     }
+// }
 
+// impl<E: Pairing> CommitmentKey<E> {
+//     pub fn commit(
+//         &self,
+//         pp: &PublicParams<E>,
+//         messages: &[E::ScalarField],
+//         r: &E::ScalarField,
+//     ) -> Commitment<E> {
+//         let cm = E::G1::msm_unchecked(&self.ck, messages)
+//             .add(pp.g.mul(r))
+//             .into_affine();
+//         let cm_tilde = E::G2::msm_unchecked(&self.ck_tilde, messages)
+//             .add(pp.g_tilde.mul(r))
+//             .into_affine();
+//         Commitment {
+//             messages: messages.to_vec(),
+//             r: *r,
+//             cm,
+//             cm_tilde,
+//         }
+//     }
+// }
 
+// https://grok.com/chat/8956bf04-b35e-48fa-bbf5-6fee65ee47df
 
 // // takes in pp, messages, r. creates cmg1, cmg2 by 1. exponentiate each pp.ckg1 with mi and pp.g1 with r, msm together
 // impl<E: Pairing> Commitment<E> {
