@@ -1,13 +1,16 @@
 use crate::error::Error;
 use crate::public_params::PublicParams;
 use ark_ec::pairing::Pairing;
+use ark_ec::AffineRepr;
+use ark_ec::CurveGroup;
 use ark_ff::UniformRand;
-use ark_std::ops::Neg;
 use ark_std::rand::Rng;
-use ark_std::One;
-use schnorr::schnorr_pairing::{
-    SchnorrCommitmentPairing, SchnorrProtocolPairing, SchnorrResponsesPairing,
+use ark_std::{
+    ops::{Add, Mul, Neg},
+    One, Zero,
 };
+use rayon::iter::Map;
+use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
 
 /// Zero-knowledge proof that an issuer's keys and commitment keys are well-formed
 /// Proves:
@@ -15,12 +18,13 @@ use schnorr::schnorr_pairing::{
 /// - For each i, g_i = g^y_i and g̃_i = g̃^y_i (same y_i)
 #[derive(Clone, Debug)]
 pub struct VerKeyProof<E: Pairing> {
-    /// Commitment to the randomness used in the proof
-    pub schnorr_commitment: SchnorrCommitmentPairing<E>,
-    /// Challenge value
+    pub x_schnorr_com_g: E::G1Affine,
+    pub x_schnorr_com_g_tilde: E::G2Affine,
+    pub x_response: E::ScalarField,
+    pub t1: Vec<E::G1Affine>,
+    pub t2: Vec<E::G2Affine>,
+    pub responses: Vec<E::ScalarField>,
     pub challenge: E::ScalarField,
-    /// Responses to the challenge
-    pub responses: SchnorrResponsesPairing<E>,
 }
 
 impl<E: Pairing> VerKeyProof<E> {
@@ -44,30 +48,52 @@ impl<E: Pairing> VerKeyProof<E> {
             "Number of y values must match number of commitment key elements"
         );
 
-        // Set up bases in G1 and G2 for the proof
-        let mut bases_g1 = vec![pp.g]; // First base is g for sk = g^x
-        bases_g1.extend(pp.ck.iter().cloned()); // Add g_i bases for commitment keys
-
-        let mut bases_g2 = vec![pp.g_tilde]; // First base is g_tilde for vk = g_tilde^x
-        bases_g2.extend(pp.ck_tilde.iter().cloned()); // Add g_tilde_i bases
-
-        // Set up witnesses - x followed by all y_i values
-        let mut witnesses = vec![*x];
-        witnesses.extend(y_values.iter().cloned());
-
-        // Generate Schnorr commitment
-        let schnorr_commitment = SchnorrProtocolPairing::commit::<E>(&bases_g1, &bases_g2, rng);
-
         // Generate challenge
         let challenge = E::ScalarField::rand(rng);
 
+        // first prove g^x and g_tilde^x by generating schnorr commitments in g, g_tilde
+        // then we use vk to prove schnorr in g_tilde, then use pairing e(g, x_schnorr_com_g_tilde) = e(g_tilde, x_schnorr_com_g)
+        let x_blinding = E::ScalarField::rand(rng);
+        let x_schnorr_com_g = pp.g.mul(x_blinding).into_affine();
+        let x_schnorr_com_g_tilde = pp.g_tilde.mul(x_blinding).into_affine();
+        let x_response = x_blinding + challenge * x;
+
+        // now we prove ck = ck_tilde
+        // we do schnorr for each base in G1, then use the same randomness in G2
+        // generate randomness
+        let blindings = (0..y_values.len())
+            .map(|_| E::ScalarField::rand(rng))
+            .collect::<Vec<_>>();
+
+        // Compute T1_i = g^{r_i} for each i
+        let t1: Vec<E::G1Affine> = blindings
+            .iter()
+            .map(|&r| pp.g.mul(r).into_affine())
+            .collect();
+
+        // Compute T2_i = g_tilde^{r_i} for each i
+        let t2: Vec<E::G2Affine> = blindings
+            .iter()
+            .map(|&r| pp.g_tilde.mul(r).into_affine())
+            .collect();
+
+        // Compute responses s_i = r_i + c * y_i
+        let responses: Vec<E::ScalarField> = blindings
+            .iter()
+            .zip(y_values.iter())
+            .map(|(&r, &y)| r + challenge * y)
+            .collect();
         // Generate responses
-        let responses = SchnorrProtocolPairing::prove(&schnorr_commitment, &witnesses, &challenge);
+        // let responses = SchnorrProtocol::prove(&schnorr_commitment_g1, &y_values, &challenge);
 
         Self {
-            schnorr_commitment,
-            challenge,
+            x_schnorr_com_g,
+            x_schnorr_com_g_tilde,
+            x_response,
+            t1,
+            t2,
             responses,
+            challenge,
         }
     }
 
@@ -75,50 +101,64 @@ impl<E: Pairing> VerKeyProof<E> {
     ///
     /// # Arguments
     /// * `pp` - Public parameters
-    /// * `sk` - Secret key (g^x)
     /// * `vk_tilde` - Verification key (g_tilde^x)
-    pub fn verify(&self, pp: &PublicParams<E>, sk: &E::G1Affine, vk_tilde: &E::G2Affine) -> bool {
-        // Set up bases in G1 and G2 for verification
-        let mut bases_g1 = vec![pp.g]; // First base is g for sk = g^x
-        bases_g1.extend(pp.ck.iter().cloned()); // Add g_i bases for commitment keys
-
-        let mut bases_g2 = vec![pp.g_tilde]; // First base is g_tilde for vk = g_tilde^x
-        bases_g2.extend(pp.ck_tilde.iter().cloned()); // Add g_tilde_i bases
-
-        // Compute the statement for verification
-        // The statement is e(g, vk_tilde) * e(sk, g_tilde)^-1 * ∏ e(g_i, g_tilde_i)
-        // This should equal 1 if the keys are well-formed
-
-        // Prepare points for pairing
-        let mut g1_points = vec![pp.g, *sk];
-        g1_points.extend(pp.ck.iter().cloned());
-
-        let mut g2_points = vec![*vk_tilde, pp.g_tilde];
-        g2_points.extend(pp.ck_tilde.iter().cloned());
-
-        // Create scalars for the statement (1, -1, 1, ..., 1)
-        // This represents e(g, vk_tilde) * e(sk, g_tilde)^-1 * ∏ e(g_i, g_tilde_i)
-        let mut statement_scalars = vec![E::ScalarField::one(), E::ScalarField::one().neg()];
-        statement_scalars.resize(2 + pp.n, E::ScalarField::one());
-
-        // Compute the statement
-        let statement = schnorr::schnorr_pairing::compute_gt_from_g1_g2_scalars(
-            &g1_points,
-            &g2_points,
-            &statement_scalars,
+    pub fn verify(&self, pp: &PublicParams<E>, vk_tilde: &E::G2Affine) -> bool {
+        assert_eq!(
+            vk_tilde.mul(self.challenge) + self.x_schnorr_com_g_tilde,
+            pp.g_tilde.mul(self.x_response),
+            "Verification key x is not well-formed, or the proof isn't working"
         );
 
-        // Verify the proof against the statement
-        SchnorrProtocolPairing::verify::<E>(
-            &statement,
-            &self.schnorr_commitment.schnorr_commitment,
-            &self.challenge,
-            &bases_g1,
-            &bases_g2,
-            &self.responses.0,
-        )
+        let lhs = E::pairing(pp.g, self.x_schnorr_com_g_tilde);
+        let rhs = E::pairing(self.x_schnorr_com_g, pp.g_tilde);
+        if lhs != rhs {
+            println!("false!!!");
+            return false;
+        }
+
+        // Check vector lengths
+        if self.t1.len() != pp.n || self.t2.len() != pp.n || self.responses.len() != pp.n {
+            return false;
+        }
+
+        // Verify ck and ck_tilde for each i
+        for i in 0..pp.n {
+            let t1_i = self.t1[i];
+            let t2_i = self.t2[i];
+            let s_i = self.responses[i];
+            let ck_tilde_i = pp.ck_tilde[i];
+
+            // Check g_tilde^{s_i} == t2_i * ck_tilde[i]^c
+            let lhs = pp.g_tilde.mul(s_i).into_affine();
+            let rhs = (t2_i.into_group() + ck_tilde_i.mul(self.challenge)).into_affine();
+            if lhs != rhs {
+                return false;
+            }
+
+            // Check e(t1_i, g_tilde) == e(g, t2_i)
+            let pairing_lhs = E::pairing(t1_i, pp.g_tilde);
+            let pairing_rhs = E::pairing(pp.g, t2_i);
+            if pairing_lhs != pairing_rhs {
+                return false;
+            }
+        }
+
+        true
     }
 }
+
+// pub fn combine_commitment_key<G: AffineRepr>(ck: &[G]) -> G {
+//     // Start with the identity element (zero point)
+//     let mut combined_point = G::Group::zero();
+
+//     // Add each point in the commitment key
+//     for point in ck {
+//         combined_point += point.into_group();
+//     }
+
+//     // Convert back to affine representation
+//     combined_point.into_affine()
+// }
 
 /// Verification key functionality for the RS signature scheme
 pub struct VerKey;
@@ -138,9 +178,8 @@ impl VerKey {
     pub fn verify<E: Pairing>(
         proof: &VerKeyProof<E>,
         pp: &PublicParams<E>,
-        sk: &E::G1Affine,
         vk_tilde: &E::G2Affine,
     ) -> bool {
-        proof.verify(pp, sk, vk_tilde)
+        proof.verify(pp, vk_tilde)
     }
 }

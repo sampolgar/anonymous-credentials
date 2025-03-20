@@ -87,7 +87,7 @@ impl ProofSystem {
         let exponents1 = vec![rand_sig.r1, rand_sig.r2];
         let blinding_factors1 = vec![rho_r1, rho_r2];
         let schnorr_commitment1 =
-            SchnorrProtocol::commit_with_prepred_blindness(&bases1, &blinding_factors1);
+            SchnorrProtocol::commit_with_prepared_blindings(&bases1, &blinding_factors1);
         let schnorr_responses1 =
             SchnorrProtocol::prove(&schnorr_commitment1, &exponents1, &challenge);
 
@@ -100,7 +100,7 @@ impl ProofSystem {
         // let bases2 = bases1;
         let exponents2 = vec![rand_sig.delta1, rand_sig.delta2];
         let schnorr_commitment2 =
-            SchnorrProtocol::commit_with_prepred_blindness(&bases1, &blinding_factors2);
+            SchnorrProtocol::commit_with_prepared_blindings(&bases1, &blinding_factors2);
         let schnorr_responses2 =
             SchnorrProtocol::prove(&schnorr_commitment2, &exponents2, &challenge);
 

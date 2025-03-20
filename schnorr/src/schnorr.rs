@@ -36,7 +36,7 @@ impl SchnorrProtocol {
     }
 
     /// returns a commitment to random blindings, the commitment T = g_1^{\rho_1},...,g_L^{\rho_L} from random blindings and bases
-    pub fn commit_with_prepred_blindness<G: AffineRepr>(
+    pub fn commit_with_prepared_blindings<G: AffineRepr>(
         public_generators: &[G],
         random_blindings: &[G::ScalarField],
     ) -> SchnorrCommitment<G> {
