@@ -111,7 +111,7 @@ pub fn generate_keys<E: Pairing>(
     let vk_tilde = pp.g_tilde.mul(x).into_affine();
     (SecretKey { sk, x }, VerificationKey { vk_tilde })
 }
-
+#[derive(Clone)]
 pub struct Signature<E: Pairing> {
     // Signature fields based on your scheme
     pub sigma1: E::G1Affine,

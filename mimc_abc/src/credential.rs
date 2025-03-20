@@ -106,6 +106,7 @@ impl<E: Pairing> Credential<E> {
 }
 
 // Presentation object for shown credentials
+#[derive(Clone)]
 pub struct ShowCredential<E: Pairing> {
     pub randomized_signature: Signature<E>,
     pub randomized_commitment: Commitment<E>,
