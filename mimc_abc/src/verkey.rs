@@ -147,18 +147,6 @@ impl<E: Pairing> VerKeyProof<E> {
     }
 }
 
-// pub fn combine_commitment_key<G: AffineRepr>(ck: &[G]) -> G {
-//     // Start with the identity element (zero point)
-//     let mut combined_point = G::Group::zero();
-
-//     // Add each point in the commitment key
-//     for point in ck {
-//         combined_point += point.into_group();
-//     }
-
-//     // Convert back to affine representation
-//     combined_point.into_affine()
-// }
 
 /// Verification key functionality for the RS signature scheme
 pub struct VerKey;

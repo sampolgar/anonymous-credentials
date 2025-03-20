@@ -12,8 +12,6 @@ use ark_ff::UniformRand;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::ops::{Add, Mul, Neg};
 use ark_std::rand::Rng;
-use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
-use thiserror::Error;
 // We can speedup multi credential verification by batching the signature pairings into a pairing checker.
 // Then implement the schnorr efficiency improvement from the threshold variant I made
 
@@ -107,6 +105,13 @@ mod tests {
         // User creates proof for credential
         let proof = protocol.obtain(&credential, &mut rng);
 
+        // Generate proof of key correctness
+        let key_proof = protocol.prove_key_correctness(&issuer_sk, &mut rng);
+
+        // Verify the key proof
+        let is_key_valid = protocol.verify_key_correctness(&key_proof, &issuer_vk);
+        assert!(is_key_valid, "Valid issuer key verification should succeed");
+
         // Issuer issues signature
         let signature = protocol
             .issue(&proof, &issuer_sk, &mut rng)
@@ -147,7 +152,7 @@ mod tests {
         let is_key_valid = protocol.verify_key_correctness(&key_proof, &issuer_vk);
         assert!(is_key_valid, "Valid issuer key verification should succeed");
 
-        // // Test with wrong secret key
+        // Test with wrong secret key
         // let wrong_x = Fr::rand(&mut rng);
         // let wrong_sk = protocol.pp.g.mul(wrong_x).into_affine();
 
