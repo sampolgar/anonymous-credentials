@@ -53,10 +53,10 @@ fn benchmark_psutt_std(c: &mut Criterion) {
     // Configure benchmark parameters
     group
         .sample_size(10)
-        .measurement_time(Duration::from_secs(10));
+        .measurement_time(Duration::from_secs(15));
 
     // Message sizes to benchmark
-    static MESSAGE_SIZES: [usize; 6] = [2, 5, 10, 15, 20, 30];
+    static MESSAGE_SIZES: [usize; 8] = [2, 5, 10, 15, 20, 30, 40, 128];
 
     for &msg_size in &MESSAGE_SIZES {
         println!("Benchmarking with {} messages", msg_size);

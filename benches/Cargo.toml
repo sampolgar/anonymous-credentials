@@ -67,3 +67,8 @@ harness = false
 name = "ps_utt_ts_std"
 path = "benches/ps_utt_ts_std.rs"
 harness = false
+
+[[bench]]
+name = "schnorr"
+path = "benches/schnorr.rs"
+harness = false
