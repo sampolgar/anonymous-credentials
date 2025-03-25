@@ -3,7 +3,9 @@ use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::UniformRand;
 use ark_std::Zero;
 use ark_std::{rand::Rng, test_rng};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{
+    black_box, criterion_group, criterion_main, BenchmarkId, Criterion, SamplingMode, Throughput,
+};
 use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
 
 // Naive implementation of commitment without MSM
@@ -75,9 +77,8 @@ fn setup_parameters(size: usize) -> (Vec<G1Affine>, Vec<Fr>, G1Affine, Fr) {
     let witnesses: Vec<Fr> = (0..size).map(|_| Fr::rand(&mut rng)).collect();
 
     // Compute statement = g1^w1 * g2^w2 * ... * gn^wn
-    // let statement: G = G::Group::msm_unchecked(&bases, &witnesses).into_affine();
-    // Compute statement = g1^w1 * g2^w2 * ... * gn^wn
-    let statement = ark_bls12_381::G1Projective::msm_unchecked(&bases, &witnesses).into_affine();
+    let statement =
+        <G1Affine as AffineRepr>::Group::msm_unchecked(&bases, &witnesses).into_affine();
 
     // Random challenge
     let challenge = Fr::rand(&mut rng);
@@ -85,26 +86,40 @@ fn setup_parameters(size: usize) -> (Vec<G1Affine>, Vec<Fr>, G1Affine, Fr) {
     (bases, witnesses, statement, challenge)
 }
 
+// Constants for benchmarks
+const SAMPLE_SIZE: usize = 10;
+// const SAMPLE_SIZE: usize = 100;
+const MESSAGE_SIZES: [usize; 9] = [4, 8, 16, 32, 64, 128, 256, 512, 1024];
+
 // Benchmark commitment generation
 fn bench_commitment(c: &mut Criterion) {
-    let mut group = c.benchmark_group("schnorr_commitment");
+    let mut group = c.benchmark_group("schnorr");
+    group.sample_size(SAMPLE_SIZE);
 
-    for size in [4, 8, 16, 32, 64, 128, 256, 512, 1024].iter() {
-        group.throughput(Throughput::Elements(*size as u64));
+    for &size in MESSAGE_SIZES.iter() {
+        group.throughput(Throughput::Elements(size as u64));
 
-        let (bases, _, _, _) = setup_parameters(*size);
+        let (bases, _, _, _) = setup_parameters(size);
 
         // MSM-based commitment
-        group.bench_with_input(BenchmarkId::new("msm", size), &bases, |b, bases| {
-            let mut rng = test_rng();
-            b.iter(|| SchnorrProtocol::commit(black_box(bases), &mut rng));
-        });
+        group.bench_with_input(
+            BenchmarkId::new("commitment/msm", size),
+            &bases,
+            |b, bases| {
+                let mut rng = test_rng();
+                b.iter(|| SchnorrProtocol::commit(black_box(bases), &mut rng));
+            },
+        );
 
         // Naive commitment (without MSM)
-        group.bench_with_input(BenchmarkId::new("naive", size), &bases, |b, bases| {
-            let mut rng = test_rng();
-            b.iter(|| naive_commit(black_box(bases), &mut rng));
-        });
+        group.bench_with_input(
+            BenchmarkId::new("commitment/naive", size),
+            &bases,
+            |b, bases| {
+                let mut rng = test_rng();
+                b.iter(|| naive_commit(black_box(bases), &mut rng));
+            },
+        );
     }
 
     group.finish();
@@ -112,18 +127,19 @@ fn bench_commitment(c: &mut Criterion) {
 
 // Benchmark proof generation
 fn bench_prove(c: &mut Criterion) {
-    let mut group = c.benchmark_group("schnorr_prove");
+    let mut group = c.benchmark_group("schnorr");
+    group.sample_size(SAMPLE_SIZE);
 
-    for size in [4, 8, 16, 32, 64, 128, 256, 512, 1024].iter() {
-        group.throughput(Throughput::Elements(*size as u64));
+    for &size in MESSAGE_SIZES.iter() {
+        group.throughput(Throughput::Elements(size as u64));
 
-        let (bases, witnesses, _, challenge) = setup_parameters(*size);
+        let (bases, witnesses, _, challenge) = setup_parameters(size);
         let mut rng = test_rng();
         let commitment = SchnorrProtocol::commit(&bases, &mut rng);
 
         // Standard prove (already optimal, but included for completeness)
         group.bench_with_input(
-            BenchmarkId::new("standard", size),
+            BenchmarkId::new("prove/msm", size),
             &(commitment.clone(), witnesses.clone(), challenge),
             |b, (commitment, witnesses, challenge)| {
                 b.iter(|| {
@@ -138,7 +154,7 @@ fn bench_prove(c: &mut Criterion) {
 
         // "Naive" prove (identical operation, included for comparison)
         group.bench_with_input(
-            BenchmarkId::new("naive", size),
+            BenchmarkId::new("prove/naive", size),
             &(commitment.clone(), witnesses.clone(), challenge),
             |b, (commitment, witnesses, challenge)| {
                 b.iter(|| {
@@ -157,19 +173,20 @@ fn bench_prove(c: &mut Criterion) {
 
 // Benchmark verification
 fn bench_verification(c: &mut Criterion) {
-    let mut group = c.benchmark_group("schnorr_verification");
+    let mut group = c.benchmark_group("schnorr");
+    group.sample_size(SAMPLE_SIZE);
 
-    for size in [4, 8, 16, 32, 64, 128, 256, 512, 1024].iter() {
-        group.throughput(Throughput::Elements(*size as u64));
+    for &size in MESSAGE_SIZES.iter() {
+        group.throughput(Throughput::Elements(size as u64));
 
-        let (bases, witnesses, statement, challenge) = setup_parameters(*size);
+        let (bases, witnesses, statement, challenge) = setup_parameters(size);
         let mut rng = test_rng();
         let commitment = SchnorrProtocol::commit(&bases, &mut rng);
         let responses = SchnorrProtocol::prove(&commitment, &witnesses, &challenge);
 
         // MSM-based verification
         group.bench_with_input(
-            BenchmarkId::new("msm", size),
+            BenchmarkId::new("verify/msm", size),
             &(
                 bases.clone(),
                 statement,
@@ -192,7 +209,7 @@ fn bench_verification(c: &mut Criterion) {
 
         // Naive verification (without MSM)
         group.bench_with_input(
-            BenchmarkId::new("naive", size),
+            BenchmarkId::new("verify/naive", size),
             &(
                 bases.clone(),
                 statement,
@@ -219,17 +236,13 @@ fn bench_verification(c: &mut Criterion) {
 
 // Get more accurate scaling by performing multiple measurements with increasing message sizes
 fn bench_scaling(c: &mut Criterion) {
-    let mut group = c.benchmark_group("schnorr_scaling");
+    let mut group = c.benchmark_group("schnorr");
+    group.sample_size(SAMPLE_SIZE);
 
-    // Test with more granular size increments to better observe scaling behavior
-    let sizes = [
-        4, 8, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024,
-    ];
+    for &size in MESSAGE_SIZES.iter() {
+        group.throughput(Throughput::Elements(size as u64));
 
-    for size in sizes.iter() {
-        group.throughput(Throughput::Elements(*size as u64));
-
-        let (bases, witnesses, statement, challenge) = setup_parameters(*size);
+        let (bases, witnesses, statement, challenge) = setup_parameters(size);
         let mut rng = test_rng();
         let commitment = SchnorrProtocol::commit(&bases, &mut rng);
         let responses = SchnorrProtocol::prove(&commitment, &witnesses, &challenge);
@@ -239,7 +252,7 @@ fn bench_scaling(c: &mut Criterion) {
 
         // MSM verification
         group.bench_with_input(
-            BenchmarkId::new("msm", size),
+            BenchmarkId::new("scaling/msm", size),
             &(
                 bases.clone(),
                 statement,
@@ -262,29 +275,27 @@ fn bench_scaling(c: &mut Criterion) {
 
         // For very large sizes, naive operations may be extremely slow
         // Only run naive benchmarks for smaller sizes
-        if *size <= 384 {
-            group.bench_with_input(
-                BenchmarkId::new("naive", size),
-                &(
-                    bases.clone(),
-                    statement,
-                    commitment.commited_blindings,
-                    responses.0.clone(),
-                    challenge,
-                ),
-                |b, (bases, statement, schnorr_commitment, responses, challenge)| {
-                    b.iter(|| {
-                        naive_verify(
-                            black_box(bases),
-                            black_box(statement),
-                            black_box(schnorr_commitment),
-                            black_box(responses),
-                            black_box(challenge),
-                        )
-                    });
-                },
-            );
-        }
+        group.bench_with_input(
+            BenchmarkId::new("scaling/naive", size),
+            &(
+                bases.clone(),
+                statement,
+                commitment.commited_blindings,
+                responses.0.clone(),
+                challenge,
+            ),
+            |b, (bases, statement, schnorr_commitment, responses, challenge)| {
+                b.iter(|| {
+                    naive_verify(
+                        black_box(bases),
+                        black_box(statement),
+                        black_box(schnorr_commitment),
+                        black_box(responses),
+                        black_box(challenge),
+                    )
+                });
+            },
+        );
     }
 
     group.finish();

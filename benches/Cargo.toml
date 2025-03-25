@@ -69,6 +69,11 @@ path = "benches/ps_utt_ts_std.rs"
 harness = false
 
 [[bench]]
-name = "schnorr"
-path = "benches/schnorr.rs"
+name = "schnorr_bench"
+path = "benches/schnorr_bench.rs"
+harness = false
+
+[[bench]]
+name = "pairing_bench"
+path = "benches/pairing_bench.rs"
 harness = false
