@@ -1,9 +1,6 @@
-// mimc_abc/src/multi_issuer.rs
-use crate::commitment::CommitmentKey;
 use crate::credential::{Credential, ShowCredential};
 use crate::error::Error;
 use crate::protocol::MimcAbc;
-use crate::public_params::PublicParams;
 use crate::signature::{SecretKey, VerificationKey};
 use ark_ec::pairing::Pairing;
 use ark_ff::UniformRand;
