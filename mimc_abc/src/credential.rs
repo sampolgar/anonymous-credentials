@@ -23,7 +23,7 @@ pub struct Credential<E: Pairing> {
     pub commitment: Commitment<E>,
     messages: Vec<E::ScalarField>,
     r: E::ScalarField,
-    signature: Option<Signature<E>>,
+    pub signature: Option<Signature<E>>,
     state: CredentialState,
 }
 
@@ -103,7 +103,8 @@ impl<E: Pairing> Credential<E> {
     // Verify signature directly on the credential
     pub fn verify(&self, pp: &PublicParams<E>, vk: &VerificationKey<E>) -> bool {
         if let Some(sig) = &self.signature {
-            vk.verify(sig, &self.commitment, &pp)
+            // vk.verify(sig, &self.commitment, &pp)
+            vk.verify_with_pairing_checker(sig, &self.commitment, &pp)
         } else {
             false
         }

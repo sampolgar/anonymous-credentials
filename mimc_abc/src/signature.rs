@@ -8,7 +8,7 @@ use ark_ff::UniformRand;
 use ark_std::ops::{Add, Mul, Neg};
 use ark_std::rand::Rng;
 use ark_std::One;
-use utils::pairing::PairingCheck;
+use utils::pairing::{create_check, PairingCheck};
 
 // Secret and verification keys
 pub struct SecretKey<E: Pairing> {
@@ -63,40 +63,34 @@ impl<E: Pairing> VerificationKey<E> {
         commitment: &Commitment<E>,
         pp: &PublicParams<E>,
     ) -> bool {
-        let mut rng = ark_std::test_rng();
-        let mr = std::sync::Mutex::new(rng);
-
-        // Optimized check: e(sigma2, g2) * e(sigma1, vk + cmg2)^-1 = 1
+        // Calculate vk + commitment in G2
         let vk_plus_cm_tilde = self.vk_tilde.add(commitment.cm_tilde).into_affine();
-        let check1 = PairingCheck::<E>::rand(
-            &mr,
+
+        // Create signature verification check: e(sigma2, g_tilde) * e(-sigma1, vk+cm_tilde) = 1
+        let sig_check = create_check::<E>(
             &[
                 (&signature.sigma2, &pp.g_tilde),
                 (
                     &signature.sigma1.into_group().neg().into_affine(),
                     &vk_plus_cm_tilde,
                 ),
-                (
-                    &signature.sigma1.into_group().neg().into_affine(),
-                    &vk_plus_cm_tilde,
-                ),
             ],
-            &E::TargetField::one(),
+            None, // defaults to 1
         );
 
-        // Optimized check: e(cmg1, g2) * e(g1, cmg2)^-1 = 1
-        let check2 = PairingCheck::<E>::rand(
-            &mr,
+        // Create commitment consistency check: e(cm, g_tilde) * e(-g, cm_tilde) = 1
+        let cm_check = create_check::<E>(
             &[
                 (&commitment.cm, &pp.g_tilde),
                 (&pp.g.into_group().neg().into_affine(), &commitment.cm_tilde),
             ],
-            &E::TargetField::one(),
+            None,
         );
 
+        // Merge checks and verify
         let mut final_check = PairingCheck::<E>::new();
-        final_check.merge(&check1);
-        final_check.merge(&check2);
+        final_check.merge(&sig_check);
+        final_check.merge(&cm_check);
         final_check.verify()
     }
 }

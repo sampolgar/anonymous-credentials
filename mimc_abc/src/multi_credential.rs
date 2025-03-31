@@ -1,4 +1,3 @@
-// mimc_abc/src/multi_credential.rs
 use crate::commitment::Commitment;
 use crate::credential::{Credential, ShowCredential};
 use crate::error::Error;
@@ -11,7 +10,7 @@ use ark_ff::UniformRand;
 use ark_std::ops::{Add, Mul, Neg};
 use ark_std::rand::Rng;
 use ark_std::One;
-use utils::pairing::PairingCheck;
+use utils::pairing::{create_check, PairingCheck};
 
 /// Aggregate presentation of multiple credentials from the same issuer
 pub struct AggregatePresentation<E: Pairing> {
@@ -60,9 +59,61 @@ impl<E: Pairing> AggregatePresentation<E> {
         true
     }
 
+    pub fn batch_verify(&self, pp: &PublicParams<E>, vk: &VerificationKey<E>) -> bool {
+        // First verify all individual proofs
+        for proof in &self.proofs {
+            if !proof.verify() {
+                return false;
+            }
+        }
+
+        // Set up a merged pairing check for batch verification
+        let mut final_check = PairingCheck::<E>::new();
+
+        // For each signature, add its verification equation to the batch
+        for (i, (signature, proof)) in self
+            .randomized_signatures
+            .iter()
+            .zip(self.proofs.iter())
+            .enumerate()
+        {
+            // Use the commitment from the proof since it has been verified
+            let vk_plus_cm_tilde = vk.vk_tilde.add(proof.commitment.cm_tilde).into_affine();
+
+            // Signature verification equation
+            let sig_check = create_check::<E>(
+                &[
+                    (&signature.sigma2, &pp.g_tilde),
+                    (
+                        &signature.sigma1.into_group().neg().into_affine(),
+                        &vk_plus_cm_tilde,
+                    ),
+                ],
+                None,
+            );
+
+            // Commitment consistency check
+            let cm_check = create_check::<E>(
+                &[
+                    (&proof.commitment.cm, &pp.g_tilde),
+                    (
+                        &pp.g.into_group().neg().into_affine(),
+                        &proof.commitment.cm_tilde,
+                    ),
+                ],
+                None,
+            );
+
+            final_check.merge(&sig_check);
+            final_check.merge(&cm_check);
+        }
+
+        final_check.verify()
+    }
+
     /// Batch verify all credentials using pairing optimization
     /// This is more efficient for multiple credentials from the same issuer
-    pub fn batch_verify(&self, pp: &PublicParams<E>, vk: &VerificationKey<E>) -> bool {
+    pub fn batch_verify2(&self, pp: &PublicParams<E>, vk: &VerificationKey<E>) -> bool {
         // First verify all individual proofs
         for proof in &self.proofs {
             if !proof.verify() {
@@ -150,6 +201,59 @@ impl CredentialAggregation {
 
         // Aggregate the presentations
         Ok(AggregatePresentation::new(presentations))
+    }
+}
+/// Plaintext credential aggregation (no privacy features)
+pub struct PlaintextAggregation<E: Pairing> {
+    pub credentials: Vec<Credential<E>>,
+}
+
+impl<E: Pairing> PlaintextAggregation<E> {
+    pub fn new(credentials: Vec<Credential<E>>) -> Self {
+        Self { credentials }
+    }
+
+    /// Standard verification (no batch optimization)
+    pub fn verify_all(&self, pp: &PublicParams<E>, vk: &VerificationKey<E>) -> bool {
+        for credential in &self.credentials {
+            if !credential.verify(pp, vk) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Batch verification (no privacy features)
+    pub fn batch_verify(&self, pp: &PublicParams<E>, vk: &VerificationKey<E>) -> bool {
+        let mut final_check = PairingCheck::<E>::new();
+
+        for credential in &self.credentials {
+            if let Some(signature) = &credential.signature {
+                // Create combined verification equation
+                let vk_plus_cm_tilde = vk
+                    .vk_tilde
+                    .add(credential.commitment.cm_tilde)
+                    .into_affine();
+
+                // Add signature verification equation
+                let sig_check = create_check::<E>(
+                    &[
+                        (&signature.sigma2, &pp.g_tilde),
+                        (
+                            &signature.sigma1.into_group().neg().into_affine(),
+                            &vk_plus_cm_tilde,
+                        ),
+                    ],
+                    None,
+                );
+
+                final_check.merge(&sig_check);
+            } else {
+                return false; // Unsigned credential
+            }
+        }
+
+        final_check.verify()
     }
 }
 
