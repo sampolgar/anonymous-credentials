@@ -56,6 +56,11 @@ impl<E: Pairing> Credential<E> {
         self.state = CredentialState::Signed;
     }
 
+    // get messages from credential
+    pub fn get_messages(&self) -> &Vec<E::ScalarField> {
+        &self.messages
+    }
+
     // Randomize credential for showing
     pub fn show(
         &self,

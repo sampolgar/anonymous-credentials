@@ -51,6 +51,7 @@ mod tests {
         let attributes: Vec<Fr> = (0..L_ATTRIBUTES).map(|_| Fr::rand(&mut rng)).collect();
         let mut credential = Credential::new(ck.clone(), Some(&attributes), &mut rng);
 
+        // Generate commitments for each attribute 
         let (mut credential, credential_request) =
             UserProtocol::request_credential(ck.clone(), Some(&attributes), &mut rng)
                 .expect("Failed to create credential request");

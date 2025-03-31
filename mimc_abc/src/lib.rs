@@ -1,6 +1,7 @@
 pub mod commitment;
 pub mod credential;
 pub mod error;
+pub mod identity_binding;
 pub mod multi_credential;
 pub mod multi_issuer;
 pub mod proof;
