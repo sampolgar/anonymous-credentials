@@ -9,13 +9,9 @@ use schnorr::schnorr::{SchnorrCommitment, SchnorrProtocol, SchnorrResponses};
 
 /// Proof that multiple commitments share the same value at index 0 (the user identifier)
 pub struct IdentityBindingProof<E: Pairing> {
-    /// The randomized commitments that are being proven over
-    pub commitments: Vec<Commitment<E>>,
-    /// Schnorr commitments for each credential (with shared blinding at position 0)
-    pub schnorr_commitments: Vec<SchnorrCommitment<E::G1Affine>>,
-    /// The challenge used in the proof
+    pub commitments: Vec<Commitment<E>>, // The randomized commitments that are being proven over
+    pub schnorr_commitments: Vec<SchnorrCommitment<E::G1Affine>>, // Schnorr commitments for each credential (with shared blinding at position 0)
     pub challenge: E::ScalarField,
-    /// Responses for each commitment
     pub responses: Vec<Vec<E::ScalarField>>,
 }
 
