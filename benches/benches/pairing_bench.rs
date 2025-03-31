@@ -98,19 +98,6 @@ fn bench_pairing_product(c: &mut Criterion) {
             },
         );
 
-        // // Benchmark Method 2: Multi-Miller loop
-        // group.bench_with_input(
-        //     BenchmarkId::new("multi_miller", n),
-        //     &(a.clone(), b.clone()),
-        //     |bench, (a, b)| {
-        //         bench.iter(|| {
-        //             let product =
-        //                 compute_product_multi_miller::<Bls12_381>(black_box(a), black_box(b));
-        //             black_box(product)
-        //         })
-        //     },
-        // );
-
         // Benchmark Method 3: Scaled multi_pairing
         group.bench_with_input(
             BenchmarkId::new("multi_miller", n),
