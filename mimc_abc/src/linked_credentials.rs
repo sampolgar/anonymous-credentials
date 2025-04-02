@@ -36,6 +36,7 @@ impl<E: Pairing> LinkedCredentialPresentation<E> {
             let delta_r = E::ScalarField::rand(rng);
             let delta_u = E::ScalarField::rand(rng);
 
+            
             // Show the credential (creating randomized presentation)
             let presentation = credential.show(public_params[i], &delta_r, &delta_u, rng);
 

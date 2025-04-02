@@ -111,69 +111,69 @@ impl<E: Pairing> AggregatePresentation<E> {
         final_check.verify()
     }
 
-    /// Batch verify all credentials using pairing optimization
-    /// This is more efficient for multiple credentials from the same issuer
-    pub fn batch_verify2(&self, pp: &PublicParams<E>, vk: &VerificationKey<E>) -> bool {
-        // First verify all individual proofs
-        for proof in &self.proofs {
-            if !proof.verify() {
-                return false;
-            }
-        }
+    // /// Batch verify all credentials using pairing optimization
+    // /// This is more efficient for multiple credentials from the same issuer
+    // pub fn batch_verify2(&self, pp: &PublicParams<E>, vk: &VerificationKey<E>) -> bool {
+    //     // First verify all individual proofs
+    //     for proof in &self.proofs {
+    //         if !proof.verify() {
+    //             return false;
+    //         }
+    //     }
 
-        // Set up a pairing checker for batch verification
-        let mut rng = ark_std::test_rng();
-        let mr = std::sync::Mutex::new(rng);
-        let mut final_check = PairingCheck::<E>::new();
+    //     // Set up a pairing checker for batch verification
+    //     let mut rng = ark_std::test_rng();
+    //     let mr = std::sync::Mutex::new(rng);
+    //     let mut final_check = PairingCheck::<E>::new();
 
-        // For each signature, create a random weight for the batch verification
-        for (i, signature) in self.randomized_signatures.iter().enumerate() {
-            // Generate a random weight for this signature
-            let mut rng = ark_std::rand::thread_rng();
-            let weight = E::ScalarField::rand(&mut rng);
+    //     // For each signature, create a random weight for the batch verification
+    //     for (i, signature) in self.randomized_signatures.iter().enumerate() {
+    //         // Generate a random weight for this signature
+    //         let mut rng = ark_std::rand::thread_rng();
+    //         let weight = E::ScalarField::rand(&mut rng);
 
-            // Calculate vk + commitment in G2
-            let vk_plus_cm_tilde = vk
-                .vk_tilde
-                .add(self.randomized_commitments[i].cm_tilde)
-                .into_affine();
+    //         // Calculate vk + commitment in G2
+    //         let vk_plus_cm_tilde = vk
+    //             .vk_tilde
+    //             .add(self.randomized_commitments[i].cm_tilde)
+    //             .into_affine();
 
-            // Add the pairing check for this signature with the random weight
-            let sig_check = PairingCheck::<E>::rand(
-                &mr,
-                &[
-                    (&signature.sigma2.mul(weight).into_affine(), &pp.g_tilde),
-                    (
-                        &signature.sigma1.mul(weight).neg().into_affine(),
-                        &vk_plus_cm_tilde,
-                    ),
-                ],
-                &E::TargetField::one(),
-            );
+    //         // Add the pairing check for this signature with the random weight
+    //         let sig_check = PairingCheck::<E>::rand(
+    //             &mr,
+    //             &[
+    //                 (&signature.sigma2.mul(weight).into_affine(), &pp.g_tilde),
+    //                 (
+    //                     &signature.sigma1.mul(weight).neg().into_affine(),
+    //                     &vk_plus_cm_tilde,
+    //                 ),
+    //             ],
+    //             &E::TargetField::one(),
+    //         );
 
-            // Add commitment consistency check
-            let cm_check = PairingCheck::<E>::rand(
-                &mr,
-                &[
-                    (
-                        &self.randomized_commitments[i].cm.mul(weight).into_affine(),
-                        &pp.g_tilde,
-                    ),
-                    (
-                        &pp.g.mul(weight).neg().into_affine(),
-                        &self.randomized_commitments[i].cm_tilde,
-                    ),
-                ],
-                &E::TargetField::one(),
-            );
+    //         // Add commitment consistency check
+    //         let cm_check = PairingCheck::<E>::rand(
+    //             &mr,
+    //             &[
+    //                 (
+    //                     &self.randomized_commitments[i].cm.mul(weight).into_affine(),
+    //                     &pp.g_tilde,
+    //                 ),
+    //                 (
+    //                     &pp.g.mul(weight).neg().into_affine(),
+    //                     &self.randomized_commitments[i].cm_tilde,
+    //                 ),
+    //             ],
+    //             &E::TargetField::one(),
+    //         );
 
-            final_check.merge(&sig_check);
-            final_check.merge(&cm_check);
-        }
+    //         final_check.merge(&sig_check);
+    //         final_check.merge(&cm_check);
+    //     }
 
-        // Verify all pairing equations at once
-        final_check.verify()
-    }
+    //     // Verify all pairing equations at once
+    //     final_check.verify()
+    // }
 }
 
 /// Helper functions for credential aggregation
