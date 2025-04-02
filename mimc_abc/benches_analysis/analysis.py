@@ -2,72 +2,96 @@
 # import matplotlib.pyplot as plt
 # import seaborn as sns
 # import numpy as np
-
-# # Load the extracted data
-# df = pd.read_csv('extracts/extract.csv')
+# import os
 
 # # Create a directory for outputs
-# output_dir = 'extracts/plots'
-# import os
+# output_dir = 'plots'
 # os.makedirs(output_dir, exist_ok=True)
 
-# # Set style
-# sns.set(style="whitegrid")
-# plt.rcParams.update({'font.size': 12})
+# # Set style for academic visualization
+# sns.set_style("whitegrid")
+# plt.rcParams.update({
+#     'font.size': 12,
+#     'font.family': 'serif',
+#     'figure.figsize': (10, 6)
+# })
 
-# # Define colors for implementations
-# colors = {
-#     'non_private_non_batch': 'blue',
-#     'non_private_with_batch': 'green',
-#     'multi_issuer_identity_binding': 'red',
-#     'multi_credential_batch_verify': 'purple'
+# # Load the data
+# df = pd.read_csv('extracts/extract.csv')
+
+# # Map implementations to new categories with better descriptions
+# implementation_mapping = {
+#     'non_private_with_batch': 'Non-Private, Single Issuer (Batch Verif)',
+#     'non_private_non_batch': 'Non-Private, Multi Issuer',
+#     'multi_issuer_identity_binding': 'Private, Multi Issuer',
+#     'multi_issuer_identity_binding_show': 'Private, Multi Issuer Show',
+#     'multi_issuer_identity_binding_verify': 'Private, Multi Issuer Verify',
+#     'multi_credential_batch_show': 'Private, Single Issuer Show',
+#     'multi_credential_batch_verify': 'Private, Single Issuer (Batch Verif)'
 # }
 
-# # Rename implementations for better readability
-# implementation_names = {
-#     'non_private_non_batch': 'Individual Verification',
-#     'non_private_with_batch': 'Batch Verification',
-#     'multi_issuer_identity_binding': 'Multi-Issuer Identity Binding',
-#     'multi_credential_batch_verify': 'Multi-Credential Batch'
+# # Define visualization properties (colors and line styles)
+# style_props = {
+#     'Non-Private, Single Issuer (Batch Verif)': {'color': 'darkgreen', 'linestyle': 'solid', 'marker': 's'},
+#     'Non-Private, Multi Issuer': {'color': 'blue', 'linestyle': 'solid', 'marker': 'o'},
+#     'Private, Single Issuer (Batch Verif)': {'color': 'darkgreen', 'linestyle': 'dotted', 'marker': 's'},
+#     'Private, Multi Issuer': {'color': 'purple', 'linestyle': 'dotted', 'marker': 'o'},
+#     'Private, Single Issuer Show': {'color': 'red', 'linestyle': 'dashed', 'marker': '^'},
+#     'Private, Multi Issuer Show': {'color': 'orange', 'linestyle': 'dashed', 'marker': 'v'},
+#     'Private, Multi Issuer Verify': {'color': 'brown', 'linestyle': 'dashdot', 'marker': 'D'}
 # }
 
-# df['implementation_name'] = df['implementation'].map(implementation_names)
+# # Apply the mapping
+# df['implementation_name'] = df['implementation'].map(implementation_mapping)
 
-# # 1. Line graphs by credential count
-# for cred_count in sorted(df['credential_count'].unique()):
+# # 1. Create line graphs by attribute count (with credentials on x-axis)
+# for attr_count in sorted(df['attribute_count'].unique()):
 #     plt.figure(figsize=(10, 6))
     
-#     # Filter data for this credential count
-#     cred_df = df[df['credential_count'] == cred_count]
+#     # Filter data for this attribute count
+#     attr_df = df[df['attribute_count'] == attr_count]
     
 #     # Create line plot
-#     for impl in df['implementation'].unique():
-#         impl_df = cred_df[cred_df['implementation'] == impl]
-#         if not impl_df.empty:
-#             plt.plot(
-#                 impl_df['attribute_count'], 
-#                 impl_df['mean_ms'], 
-#                 marker='o', 
-#                 linewidth=2, 
-#                 label=implementation_names[impl],
-#                 color=colors[impl]
-#             )
+#     for impl in sorted(attr_df['implementation'].unique()):
+#         impl_name = implementation_mapping[impl]
+#         impl_df = attr_df[attr_df['implementation'] == impl]
+        
+#         # Sort by credential count
+#         impl_df = impl_df.sort_values('credential_count')
+        
+#         # Plot with specified style
+#         props = style_props[impl_name]
+#         plt.plot(
+#             impl_df['credential_count'], 
+#             impl_df['mean_ms'], 
+#             marker=props['marker'],
+#             linestyle=props['linestyle'],
+#             color=props['color'],
+#             linewidth=2,
+#             markersize=8,
+#             label=impl_name
+#         )
     
-#     plt.title(f'Execution Time for {cred_count} Credentials')
-#     plt.xlabel('Attribute Count')
+#     plt.title(f'Verification Time vs. Credential Count ({attr_count} Attributes per Credential)')
+#     plt.xlabel('Number of Credentials')
 #     plt.ylabel('Execution Time (ms)')
-#     plt.xticks(sorted(df['attribute_count'].unique()))
-#     plt.legend()
-#     plt.grid(True)
+#     plt.xticks(sorted(df['credential_count'].unique()))
+#     plt.legend(loc='best')
+#     plt.grid(True, alpha=0.3)
+    
+#     # Add a note about line styles
+#     plt.figtext(0.5, 0.01, "Different line styles represent different implementation types", 
+#                 ha="center", fontsize=10, style='italic')
+    
 #     plt.tight_layout()
     
 #     # Save figure
-#     plt.savefig(f'{output_dir}/line_plot_creds_{cred_count}.png', dpi=300)
+#     plt.savefig(f'{output_dir}/line_plot_attrs_{attr_count}.png', dpi=300)
 #     plt.close()
 
 # # 2. Create a summary table
 # pivot_table = df.pivot_table(
-#     index=['credential_count', 'attribute_count'],
+#     index=['attribute_count', 'credential_count'],
 #     columns='implementation_name',
 #     values='mean_ms'
 # )
@@ -75,75 +99,122 @@
 # # Save to CSV
 # pivot_table.to_csv(f'{output_dir}/summary_table.csv')
 
-# # 3. Calculate and create speedup table
-# speedup_df = df.copy()
+# # 3. Create separate comparisons for show vs verify operations
+# plt.figure(figsize=(12, 8))
 
-# # Create pivot with baseline values
-# baseline_df = df[df['implementation'] == 'non_private_non_batch'].copy()
-# baseline_pivot = baseline_df.pivot_table(
-#     index=['credential_count', 'attribute_count'],
-#     values='mean_ms'
-# )
+# # Filter for show and verify operations
+# show_df = df[df['implementation'].str.contains('show')]
+# verify_df = df[df['implementation'].str.contains('verify') | 
+#                (df['implementation'].isin(['non_private_with_batch', 'non_private_non_batch', 'multi_issuer_identity_binding']))]
 
-# # For each row in the dataframe, calculate speedup
-# for idx, row in speedup_df.iterrows():
-#     creds = row['credential_count']
-#     attrs = row['attribute_count']
-#     baseline_value = baseline_pivot.loc[(creds, attrs)].values[0]
-#     speedup_df.loc[idx, 'speedup'] = baseline_value / row['mean_ms']
+# # Plot show operations
+# plt.subplot(1, 2, 1)
+# for impl in sorted(show_df['implementation'].unique()):
+#     impl_name = implementation_mapping[impl]
+#     impl_df = show_df[show_df['implementation'] == impl]
+    
+#     # Filter for a specific attribute count for clarity (e.g., 16)
+#     impl_df = impl_df[impl_df['attribute_count'] == 16]
+#     impl_df = impl_df.sort_values('credential_count')
+    
+#     props = style_props[impl_name]
+#     plt.plot(
+#         impl_df['credential_count'],
+#         impl_df['mean_ms'],
+#         marker=props['marker'],
+#         linestyle=props['linestyle'],
+#         color=props['color'],
+#         label=impl_name
+#     )
 
-# # Create speedup pivot table
-# speedup_pivot = speedup_df.pivot_table(
-#     index=['credential_count', 'attribute_count'],
-#     columns='implementation_name',
-#     values='speedup'
-# )
+# plt.title('Show Operation Performance (16 Attributes)')
+# plt.xlabel('Number of Credentials')
+# plt.ylabel('Execution Time (ms)')
+# plt.xticks(sorted(df['credential_count'].unique()))
+# plt.legend()
+# plt.grid(True, alpha=0.3)
 
-# # Save to CSV
-# speedup_pivot.to_csv(f'{output_dir}/speedup_table.csv')
+# # Plot verify operations
+# plt.subplot(1, 2, 2)
+# for impl in sorted(verify_df['implementation'].unique()):
+#     impl_name = implementation_mapping[impl]
+#     impl_df = verify_df[verify_df['implementation'] == impl]
+    
+#     # Filter for a specific attribute count for clarity (e.g., 16)
+#     impl_df = impl_df[impl_df['attribute_count'] == 16]
+#     impl_df = impl_df.sort_values('credential_count')
+    
+#     props = style_props[impl_name]
+#     plt.plot(
+#         impl_df['credential_count'],
+#         impl_df['mean_ms'],
+#         marker=props['marker'],
+#         linestyle=props['linestyle'],
+#         color=props['color'],
+#         label=impl_name
+#     )
 
-# # 4. Create bar charts for each attribute/credential combination
-# for cred_count in sorted(df['credential_count'].unique()):
-#     plt.figure(figsize=(12, 7))
+# plt.title('Verify Operation Performance (16 Attributes)')
+# plt.xlabel('Number of Credentials')
+# plt.ylabel('Execution Time (ms)')
+# plt.xticks(sorted(df['credential_count'].unique()))
+# plt.legend()
+# plt.grid(True, alpha=0.3)
+
+# plt.tight_layout()
+# plt.savefig(f'{output_dir}/show_vs_verify_comparison.png', dpi=300)
+# plt.close()
+
+# # 4. Create bar chart comparing operations by implementation type
+# plt.figure(figsize=(14, 8))
+
+# # We'll use fixed values for this comparison (16 credentials, 16 attributes)
+# comparison_df = df[(df['credential_count'] == 16) & (df['attribute_count'] == 16)]
+
+# # Group implementations by type
+# impl_categories = {
+#     'Non-Private': ['non_private_with_batch', 'non_private_non_batch'],
+#     'Private (Single Issuer)': ['multi_credential_batch_show', 'multi_credential_batch_verify'],
+#     'Private (Multi Issuer)': ['multi_issuer_identity_binding', 'multi_issuer_identity_binding_show', 'multi_issuer_identity_binding_verify']
+# }
+
+# # Define x positions for the bars
+# bar_width = 0.2
+# x_positions = np.arange(len(impl_categories))
+
+# # Plot bars for different operations
+# for i, impl in enumerate(sorted(comparison_df['implementation'].unique())):
+#     values = []
+#     for category in impl_categories.keys():
+#         if impl in impl_categories[category]:
+#             val = comparison_df[comparison_df['implementation'] == impl]['mean_ms'].values[0]
+#             values.append(val)
+#         else:
+#             values.append(0)  # No bar for this category
     
-#     # Filter data for this credential count
-#     cred_df = df[df['credential_count'] == cred_count]
+#     # Only plot non-zero values
+#     non_zero_indices = [idx for idx, val in enumerate(values) if val > 0]
+#     non_zero_values = [values[idx] for idx in non_zero_indices]
+#     non_zero_positions = [x_positions[idx] + (i * bar_width - 0.3) for idx in non_zero_indices]
     
-#     # Set up positions for grouped bars
-#     attr_counts = sorted(cred_df['attribute_count'].unique())
-#     impl_names = df['implementation_name'].unique()
-    
-#     x = np.arange(len(attr_counts))
-#     width = 0.2  # Width of bars
-    
-#     # Create grouped bars
-#     for i, impl in enumerate(df['implementation'].unique()):
-#         impl_df = cred_df[cred_df['implementation'] == impl]
-#         if not impl_df.empty:
-#             values = []
-#             for attr in attr_counts:
-#                 val = impl_df[impl_df['attribute_count'] == attr]['mean_ms'].values
-#                 values.append(val[0] if len(val) > 0 else 0)
-                
-#             plt.bar(
-#                 x + (i - 1.5) * width, 
-#                 values, 
-#                 width=width, 
-#                 label=implementation_names[impl],
-#                 color=colors[impl]
-#             )
-    
-#     plt.title(f'Execution Time Comparison for {cred_count} Credentials')
-#     plt.xlabel('Attribute Count')
-#     plt.ylabel('Execution Time (ms)')
-#     plt.xticks(x, attr_counts)
-#     plt.legend()
-#     plt.grid(True, axis='y')
-#     plt.tight_layout()
-    
-#     # Save figure
-#     plt.savefig(f'{output_dir}/bar_plot_creds_{cred_count}.png', dpi=300)
-#     plt.close()
+#     if non_zero_values:
+#         plt.bar(
+#             non_zero_positions,
+#             non_zero_values,
+#             width=bar_width,
+#             label=implementation_mapping[impl]
+#         )
+
+# plt.title('Performance Comparison (16 Credentials, 16 Attributes)')
+# plt.xlabel('Implementation Category')
+# plt.ylabel('Execution Time (ms)')
+# plt.xticks(x_positions, impl_categories.keys())
+# plt.legend(loc='upper left')
+# plt.grid(True, alpha=0.3, axis='y')
+
+# plt.tight_layout()
+# plt.savefig(f'{output_dir}/implementation_comparison.png', dpi=300)
+# plt.close()
 
 # print(f"Analysis complete. Results saved to {output_dir}/")
 
@@ -173,7 +244,9 @@ plt.rcParams.update({
 implementation_mapping = {
     'non_private_with_batch': 'Non-Private, Single Issuer (Batch Verif)',
     'non_private_non_batch': 'Non-Private, Multi Issuer',
-    'multi_issuer_identity_binding': 'Private, Multi Issuer',
+    'multi_issuer_identity_binding_show': 'Private, Multi Issuer Show',
+    'multi_issuer_identity_binding_verify': 'Private, Multi Issuer Verify',
+    'multi_credential_batch_show': 'Private, Single Issuer Show',
     'multi_credential_batch_verify': 'Private, Single Issuer (Batch Verif)'
 }
 
@@ -216,7 +289,7 @@ for attr_count in sorted(df['attribute_count'].unique()):
                 label=impl_name
             )
     
-    plt.title(f'Verification Time vs. Credential Count ({attr_count} Attributes)')
+    plt.title(f'Verification Time vs. Credential Count ({attr_count} Attributes per Credential)')
     plt.xlabel('Number of Credentials')
     plt.ylabel('Execution Time (ms)')
     plt.xticks(sorted(df['credential_count'].unique()))
@@ -224,7 +297,7 @@ for attr_count in sorted(df['attribute_count'].unique()):
     plt.grid(True, alpha=0.3)
     
     # Add a note about line styles
-    plt.figtext(0.5, 0.01, "Dotted lines = Non-private, Solid lines = Private", 
+    plt.figtext(0.5, 0.01, "Solid lines = Non-Private, Dotted lines = Private", 
                 ha="center", fontsize=10, style='italic')
     
     plt.tight_layout()
