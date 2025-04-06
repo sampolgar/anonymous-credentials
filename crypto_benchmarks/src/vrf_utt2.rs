@@ -80,23 +80,23 @@ pub struct PairingVRFProof {
 
 pub fn pairing_vrf_evaluate<R: Rng>(
     pp: &PublicParams<Bls12_381>,
-    s_sender: Fr,
-    pid_sender: Fr,
-    sn: Fr,
+    k_master: Fr,
+    id_master: Fr,
+    ctx: Fr,
     r: Fr,
     a_prime: Fr,
     t: Fr,
     rng: &mut R,
 ) -> (PairingVRFProof, PairingOutput<Bls12_381>) {
-    let exponent = s_sender + sn;
+    let exponent = k_master + ctx;
     let exponent_inv = exponent.inverse().unwrap();
     let nullif = pp.h.mul(exponent_inv).into_affine();
     let vk = (pp.h_tilde.mul(exponent) + pp.w_tilde.mul(t)).into_affine();
     let q = Pairing::pairing(nullif, pp.w_tilde);
     let y = q * t;
 
-    let ccm = (pp.g1.mul(pid_sender) + pp.g2.mul(sn) + pp.g.mul(r)).into_affine();
-    let rcm = (pp.g1.mul(pid_sender) + pp.g6.mul(s_sender) + pp.g.mul(a_prime)).into_affine();
+    let ccm = (pp.g1.mul(id_master) + pp.g2.mul(ctx) + pp.g.mul(r)).into_affine();
+    let rcm = (pp.g1.mul(id_master) + pp.g6.mul(k_master) + pp.g.mul(a_prime)).into_affine();
 
     let x1 = Fr::rand(rng);
     let x2 = Fr::rand(rng);
@@ -112,11 +112,11 @@ pub fn pairing_vrf_evaluate<R: Rng>(
 
     let c = Fr::rand(rng); // In practice, hash X1, X3, X4, X5
 
-    let a1 = x1 + c * pid_sender;
-    let a2 = x2 + c * sn;
+    let a1 = x1 + c * id_master;
+    let a2 = x2 + c * ctx;
     let a4 = x4 + c * r;
     let a6 = x7 + c * a_prime;
-    let a7 = x6 + c * s_sender;
+    let a7 = x6 + c * k_master;
     let a8 = x8 + c * t;
 
     let proof = PairingVRFProof {
@@ -185,13 +185,13 @@ pub struct NonPairingVRFProof {
     T4: G1Affine,
     T5: G1Affine,
     T6: G1Affine,
-    z_pid_sender: Fr,
-    z_s_sender: Fr,
-    z_sn: Fr,
+    z_id_master: Fr,
+    z_k_master: Fr,
+    z_ctx: Fr,
     z_r1: Fr,
     z_r2: Fr,
     z_r3: Fr,
-    z_exponent_s_sn_inv: Fr,
+    z_exponent_s_ctx_inv: Fr,
     z_r4: Fr,
     z_r5: Fr,
     z_r6: Fr,
@@ -205,9 +205,9 @@ pub fn non_pairing_vrf_evaluate<R: Rng>(
     g4: G1Affine,
     g5: G1Affine,
     g: G1Affine,
-    pid_sender: Fr,
-    s_sender: Fr,
-    sn: Fr,
+    id_master: Fr,
+    k_master: Fr,
+    ctx: Fr,
     r1: Fr,
     r2: Fr,
     r3: Fr,
@@ -215,21 +215,21 @@ pub fn non_pairing_vrf_evaluate<R: Rng>(
     r5: Fr,
     rng: &mut R,
 ) -> (NonPairingVRFProof, G1Affine) {
-    let exponent_s_sn = s_sender + sn;
-    let exponent_s_sn_inv = exponent_s_sn.inverse().unwrap();
-    let r6 = (r3 / exponent_s_sn) + r5;
+    let k_plus_ctx = k_master + ctx;
+    let nullifier = k_plus_ctx.inverse().unwrap();
+    let r6 = (r3 / k_plus_ctx) + r5;
 
-    let cm1 = (g1.mul(pid_sender) + g2.mul(s_sender) + g.mul(r1)).into_affine();
-    let cm2 = (g1.mul(pid_sender) + g3.mul(sn) + g.mul(r2)).into_affine();
-    let cm3 = (g4.mul(exponent_s_sn) + g.mul(r3)).into_affine();
-    let cm4 = (g5.mul(exponent_s_sn_inv) + g.mul(r4)).into_affine();
-    let cm5 = (cm3.mul(exponent_s_sn_inv) + g.mul(r5)).into_affine();
+    let cm1 = (g1.mul(id_master) + g2.mul(k_master) + g.mul(r1)).into_affine();
+    let cm2 = (g1.mul(id_master) + g3.mul(ctx) + g.mul(r2)).into_affine();
+    let cm3 = (g4.mul(k_plus_ctx) + g.mul(r3)).into_affine();
+    let cm4 = (g5.mul(nullifier) + g.mul(r4)).into_affine();
+    let cm5 = (cm3.mul(nullifier) + g.mul(r5)).into_affine();
     let cm6 = g.mul(r6).into_affine();
 
-    let a_pid_sender = Fr::rand(rng);
-    let a_s_sender = Fr::rand(rng);
-    let a_sn = Fr::rand(rng);
-    let a_exponent_s_sn_inv = Fr::rand(rng);
+    let a_id_master = Fr::rand(rng);
+    let a_k_master = Fr::rand(rng);
+    let a_ctx = Fr::rand(rng);
+    let a_nullifier = Fr::rand(rng);
     let a_r1 = Fr::rand(rng);
     let a_r2 = Fr::rand(rng);
     let a_r3 = Fr::rand(rng);
@@ -237,25 +237,25 @@ pub fn non_pairing_vrf_evaluate<R: Rng>(
     let a_r5 = Fr::rand(rng);
     let a_r6 = Fr::rand(rng);
 
-    let T1 = (g1.mul(a_pid_sender) + g2.mul(a_s_sender) + g.mul(a_r1)).into_affine();
-    let T2 = (g1.mul(a_pid_sender) + g3.mul(a_sn) + g.mul(a_r2)).into_affine();
-    let T3 = (g4.mul(a_s_sender + a_sn) + g.mul(a_r3)).into_affine();
-    let T4 = (g5.mul(a_exponent_s_sn_inv) + g.mul(a_r4)).into_affine();
-    let T5 = (cm3.mul(a_exponent_s_sn_inv) + g.mul(a_r5)).into_affine();
+    let T1 = (g1.mul(a_id_master) + g2.mul(a_k_master) + g.mul(a_r1)).into_affine();
+    let T2 = (g1.mul(a_id_master) + g3.mul(a_ctx) + g.mul(a_r2)).into_affine();
+    let T3 = (g4.mul(a_k_master + a_ctx) + g.mul(a_r3)).into_affine();
+    let T4 = (g5.mul(a_nullifier) + g.mul(a_r4)).into_affine();
+    let T5 = (cm3.mul(a_nullifier) + g.mul(a_r5)).into_affine();
     let T6 = g.mul(a_r6).into_affine();
 
     let c = Fr::rand(rng); // In practice, hash T1 to T6
 
-    let z_pid_sender = a_pid_sender + c * pid_sender;
-    let z_s_sender = a_s_sender + c * s_sender;
-    let z_sn = a_sn + c * sn;
+    let z_id_master = a_id_master + c * id_master;
+    let z_k_master = a_k_master + c * k_master;
+    let z_ctx = a_ctx + c * ctx;
     let z_r1 = a_r1 + c * r1;
     let z_r2 = a_r2 + c * r2;
     let z_r3 = a_r3 + c * r3;
     let z_r4 = a_r4 + c * r4;
     let z_r5 = a_r5 + c * r5;
     let z_r6 = a_r6 + c * r6;
-    let z_exponent_s_sn_inv = a_exponent_s_sn_inv + c * exponent_s_sn_inv;
+    let z_exponent_s_ctx_inv = a_nullifier + c * nullifier;
 
     let proof = NonPairingVRFProof {
         cm1,
@@ -270,13 +270,13 @@ pub fn non_pairing_vrf_evaluate<R: Rng>(
         T4,
         T5,
         T6,
-        z_pid_sender,
-        z_s_sender,
-        z_sn,
+        z_id_master,
+        z_k_master,
+        z_ctx,
         z_r1,
         z_r2,
         z_r3,
-        z_exponent_s_sn_inv,
+        z_exponent_s_ctx_inv,
         z_r4,
         z_r5,
         z_r6,
@@ -295,27 +295,27 @@ pub fn non_pairing_vrf_verify(
     proof: &NonPairingVRFProof,
 ) -> bool {
     if (proof.cm1.mul(proof.c) + proof.T1)
-        != (g1.mul(proof.z_pid_sender) + g2.mul(proof.z_s_sender) + g.mul(proof.z_r1)).into_affine()
+        != (g1.mul(proof.z_id_master) + g2.mul(proof.z_k_master) + g.mul(proof.z_r1)).into_affine()
     {
         return false;
     }
     if (proof.cm2.mul(proof.c) + proof.T2)
-        != (g1.mul(proof.z_pid_sender) + g3.mul(proof.z_sn) + g.mul(proof.z_r2)).into_affine()
+        != (g1.mul(proof.z_id_master) + g3.mul(proof.z_ctx) + g.mul(proof.z_r2)).into_affine()
     {
         return false;
     }
     if (proof.cm3.mul(proof.c) + proof.T3)
-        != (g4.mul(proof.z_s_sender + proof.z_sn) + g.mul(proof.z_r3)).into_affine()
+        != (g4.mul(proof.z_k_master + proof.z_ctx) + g.mul(proof.z_r3)).into_affine()
     {
         return false;
     }
     if (proof.cm4.mul(proof.c) + proof.T4)
-        != (g5.mul(proof.z_exponent_s_sn_inv) + g.mul(proof.z_r4)).into_affine()
+        != (g5.mul(proof.z_exponent_s_ctx_inv) + g.mul(proof.z_r4)).into_affine()
     {
         return false;
     }
     if (proof.cm5.mul(proof.c) + proof.T5)
-        != (proof.cm3.mul(proof.z_exponent_s_sn_inv) + g.mul(proof.z_r5)).into_affine()
+        != (proof.cm3.mul(proof.z_exponent_s_ctx_inv) + g.mul(proof.z_r5)).into_affine()
     {
         return false;
     }
@@ -342,16 +342,16 @@ mod tests {
         let pp = PublicParams::<Bls12_381>::new(&mut rng);
 
         // Generate random field elements as inputs
-        let s_sender = Fr::rand(&mut rng);
-        let pid_sender = Fr::rand(&mut rng);
-        let sn = Fr::rand(&mut rng);
+        let k_master = Fr::rand(&mut rng);
+        let id_master = Fr::rand(&mut rng);
+        let ctx = Fr::rand(&mut rng);
         let r = Fr::rand(&mut rng);
         let a_prime = Fr::rand(&mut rng);
         let t = Fr::rand(&mut rng);
 
         // Evaluate the VRF to get proof and output
         let (proof, _y) =
-            pairing_vrf_evaluate(&pp, s_sender, pid_sender, sn, r, a_prime, t, &mut rng);
+            pairing_vrf_evaluate(&pp, k_master, id_master, ctx, r, a_prime, t, &mut rng);
 
         // Verify the proof
         assert!(
@@ -374,9 +374,9 @@ mod tests {
         let g = G1Affine::rand(&mut rng);
 
         // Generate random field elements as inputs
-        let pid_sender = Fr::rand(&mut rng);
-        let s_sender = Fr::rand(&mut rng);
-        let sn = Fr::rand(&mut rng);
+        let id_master = Fr::rand(&mut rng);
+        let k_master = Fr::rand(&mut rng);
+        let ctx = Fr::rand(&mut rng);
         let r1 = Fr::rand(&mut rng);
         let r2 = Fr::rand(&mut rng);
         let r3 = Fr::rand(&mut rng);
@@ -385,7 +385,7 @@ mod tests {
 
         // Evaluate the VRF to get proof and output
         let (proof, _output) = non_pairing_vrf_evaluate(
-            g1, g2, g3, g4, g5, g, pid_sender, s_sender, sn, r1, r2, r3, r4, r5, &mut rng,
+            g1, g2, g3, g4, g5, g, id_master, k_master, ctx, r1, r2, r3, r4, r5, &mut rng,
         );
 
         // Verify the proof
