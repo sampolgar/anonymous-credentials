@@ -1,14 +1,14 @@
 //! Weighted Norm Linear argument for relation `v = <c, l> + {|n|_mu}^2` given commitment `C = v*G + <l, H_vec> + <n, G_vec>`
 
 use crate::{error::BulletproofsPlusPlusError, setup::SetupParams};
+use crate::{
+    ff::{inner_product, scale, weighted_inner_product, weighted_norm},
+    transcript::Transcript,
+};
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{Field, One, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, cfg_iter, cfg_iter_mut, format, ops::Neg, vec, vec::Vec};
-use dock_crypto_utils::{
-    ff::{inner_product, scale, weighted_inner_product, weighted_norm},
-    transcript::Transcript,
-};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

@@ -1,9 +1,10 @@
+use crate::concat_slices;
+use crate::hashing_utils::affine_group_elem_from_try_and_incr;
 use crate::util::base_bits;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_into_iter, rand::RngCore, vec::Vec, UniformRand};
 use digest::Digest;
-use dock_crypto_utils::{concat_slices, hashing_utils::affine_group_elem_from_try_and_incr};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;

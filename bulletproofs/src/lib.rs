@@ -1,7 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(non_snake_case)]
 
+pub mod aliases;
 pub mod error;
+pub mod ff;
+pub mod hashing_utils;
 pub mod msm;
 pub mod range_proof;
 pub mod range_proof_arbitrary_range;
@@ -18,4 +21,12 @@ pub mod prelude {
         range_proof_arbitrary_range::ProofArbitraryRange,
         setup::SetupParams,
     };
+}
+
+/// Concatenates supplied slices into one continuous vector.
+#[macro_export]
+macro_rules! concat_slices {
+    ($($slice: expr),+) => {
+        [$(&$slice[..]),+].concat()
+    }
 }
