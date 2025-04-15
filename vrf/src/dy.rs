@@ -1,3 +1,22 @@
+/*
+ * Dodis-Yampolskiy VRF (DY-VRF)
+ *
+ * Original VRF construction operating in a bilinear group setting under the q-DBDHI assumption.
+ *
+ * Core functions:
+ * - VRF.Gen(1^λ): Generates (sk, pk) where sk ∈ Zp*, pk = g^sk
+ * - VRF.Eval(sk, x): Computes y = e(g, g)^(1/(sk+x)) ∈ GT
+ * - VRF.Prove(sk, x): Produces π = g^(1/(sk+x)) ∈ G
+ *
+ * Verification:
+ * - e(g^x · pk, π) = e(g, g)  (Proof correctness)
+ * - y = e(g, π)  (Output consistency)
+ *
+ * Security properties:
+ * - Information-theoretic uniqueness: Enforced by pairing properties
+ * - Pseudorandomness: Based on q-DBDHI assumption
+ * - Efficient verification: Uses bilinear pairing for direct checking
+ */
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::Field;
 use ark_std::{

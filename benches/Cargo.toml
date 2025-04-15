@@ -59,11 +59,6 @@ path = "benches/ps_anoncreds.rs"
 harness = false
 
 [[bench]]
-name = "vrf_benchmarks"
-path = "benches/vrf_benchmarks.rs"
-harness = false
-
-[[bench]]
 name = "ps_utt_ts_std"
 path = "benches/ps_utt_ts_std.rs"
 harness = false
@@ -76,4 +71,9 @@ harness = false
 [[bench]]
 name = "pairing_bench"
 path = "benches/pairing_bench.rs"
+harness = false
+
+[[bench]]
+name = "vrf_utt"
+path = "benches/vrf_utt.rs"
 harness = false
