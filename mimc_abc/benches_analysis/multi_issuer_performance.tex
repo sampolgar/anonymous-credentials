@@ -1,0 +1,14 @@
+\begin{table}[ht]
+\centering
+\caption{Multi Issuer Performance Comparison (time in ms, 16 attributes per credential)}
+\label{tab:multi_issuer_performance}
+\begin{tabular}{l@{\hspace{1.5em}}r@{\hspace{1.5em}}r@{\hspace{1.5em}}r}
+\toprule
+Operation & 4 & 16 & 32 \\
+\midrule
+Baseline Public Verify & 6.77 & 27.69 & 54.31 \\
+Identity Binding Verify & 18.67 & 76.52 & 148.24 \\
+Identity Binding Show + Verify & 25.08 & 102.27 & 199.87 \\
+\bottomrule
+\end{tabular}
+\end{table}

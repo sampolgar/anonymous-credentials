@@ -6,4 +6,5 @@ z_tex/*
 z_py_tests/
 **/.DS_Store
 **/.ipynb
-**/plots
+**/plots/
+**/extracts/
