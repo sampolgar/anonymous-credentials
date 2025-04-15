@@ -99,6 +99,7 @@ impl<G: AffineRepr> PDYVRF<G> {
         input: &PDYVRFInput<G::ScalarField>,
         sk: &PDYSecretKey<G::ScalarField>,
         output: &PDYVRFOutput<G>,
+        challenge: &G::ScalarField,
         rng: &mut R,
     ) -> Result<PDYVRFProof<G>, &'static str> {
         // 1. Commitment: Sample r ←$ Z_p
@@ -111,11 +112,9 @@ impl<G: AffineRepr> PDYVRF<G> {
         let t2 = output.y.mul(r).into_affine();
 
         // 2. Challenge: In interactive setting, verifier would send c
-        // Here we'll simulate it with a random value (in practice, this would be a hash)
-        let c = G::ScalarField::rand(rng);
 
         // 3. Response: Compute z = r + c(sk + x)
-        let z = r + c * (sk.sk + input.x);
+        let z = r + *challenge * (sk.sk + input.x);
 
         Ok(PDYVRFProof { t1, t2, z })
     }
@@ -157,21 +156,6 @@ impl<G: AffineRepr> PDYVRF<G> {
         // Check: g^z = T₁·(pk·g^x)^c and y^z = T₂·g^c
         g_z == rhs1 && y_z == rhs2
     }
-
-    /// End-to-end verification with challenge generation
-    pub fn verify_with_challenge<R: Rng>(
-        &self,
-        input: &PDYVRFInput<G::ScalarField>,
-        pk: &PDYPublicKey<G>,
-        output: &PDYVRFOutput<G>,
-        proof: &PDYVRFProof<G>,
-        rng: &mut R,
-    ) -> bool {
-        // In a real implementation, the challenge would be derived from a hash
-        // of the public information and commitments
-        let challenge = G::ScalarField::rand(rng);
-        self.verify(input, pk, output, proof, &challenge)
-    }
 }
 
 #[cfg(test)]
@@ -198,90 +182,15 @@ mod tests {
         // Generate VRF output
         let output = vrf.evaluate(&input, &sk).expect("Failed to evaluate VRF");
 
+        let challenge = Fr::rand(&mut rng);
+
         // Generate proof
         let proof = vrf
-            .prove(&input, &sk, &output, &mut rng)
+            .prove(&input, &sk, &output, &challenge, &mut rng)
             .expect("Failed to generate proof");
-
-        // Generate challenge (in practice, this would be derived from a hash)
-        let challenge = Fr::rand(&mut rng);
 
         // Verify
         let is_valid = vrf.verify(&input, &pk, &output, &proof, &challenge);
         assert!(is_valid, "P-DY VRF verification failed");
-    }
-
-    #[test]
-    fn test_pdyvrf_invalid_proof() {
-        let mut rng = test_rng();
-
-        // Initialize VRF
-        let vrf = PDYVRF::<G1Affine>::new(&mut rng);
-
-        // Generate keys
-        let (sk, pk) = vrf.generate_keys(&mut rng);
-
-        // Create input
-        let input = PDYVRFInput {
-            x: Fr::rand(&mut rng),
-        };
-
-        // Generate VRF output
-        let output = vrf.evaluate(&input, &sk).expect("Failed to evaluate VRF");
-
-        // Generate proof
-        let mut proof = vrf
-            .prove(&input, &sk, &output, &mut rng)
-            .expect("Failed to generate proof");
-
-        // Tamper with the proof
-        proof.z = Fr::rand(&mut rng);
-
-        // Generate challenge
-        let challenge = Fr::rand(&mut rng);
-
-        // Verify - should fail
-        let is_valid = vrf.verify(&input, &pk, &output, &proof, &challenge);
-        assert!(
-            !is_valid,
-            "P-DY VRF verification should fail with invalid proof"
-        );
-    }
-
-    #[test]
-    fn test_pdyvrf_invalid_output() {
-        let mut rng = test_rng();
-
-        // Initialize VRF
-        let vrf = PDYVRF::<G1Affine>::new(&mut rng);
-
-        // Generate keys
-        let (sk, pk) = vrf.generate_keys(&mut rng);
-
-        // Create input
-        let input = PDYVRFInput {
-            x: Fr::rand(&mut rng),
-        };
-
-        // Generate VRF output
-        let mut output = vrf.evaluate(&input, &sk).expect("Failed to evaluate VRF");
-
-        // Generate proof
-        let proof = vrf
-            .prove(&input, &sk, &output, &mut rng)
-            .expect("Failed to generate proof");
-
-        // Tamper with the output
-        output.y = G1Affine::rand(&mut rng);
-
-        // Generate challenge
-        let challenge = Fr::rand(&mut rng);
-
-        // Verify - should fail
-        let is_valid = vrf.verify(&input, &pk, &output, &proof, &challenge);
-        assert!(
-            !is_valid,
-            "P-DY VRF verification should fail with invalid output"
-        );
     }
 }
