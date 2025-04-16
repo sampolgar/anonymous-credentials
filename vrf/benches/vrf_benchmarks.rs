@@ -289,12 +289,7 @@ fn bench_dy_pf_priv_committed_output_vrf(c: &mut Criterion) {
         b.iter(|| {
             let i = verify_idx % NUM_RUNS;
             verify_idx += 1;
-            let is_valid = vrf.verify(
-                &outputs[i].commitments,
-                &outputs[i].y,
-                &proofs[i],
-                &challenges[i],
-            );
+            let is_valid = vrf.verify(&outputs[i].commitments, &proofs[i], &challenges[i]);
             assert!(is_valid, "P-DY-Priv-Extra-VRF verification failed");
         })
     });

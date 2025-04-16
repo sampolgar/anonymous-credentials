@@ -4,7 +4,8 @@ from pathlib import Path
 import os
 
 # Define the base directory for Criterion benchmark results
-BASE_DIR = Path("../../target/criterion")
+BASE_DIR = Path("target/criterion")
+# BASE_DIR = Path("../../target/criterion")
 
 def extract_mean_ms(json_file: Path) -> float:
     """Extract the mean execution time in milliseconds from a Criterion JSON file."""
@@ -27,7 +28,7 @@ def extract_benchmark_data(base_dir: Path) -> pd.DataFrame:
         return pd.DataFrame()
     
     # VRF implementations we expect to find
-    vrf_implementations = ['dy', 'p_dy', 'p_dy_priv', 'p_dy_priv_extra']
+    vrf_implementations = ['dy', 'dy_pf', 'dy_pf_priv', 'dy_pf_priv_commited_output', 'dy_priv']
     
     for impl in vrf_implementations:
         impl_dir = base_dir / impl
