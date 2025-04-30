@@ -11,7 +11,7 @@ use ps_utt_ts::signer::Signer;
 use std::time::Duration;
 
 /// Benchmark function for threshold PS protocol
-fn benchmark_threshold_ps(c: &mut Criterion) {
+fn benchmark_t_utt(c: &mut Criterion) {
     // Test configurations to match tACT paper's parameters
     let configs = [
         // N=4, t=N/2+1=3, with varying attribute sizes
@@ -39,7 +39,7 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
 
     // TokenRequest benchmarks
     {
-        let mut group = c.benchmark_group("ps_utt_ts_std");
+        let mut group = c.benchmark_group("t_utt");
         group.sample_size(100);
         // .measurement_time(Duration::from_secs(20));
 
@@ -80,7 +80,7 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
 
     // tIssue benchmarks
     {
-        let mut group = c.benchmark_group("ps_utt_ts_std");
+        let mut group = c.benchmark_group("t_utt");
         group.sample_size(100);
         // .measurement_time(Duration::from_secs(20));
 
@@ -140,7 +140,7 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
 
     // aggregate_verify benchmarks
     {
-        let mut group = c.benchmark_group("ps_utt_ts_std");
+        let mut group = c.benchmark_group("t_utt");
         group.sample_size(100);
         // .measurement_time(Duration::from_secs(20));
 
@@ -218,7 +218,7 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
 
     // aggregate_no_verify benchmarks
     {
-        let mut group = c.benchmark_group("ps_utt_ts_std");
+        let mut group = c.benchmark_group("t_utt");
         group.sample_size(100);
         // .measurement_time(Duration::from_secs(20));
 
@@ -295,7 +295,7 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
     }
 
     {
-        let mut group = c.benchmark_group("ps_utt_ts_std");
+        let mut group = c.benchmark_group("t_utt");
         group.sample_size(100);
         // .measurement_time(Duration::from_secs(20));
 
@@ -381,7 +381,7 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
 
     // Verify benchmarks
     {
-        let mut group = c.benchmark_group("ps_utt_ts_std");
+        let mut group = c.benchmark_group("t_utt");
         group.sample_size(100);
         // .measurement_time(Duration::from_secs(20));
 
@@ -496,6 +496,6 @@ fn benchmark_threshold_ps(c: &mut Criterion) {
 criterion_group!(
     name = benches;
     config = Criterion::default();
-    targets = benchmark_threshold_ps
+    targets = benchmark_t_utt
 );
 criterion_main!(benches);
