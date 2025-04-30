@@ -2,6 +2,7 @@ pub mod commitment;
 pub mod credential;
 pub mod errors;
 pub mod keygen;
+pub mod nullifier;
 pub mod protocol;
 pub mod schnorr_batch;
 pub mod shamir;

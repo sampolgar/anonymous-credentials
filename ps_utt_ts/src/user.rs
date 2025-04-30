@@ -24,13 +24,14 @@ impl User {
     ) -> Result<bool, SignatureError> {
         // 1. First verify the ZKPs for each commitment
         // We can use the optimised version of batch_verify
-        let timer_start = std::time::Instant::now();
+        // let timer_start = std::time::Instant::now();
         let valid = batch_verify::<E>(commitment_proofs, rng)?;
         if !valid {
             return Err(CommitmentError::BatchVerifyError.into());
         }
-        let elapsed = timer_start.elapsed();
-        println!("Batch verify time: {:?}", elapsed);
+        // let elapsed = timer_start.elapsed();
+
+        // println!("Batch verify time: {:?}", elapsed);
 
         // for (_, proof) in commitments.iter().zip(commitment_proofs.iter()) {
         //     let is_valid =
