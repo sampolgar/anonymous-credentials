@@ -1,5 +1,4 @@
 use crate::commitment::batch_verify;
-use crate::commitment::Commitment;
 use crate::errors::{CommitmentError, SignatureError};
 use crate::keygen::VerificationKeyShare;
 use crate::signature::PartialSignature;
@@ -9,7 +8,7 @@ use ark_ec::AffineRepr;
 use ark_ec::CurveGroup;
 use ark_std::ops::Neg;
 use ark_std::rand::Rng;
-use utils::pairing::{verify_pairing_equation, PairingCheck};
+use utils::pairing::verify_pairing_equation;
 
 pub struct User;
 impl User {
