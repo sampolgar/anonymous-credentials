@@ -34,14 +34,15 @@ fn benchmark_t_utt(c: &mut Criterion) {
         (64, 33, 16),
         (64, 33, 32),
         (64, 33, 64),
-        (64, 33, 128),
+        // (64, 33, 128),
     ];
 
     // TokenRequest benchmarks
     {
         let mut group = c.benchmark_group("t_utt");
-        group.sample_size(100);
-        // .measurement_time(Duration::from_secs(20));
+        group
+            .sample_size(100)
+            .measurement_time(Duration::from_secs(20));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
@@ -81,8 +82,9 @@ fn benchmark_t_utt(c: &mut Criterion) {
     // tIssue benchmarks
     {
         let mut group = c.benchmark_group("t_utt");
-        group.sample_size(100);
-        // .measurement_time(Duration::from_secs(20));
+        group
+            .sample_size(100)
+            .measurement_time(Duration::from_secs(20));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
@@ -138,11 +140,72 @@ fn benchmark_t_utt(c: &mut Criterion) {
         group.finish();
     }
 
+    {
+        let mut group = c.benchmark_group("t_utt");
+        group
+            .sample_size(100)
+            .measurement_time(Duration::from_secs(20));
+
+        for &(n_participants, threshold, l_attributes) in &configs {
+            let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
+
+            // Complete setup outside the benchmark
+            let mut setup_rng = ark_std::test_rng();
+
+            // Setup keys
+            let (ck, _, ts_keys) =
+                keygen::<Bls12_381>(threshold, n_participants, l_attributes, &mut setup_rng);
+
+            // Create signers
+            let signers: Vec<_> = ts_keys
+                .sk_shares
+                .iter()
+                .zip(ts_keys.vk_shares.iter())
+                .map(|(sk_share, vk_share)| Signer::new(&ck, sk_share, vk_share))
+                .collect();
+
+            // Create credential request
+            let attributes: Vec<Fr> = (0..l_attributes)
+                .map(|_| Fr::rand(&mut setup_rng))
+                .collect();
+            let (_, credential_request) =
+                UserProtocol::request_credential(ck.clone(), Some(&attributes), &mut setup_rng)
+                    .expect("Failed to create credential request");
+
+            // Benchmark just the signing operation
+            group.bench_function(BenchmarkId::new("t_issue_no_verify", id_suffix), |b| {
+                b.iter(|| {
+                    // We'll measure the time it takes for threshold issuers to sign
+                    // This collects signature shares from threshold signers
+                    let signature_shares = signers
+                        .iter()
+                        .take(threshold) // Only use the threshold number of signers
+                        .map(|signer| {
+                            signer
+                                .sign_share_no_zkp_verify(
+                                    &credential_request.commitments,
+                                    &credential_request.proofs,
+                                    &credential_request.h,
+                                    &mut setup_rng,
+                                )
+                                .expect("Failed to generate signature share")
+                        })
+                        .collect::<Vec<_>>();
+
+                    signature_shares
+                })
+            });
+        }
+
+        group.finish();
+    }
+
     // aggregate_verify benchmarks
     {
         let mut group = c.benchmark_group("t_utt");
-        group.sample_size(100);
-        // .measurement_time(Duration::from_secs(20));
+        group
+            .sample_size(100)
+            .measurement_time(Duration::from_secs(20));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
@@ -219,8 +282,9 @@ fn benchmark_t_utt(c: &mut Criterion) {
     // aggregate_no_verify benchmarks
     {
         let mut group = c.benchmark_group("t_utt");
-        group.sample_size(100);
-        // .measurement_time(Duration::from_secs(20));
+        group
+            .sample_size(100)
+            .measurement_time(Duration::from_secs(20));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
@@ -296,8 +360,9 @@ fn benchmark_t_utt(c: &mut Criterion) {
 
     {
         let mut group = c.benchmark_group("t_utt");
-        group.sample_size(100);
-        // .measurement_time(Duration::from_secs(20));
+        group
+            .sample_size(100)
+            .measurement_time(Duration::from_secs(20));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
@@ -382,8 +447,9 @@ fn benchmark_t_utt(c: &mut Criterion) {
     // Verify benchmarks
     {
         let mut group = c.benchmark_group("t_utt");
-        group.sample_size(100);
-        // .measurement_time(Duration::from_secs(20));
+        group
+            .sample_size(100)
+            .measurement_time(Duration::from_secs(20));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
@@ -465,7 +531,7 @@ fn benchmark_t_utt(c: &mut Criterion) {
             );
 
             // Benchmark only the verification
-            group.bench_function(BenchmarkId::new("verify", id_suffix), |b| {
+            group.bench_function(BenchmarkId::new("tverify", id_suffix), |b| {
                 b.iter_with_setup(
                     // Setup generates a fresh presentation each time
                     || {

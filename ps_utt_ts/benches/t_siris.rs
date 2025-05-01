@@ -18,126 +18,38 @@ use ps_utt_ts::signer::Signer;
 use std::ops::Mul;
 use std::time::Duration;
 
-// // For ObtainContext: Generate a nullifier and proof
-// fn generate_nullifier_and_proof(rng: &mut impl Rng) -> (G1Affine, G1Affine, G1Affine, Vec<Fr>) {
-//     // Initialize VRF
-//     let vrf = DYPFPrivVRF::<G1Affine>::new(rng);
-
-//     // Generate keys with commitment to secret key
-//     let (sk, mut pk) = vrf.generate_keys(rng);
-
-//     // Create input and commitment to input
-//     let x = Fr::rand(rng);
-//     let r_x = Fr::rand(rng);
-
-//     // Compute commitment to x: cm_x = g2^x * g^r_x
-//     let cm_x = (vrf.pp.g2.mul(x) + vrf.pp.g.mul(r_x)).into_affine();
-//     pk.cm_x = cm_x;
-
-//     // Create full witness
-//     let witness = DYPFPrivVRFWitness {
-//         sk: sk.sk,
-//         r_sk: sk.r_sk,
-//         x,
-//         r_x,
-//     };
-
-//     // Generate VRF output (nullifier)
-//     let output = vrf.evaluate(&witness).expect("Failed to evaluate VRF");
-
-//     // Generate proof
-//     let challenge = Fr::rand(rng);
-//     let proof = vrf.prove_with_challenge(&witness, &output, &challenge, rng);
-
-//     // Return the nullifier, relevant commitments, and packed responses
-//     // We're simplifying by returning these as separate values
-//     let packed_responses = vec![
-//         proof.z_sk,
-//         proof.z_x,
-//         proof.z_r_sk,
-//         proof.z_r_x,
-//         proof.z_m,
-//         challenge,
-//     ];
-
-//     (output.y, pk.cm_sk, pk.cm_x, packed_responses)
-// }
-
-// // For IssueContext: Verify a nullifier and proof
-// fn verify_nullifier(
-//     nullifier: &G1Affine,
-//     cm_sk: &G1Affine,
-//     cm_x: &G1Affine,
-//     proof_data: &(G1Affine, G1Affine, G1Affine, Vec<Fr>),
-//     rng: &mut impl Rng,
-// ) -> bool {
-//     // Initialize VRF
-//     let vrf = DYPFPrivVRF::<G1Affine>::new(rng);
-
-//     // Unpack proof data
-//     let (y, cm_sk, cm_x, packed_responses) = proof_data;
-
-//     // Reconstruct proof
-//     let proof = DYPFPrivVRFProof {
-//         t1: G1Affine::rand(rng), // We'd need the actual t1 from the prove function
-//         t2: G1Affine::rand(rng), // We'd need the actual t2 from the prove function
-//         ty: G1Affine::rand(rng), // We'd need the actual ty from the prove function
-//         z_sk: packed_responses[0],
-//         z_x: packed_responses[1],
-//         z_r_sk: packed_responses[2],
-//         z_r_x: packed_responses[3],
-//         z_m: packed_responses[4],
-//     };
-
-//     let challenge = packed_responses[5];
-
-//     // Reconstruct public key
-//     let pk = DYPFPrivPublicKey {
-//         cm_sk: *cm_sk,
-//         cm_x: *cm_x,
-//     };
-
-//     // Construct output
-//     let output = DYPFPrivVRFOutput { y: *nullifier };
-
-//     // Verify
-//     vrf.verify(&pk, &output, &proof, &challenge)
-// }
-
 /// Benchmark function for threshold PS protocol
 fn benchmark_t_siris(c: &mut Criterion) {
     // Test configurations to match tACT paper's parameters
     let configs = [
         // N=4, t=N/2+1=3, with varying attribute sizes
         (4, 3, 4),
-        // (4, 3, 8),
-        // (4, 3, 16),
-        // (4, 3, 32),
-        // (4, 3, 64),
-        // (4, 3, 128),
-
+        (4, 3, 8),
+        (4, 3, 16),
+        (4, 3, 32),
+        (4, 3, 64),
+        (4, 3, 128),
         // N=16, t=N/2+1=9, with varying attribute sizes
-        // (16, 9, 4),
-        // (16, 9, 8),
-        // (16, 9, 16),
-        // (16, 9, 32),
-        // (16, 9, 64),
-        // (16, 9, 128),
-
+        (16, 9, 4),
+        (16, 9, 8),
+        (16, 9, 16),
+        (16, 9, 32),
+        (16, 9, 64),
+        (16, 9, 128),
         // N=64, t=N/2+1=33, with varying attribute sizes
-        // (64, 33, 4),
-        // (64, 33, 8),
-        // (64, 33, 16),
-        // (64, 33, 32),
-        // (64, 33, 64),
-        // (64, 33, 128),
+        (64, 33, 4),
+        (64, 33, 8),
+        (64, 33, 16),
+        (64, 33, 32),
+        (64, 33, 64),
+        (64, 33, 128),
     ];
 
     // ObtainMaster benchmarks
     {
         let mut group = c.benchmark_group("t_siris");
         group.sample_size(100);
-        group.measurement_time(Duration::from_secs(15));
+        group.measurement_time(Duration::from_secs(25));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
@@ -179,7 +91,7 @@ fn benchmark_t_siris(c: &mut Criterion) {
     {
         let mut group = c.benchmark_group("t_siris");
         group.sample_size(100);
-        group.measurement_time(Duration::from_secs(15));
+        group.measurement_time(Duration::from_secs(25));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
@@ -259,7 +171,7 @@ fn benchmark_t_siris(c: &mut Criterion) {
     {
         let mut group = c.benchmark_group("t_siris");
         group.sample_size(100);
-        group.measurement_time(Duration::from_secs(15));
+        group.measurement_time(Duration::from_secs(25));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
@@ -360,7 +272,7 @@ fn benchmark_t_siris(c: &mut Criterion) {
     {
         let mut group = c.benchmark_group("t_siris");
         group.sample_size(100);
-        group.measurement_time(Duration::from_secs(15));
+        group.measurement_time(Duration::from_secs(25));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
@@ -505,7 +417,7 @@ fn benchmark_t_siris(c: &mut Criterion) {
     {
         let mut group = c.benchmark_group("t_siris");
         group.sample_size(100);
-        group.measurement_time(Duration::from_secs(15));
+        group.measurement_time(Duration::from_secs(25));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
@@ -579,7 +491,7 @@ fn benchmark_t_siris(c: &mut Criterion) {
     {
         let mut group = c.benchmark_group("t_siris");
         group.sample_size(100);
-        group.measurement_time(Duration::from_secs(15));
+        group.measurement_time(Duration::from_secs(25));
 
         for &(n_participants, threshold, l_attributes) in &configs {
             let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);

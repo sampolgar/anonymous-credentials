@@ -8,6 +8,7 @@ use crate::symmetric_commitment::SymmetricCommitmentKey;
 use crate::user::User;
 use ark_ec::pairing::Pairing;
 use ark_std::{rand::Rng, UniformRand};
+use rayon::prelude::*;
 
 pub struct IssuerProtocol;
 pub struct UserProtocol;
@@ -52,32 +53,64 @@ impl UserProtocol {
         Ok((credential, commitments))
     }
 
-    /// User collects signatures from multiple issuers
+    // /// User collects signatures from multiple issuers
+    // pub fn collect_signature_shares<E: Pairing>(
+    //     signers: &[Signer<E>],
+    //     credential_request: &CredentialCommitments<E>,
+    //     threshold: usize,
+    //     rng: &mut impl Rng,
+    // ) -> Result<Vec<(usize, PartialSignature<E>)>, SignatureError> {
+    //     let mut shares = Vec::new();
+
+    //     // Request signatures from enough signers
+    //     for signer in signers.iter().take(threshold) {
+    //         let sig_share = signer.sign_share(
+    //             &credential_request.commitments,
+    //             &credential_request.proofs,
+    //             &credential_request.h,
+    //             rng,
+    //         )?;
+
+    //         shares.push((sig_share.party_index, sig_share));
+
+    //         if shares.len() == threshold {
+    //             break;
+    //         }
+    //     }
+
+    //     // Check if we have enough shares
+    //     if shares.len() < threshold {
+    //         return Err(SignatureError::InsufficientShares {
+    //             needed: threshold,
+    //             got: shares.len(),
+    //         });
+    //     }
+
+    //     Ok(shares)
+    // }
+
     pub fn collect_signature_shares<E: Pairing>(
         signers: &[Signer<E>],
         credential_request: &CredentialCommitments<E>,
         threshold: usize,
         rng: &mut impl Rng,
     ) -> Result<Vec<(usize, PartialSignature<E>)>, SignatureError> {
-        let mut shares = Vec::new();
+        let commitments = &credential_request.commitments;
+        let proofs = &credential_request.proofs;
+        let h = &credential_request.h;
 
-        // Request signatures from enough signers
-        for signer in signers.iter().take(threshold) {
-            let sig_share = signer.sign_share(
-                &credential_request.commitments,
-                &credential_request.proofs,
-                &credential_request.h,
-                rng,
-            )?;
+        let shares: Vec<_> = signers
+            .par_iter()
+            .take(threshold)
+            .map(|signer| {
+                // Each thread gets its own RNG
+                let mut thread_rng = rand::thread_rng();
+                signer
+                    .sign_share(commitments, proofs, h, &mut thread_rng)
+                    .map(|sig_share| (sig_share.party_index, sig_share))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
-            shares.push((sig_share.party_index, sig_share));
-
-            if shares.len() == threshold {
-                break;
-            }
-        }
-
-        // Check if we have enough shares
         if shares.len() < threshold {
             return Err(SignatureError::InsufficientShares {
                 needed: threshold,
