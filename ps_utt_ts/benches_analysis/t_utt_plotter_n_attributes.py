@@ -40,10 +40,10 @@ display_names = {
 
 # Colors for schemes
 colors = {
-    "tUTT Our Construction": "#E45932",       # Orange-Red for tUTT
-    "tUTT_no_zkp_verify": "#E45932", # Same color for aggregate variants
+    "tUTT Our Construction": "#50C878",       # Orange-Red for tUTT
+    "tUTT_no_zkp_verify": "#50C878", # Same color for aggregate variants
     "tUTT_with_zkp_verify": "#D6BC8E",
-    "tACT": "#4A90E2"          # Light Blue for tACT
+    "tACT": "#E45932"          # Light Blue for tACT
 }
 
 # Markers to distinguish schemes

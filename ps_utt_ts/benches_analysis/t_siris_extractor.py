@@ -30,14 +30,14 @@ def parse_benchmark_id(benchmark_id: str):
             return None, None, None, None
         
         # Extract N (participants), t (threshold), and n (attributes)
-        n_match = re.search(r'N(\d+)', params)
+        N_match = re.search(r'N(\d+)', params)
         t_match = re.search(r't(\d+)', params)
         n_match = re.search(r'n(\d+)', params)
         
-        if not (n_match and t_match and n_match):
+        if not (N_match and t_match and n_match):
             return None, None, None, None
             
-        n_participants = int(n_match.group(1))
+        n_participants = int(N_match.group(1))
         threshold = int(t_match.group(1))
         attributes = int(n_match.group(1))
         
@@ -99,8 +99,10 @@ def extract_benchmark_data(base_dir: Path) -> pd.DataFrame:
     operation_order = [
         "obtain_master",
         "issue_master",
+        "issue_master_no_zkp",
         "obtain_context",
         "issue_context",
+        "issue_context_no_zkp",
         "show",
         "verify"
     ]

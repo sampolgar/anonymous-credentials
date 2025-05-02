@@ -167,6 +167,86 @@ fn benchmark_t_siris(c: &mut Criterion) {
         group.finish();
     }
 
+    // IssueMaster issue_master_no_zkp benchmarks (includes share generation and aggregation)
+    {
+        let mut group = c.benchmark_group("t_siris");
+        group.sample_size(100);
+        group.measurement_time(Duration::from_secs(15));
+
+        for &(n_participants, threshold, l_attributes) in &configs {
+            let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
+
+            // Complete setup outside the benchmark
+            let mut setup_rng = ark_std::test_rng();
+
+            // Setup keys
+            let (ck, _, ts_keys) =
+                keygen::<Bls12_381>(threshold, n_participants, l_attributes, &mut setup_rng);
+
+            // Create signers
+            let signers: Vec<_> = ts_keys
+                .sk_shares
+                .iter()
+                .zip(ts_keys.vk_shares.iter())
+                .map(|(sk_share, vk_share)| Signer::new(&ck, sk_share, vk_share))
+                .collect();
+
+            // Create credential request
+            let attributes: Vec<Fr> = (0..l_attributes)
+                .map(|_| Fr::rand(&mut setup_rng))
+                .collect();
+            let (mut credential, credential_request) =
+                UserProtocol::request_credential(ck.clone(), Some(&attributes), &mut setup_rng)
+                    .expect("Failed to create credential request");
+
+            // Benchmark the complete issuance process (share generation + verification + aggregation)
+            group.bench_function(BenchmarkId::new("issue_master_no_zkp", id_suffix), |b| {
+                b.iter(|| {
+                    let mut bench_rng = ark_std::test_rng();
+
+                    // 1. Generate signature shares from threshold signers
+                    let verified_shares = signers
+                        .iter()
+                        .take(threshold)
+                        .map(|signer| {
+                            let sig = signer
+                                .sign_share_no_zkp_verify(
+                                    &credential_request.commitments,
+                                    &credential_request.proofs,
+                                    &credential_request.h,
+                                    &mut bench_rng,
+                                )
+                                .expect("Failed to generate signature share");
+                            (sig.party_index, sig)
+                        })
+                        .collect::<Vec<_>>();
+
+                    // // 2. Verify signature shares
+                    // let verified_shares = UserProtocol::verify_signature_shares(
+                    //     &ck,
+                    //     &ts_keys.vk_shares,
+                    //     &credential_request,
+                    //     &signature_shares,
+                    //     threshold,
+                    // )
+                    // .expect("Failed to verify signature shares");
+
+                    // 3. Aggregate shares
+                    let blindings = credential.get_blinding_factors();
+                    UserProtocol::aggregate_shares(
+                        &ck,
+                        &verified_shares,
+                        &blindings,
+                        threshold,
+                        &credential_request.h,
+                    )
+                })
+            });
+        }
+
+        group.finish();
+    }
+
     // ObtainContext benchmarks (master showing + nullifier + context credential request)
     {
         let mut group = c.benchmark_group("t_siris");
@@ -396,6 +476,142 @@ fn benchmark_t_siris(c: &mut Criterion) {
                         threshold,
                     )
                     .expect("Failed to verify signature shares");
+
+                    // 5. Aggregate shares
+                    let blindings = context_credential.get_blinding_factors();
+                    UserProtocol::aggregate_shares(
+                        &ck,
+                        &verified_shares,
+                        &blindings,
+                        threshold,
+                        &context_request.h,
+                    )
+                })
+            });
+        }
+
+        group.finish();
+    }
+
+    // IssueContext benchmarks (master verification + nullifier verification + issuance)
+    {
+        let mut group = c.benchmark_group("t_siris");
+        group.sample_size(100);
+        group.measurement_time(Duration::from_secs(25));
+
+        for &(n_participants, threshold, l_attributes) in &configs {
+            let id_suffix = format!("N{}_t{}_n{}", n_participants, threshold, l_attributes);
+
+            // Setup
+            let mut setup_rng = ark_std::test_rng();
+            let (ck, vk, ts_keys) =
+                keygen::<Bls12_381>(threshold, n_participants, l_attributes, &mut setup_rng);
+
+            // Create signers
+            let signers: Vec<_> = ts_keys
+                .sk_shares
+                .iter()
+                .zip(ts_keys.vk_shares.iter())
+                .map(|(sk_share, vk_share)| Signer::new(&ck, sk_share, vk_share))
+                .collect();
+
+            // Create master credential
+            let master_attrs: Vec<Fr> = (0..l_attributes)
+                .map(|_| Fr::rand(&mut setup_rng))
+                .collect();
+            let (mut master_credential, master_request) =
+                UserProtocol::request_credential(ck.clone(), Some(&master_attrs), &mut setup_rng)
+                    .expect("Failed to create master credential request");
+
+            // Issue master credential
+            let verified_shares = UserProtocol::collect_signature_shares(
+                &signers,
+                &master_request,
+                threshold,
+                &mut setup_rng,
+            )
+            .expect("Failed to collect master signature shares");
+
+            let master_signature = UserProtocol::aggregate_shares(
+                &ck,
+                &verified_shares,
+                &master_credential.get_blinding_factors(),
+                threshold,
+                &master_request.h,
+            )
+            .expect("Failed to aggregate master signature shares");
+
+            master_credential.attach_signature(master_signature);
+
+            // Show master credential
+            let (master_sig, master_cm, master_cm_tilde, master_proof) =
+                UserProtocol::show(&master_credential, &mut setup_rng)
+                    .expect("Failed to show master credential");
+
+            // Create context credential request
+            let context_attrs: Vec<Fr> = (0..l_attributes)
+                .map(|_| Fr::rand(&mut setup_rng))
+                .collect();
+            let (mut context_credential, context_request) =
+                UserProtocol::request_credential(ck.clone(), Some(&context_attrs), &mut setup_rng)
+                    .expect("Failed to create context credential request");
+
+            // Generate synthetic nullifier
+            let sk = Fr::rand(&mut setup_rng);
+            let ctx = Fr::rand(&mut setup_rng);
+            let combined = sk + ctx;
+            let inv = combined.inverse().unwrap();
+            let g = G1Projective::rand(&mut setup_rng);
+            let nullifier = g.mul(inv).into_affine();
+
+            // Benchmark IssueContext
+            group.bench_function(BenchmarkId::new("issue_context_no_zkp", id_suffix), |b| {
+                b.iter(|| {
+                    let mut bench_rng = ark_std::test_rng();
+
+                    // 1. Verify master credential
+                    let master_valid = VerifierProtocol::verify(
+                        &ck,
+                        &vk,
+                        &master_cm,
+                        &master_cm_tilde,
+                        &master_sig,
+                        &master_proof,
+                    )
+                    .expect("Failed to verify master credential");
+                    assert!(master_valid, "Master credential verification failed");
+
+                    // 2. Verify nullifier (synthetic benchmark)
+                    let check1 = g.mul(combined).mul(inv).into_affine() == g.into_affine();
+                    let check2 = nullifier.mul(combined).into_affine() == g.into_affine();
+                    assert!(check1 && check2, "Nullifier verification failed");
+
+                    // 3. Issue signature shares
+                    let verified_shares = signers
+                        .iter()
+                        .take(threshold)
+                        .map(|signer| {
+                            let sig = signer
+                                .sign_share_no_zkp_verify(
+                                    &context_request.commitments,
+                                    &context_request.proofs,
+                                    &context_request.h,
+                                    &mut bench_rng,
+                                )
+                                .expect("Failed to generate signature share");
+                            (sig.party_index, sig)
+                        })
+                        .collect::<Vec<_>>();
+
+                    // // 4. Verify signature shares
+                    // let verified_shares = UserProtocol::verify_signature_shares(
+                    //     &ck,
+                    //     &ts_keys.vk_shares,
+                    //     &context_request,
+                    //     &sig_shares,
+                    //     threshold,
+                    // )
+                    // .expect("Failed to verify signature shares");
 
                     // 5. Aggregate shares
                     let blindings = context_credential.get_blinding_factors();

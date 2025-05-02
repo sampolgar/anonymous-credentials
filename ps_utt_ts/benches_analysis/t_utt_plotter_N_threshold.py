@@ -41,11 +41,13 @@ display_names = {
 
 # Colors for schemes
 colors = {
-    "tUTT Our Construction": "#E45932",       # Orange-Red for tUTT
-    "tUTT_no_verify": "#E45932",              # Same color for no-verify variants
+    "tUTT Our Construction": "#50C878",       # green
+    "tUTT_no_verify": "#50C878",              # Same color for no-verify variants
     "tUTT_with_verify": "#D6BC8E",            # Light beige for with-verify
-    "tACT": "#4A90E2"                         # Light Blue for tACT
+    "tACT": "#E45932"                             # Light Blue for tACT
 }
+
+
 
 # Markers to distinguish schemes
 markers = {
